@@ -42,7 +42,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import type { Corporation } from '~/stores/corporations'
+import { useCorporationStore } from '~/stores/corporations'
 
 interface CorporationSelectItem {
   label: string
