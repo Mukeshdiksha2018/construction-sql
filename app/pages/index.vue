@@ -168,15 +168,11 @@
 </template>
 
 <script setup lang="ts">
-import { getSafeRedirect } from '~/utils/safe-redirect'
-
 definePageMeta({
   layout: false,
+  middleware: 'guest',
 })
 
-const router = useRouter()
-const route = useRoute()
-const authStore = useAuthStore()
 const { isDark, toggleDarkMode, initializeTheme, watchSystemTheme } = useDarkMode()
 const {
   email,
@@ -191,9 +187,5 @@ const {
 onMounted(() => {
   initializeTheme()
   watchSystemTheme()
-
-  if (authStore.isAuthenticated) {
-    router.replace(getSafeRedirect(route.query.redirect))
-  }
 })
 </script>

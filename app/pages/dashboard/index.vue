@@ -22,8 +22,14 @@ definePageMeta({
 const authStore = useAuthStore()
 const router = useRouter()
 
-function handleLogout() {
+async function handleLogout() {
+  try {
+    await $fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+  }
+  catch {
+    // Clear local state even if server call fails
+  }
   authStore.clear()
-  router.push('/')
+  await router.push('/')
 }
 </script>

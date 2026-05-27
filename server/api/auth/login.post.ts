@@ -1,3 +1,4 @@
+import { setSessionCookie } from '../../utils/auth-session'
 import {
   AuthError,
   nimbleLogin,
@@ -15,7 +16,9 @@ export default defineEventHandler(async (event) => {
     const credentials = parseLoginBody(body)
     const config = resolveNimbleAuthConfig(useRuntimeConfig().public)
 
-    return await nimbleLogin(credentials, config, $fetch)
+    const result = await nimbleLogin(credentials, config, $fetch)
+    setSessionCookie(event, result.session)
+    return result
   }
   catch (error: unknown) {
     if (error instanceof AuthError) {

@@ -1,7 +1,8 @@
 /**
- * GET /api/db/health — verify MSSQL connectivity (server-side only).
+ * GET /api/db/health — verify MSSQL connectivity (requires auth).
  */
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
+  const { session } = useAuth(event)
   const start = Date.now()
 
   const rows = await mssqlQuery<{ ok: number }>('SELECT 1 AS ok')
@@ -17,5 +18,6 @@ export default defineEventHandler(async () => {
     server,
     database,
     elapsedMs,
+    userID: session.userID,
   }
 })

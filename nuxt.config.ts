@@ -17,6 +17,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     // MSSQL — server-side only (set NUXT_MSSQL_CONNECTION_STRING in .env)
     mssqlConnectionString: '',
+    // Signs HTTP-only session cookie (falls back to NIMBLE_WEBHOOK_SECRET)
+    authSessionSecret: process.env.NUXT_AUTH_SESSION_SECRET || process.env.NIMBLE_WEBHOOK_SECRET || '',
     public: {
       // NUXT_PUBLIC_NIMBLE_OAUTH_EXCHANGE_URL — base for /v1/OpenApiauth/Login
       nimbleOauthExchangeUrl: '',
