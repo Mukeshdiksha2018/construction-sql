@@ -4,13 +4,11 @@
       <div class="flex items-center gap-2 flex-shrink-0 w-[200px]" />
 
       <div class="flex items-center gap-2 flex-1 justify-center max-w-md mx-4">
-        <USelectMenu
-          v-model="selectedCorporation"
-          :items="corporationOptions"
-          placeholder="Select corporation"
-          size="sm"
+        <SharedCorporationSelect
+          v-model="selectedCorporationId"
           class="w-full"
-          disabled
+          size="sm"
+          @change="onCorporationChange"
         />
       </div>
 
@@ -82,22 +80,22 @@
 </template>
 
 <script setup lang="ts">
+import type { Corporation } from '~/stores/corporations'
 import { useDarkMode } from '~/composables/useDarkMode'
 
 const authStore = useAuthStore()
+const corporationStore = useCorporationStore()
 const router = useRouter()
 const { isDark, toggleDarkMode, initializeTheme, watchSystemTheme } = useDarkMode()
 
-const selectedCorporation = ref<string | undefined>(undefined)
-const corporationOptions = computed(() => {
-  if (authStore.session?.clientUrl) {
-    return [{
-      label: authStore.session.clientUrl,
-      value: authStore.session.clientUrl,
-    }]
-  }
-  return []
+const selectedCorporationId = computed({
+  get: () => corporationStore.selectedCorporationId,
+  set: (id: string | null) => corporationStore.setSelectedCorporation(id),
 })
+
+function onCorporationChange(_corporation: Corporation | null) {
+  // Hook for future corporation-scoped data loading
+}
 
 const userDisplayName = computed(() => {
   const session = authStore.session
@@ -172,15 +170,13 @@ async function logout() {
     // still clear local session
   }
   authStore.clear()
+  corporationStore.clear()
   await router.push('/')
 }
 
 onMounted(() => {
   initializeTheme()
   watchSystemTheme()
-  if (authStore.session?.clientUrl) {
-    selectedCorporation.value = authStore.session.clientUrl
-  }
 })
 </script>
 

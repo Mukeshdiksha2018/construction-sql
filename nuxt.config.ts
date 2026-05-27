@@ -17,6 +17,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     // MSSQL — server-side only (set NUXT_MSSQL_CONNECTION_STRING in .env)
     mssqlConnectionString: '',
+    // Nimble API5 base (NIMBLE_API_BASE_URL) — e.g. https://qa-api5.nimbleproperty.net
+    nimbleApiBaseUrl: process.env.NIMBLE_API_BASE_URL || '',
     // Signs HTTP-only session cookie (falls back to NIMBLE_WEBHOOK_SECRET)
     authSessionSecret: process.env.NUXT_AUTH_SESSION_SECRET || process.env.NIMBLE_WEBHOOK_SECRET || '',
     public: {
