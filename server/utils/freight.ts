@@ -1,19 +1,6 @@
+import { Prisma } from '@prisma/client'
 import { createError } from 'h3'
-import type { SqlError } from 'mssql'
-import { ensureFreightTable } from './freight-schema'
-import { getMssqlPool, mssqlQuery, mssqlQueryParams } from './mssql'
-
-export interface FreightRow {
-  id: number
-  uuid: string
-  freight_name: string
-  description: string | null
-  active: boolean | number
-  created_at: Date | string
-  updated_at: Date | string
-  created_by: string | null
-  updated_by: string | null
-}
+import { getPrisma } from './prisma'
 
 export interface Freight {
   id: number
@@ -39,41 +26,44 @@ export interface UpdateFreightInput {
   active: boolean
 }
 
-function normalizeUuid(value: string | { toString(): string }): string {
+type FreightRecord = {
+  id: bigint
+  uuid: string
+  freight_name: string
+  description: string | null
+  active: boolean
+  created_at: Date
+  updated_at: Date
+  created_by: string | null
+  updated_by: string | null
+}
+
+function normalizeUuid(value: string): string {
   return String(value).toLowerCase()
 }
 
-function toIsoString(value: Date | string): string {
-  if (value instanceof Date) return value.toISOString()
-  return new Date(value).toISOString()
-}
-
-export function mapFreightRow(row: FreightRow): Freight {
+export function mapFreightRow(row: FreightRecord): Freight {
   return {
     id: Number(row.id),
     uuid: normalizeUuid(row.uuid),
     freight_name: row.freight_name,
     description: row.description ?? null,
     active: Boolean(row.active),
-    created_at: toIsoString(row.created_at),
-    updated_at: toIsoString(row.updated_at),
+    created_at: row.created_at.toISOString(),
+    updated_at: row.updated_at.toISOString(),
     created_by: row.created_by ?? null,
     updated_by: row.updated_by ?? null,
   }
 }
 
 export function isDuplicateFreightError(err: unknown): boolean {
-  const sqlErr = err as SqlError
-  return sqlErr?.number === 2627 || sqlErr?.number === 2601
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
 }
 
 export async function listFreight(): Promise<Freight[]> {
-  await ensureFreightTable()
-  const rows = await mssqlQuery<FreightRow>(`
-    SELECT id, uuid, freight_name, description, active, created_at, updated_at, created_by, updated_by
-    FROM dbo.freight
-    ORDER BY created_at DESC
-  `)
+  const rows = await getPrisma().freight.findMany({
+    orderBy: { created_at: 'desc' },
+  })
   return rows.map(mapFreightRow)
 }
 
@@ -81,37 +71,20 @@ export async function createFreight(
   input: CreateFreightInput,
   userId?: string | null,
 ): Promise<Freight> {
-  await ensureFreightTable()
-
   const freightName = input.freight_name.trim()
   const description = input.description?.trim() || null
   const active = input.active ?? true
 
   try {
-    const rows = await mssqlQueryParams<FreightRow>(`
-      INSERT INTO dbo.freight (freight_name, description, active, created_by, updated_by)
-      OUTPUT
-        INSERTED.id,
-        INSERTED.uuid,
-        INSERTED.freight_name,
-        INSERTED.description,
-        INSERTED.active,
-        INSERTED.created_at,
-        INSERTED.updated_at,
-        INSERTED.created_by,
-        INSERTED.updated_by
-      VALUES (@freightName, @description, @active, @userId, @userId)
-    `, {
-      freightName,
-      description,
-      active: active ? 1 : 0,
-      userId: userId ?? null,
+    const row = await getPrisma().freight.create({
+      data: {
+        freight_name: freightName,
+        description,
+        active,
+        created_by: userId ?? null,
+        updated_by: userId ?? null,
+      },
     })
-
-    const row = rows[0]
-    if (!row) {
-      throw createError({ statusCode: 500, statusMessage: 'Failed to create freight' })
-    }
     return mapFreightRow(row)
   }
   catch (err: unknown) {
@@ -130,46 +103,25 @@ export async function updateFreight(
   input: UpdateFreightInput,
   userId?: string | null,
 ): Promise<Freight> {
-  await ensureFreightTable()
-
   const freightName = input.freight_name.trim()
   const description = input.description?.trim() || null
 
   try {
-    const rows = await mssqlQueryParams<FreightRow>(`
-      UPDATE dbo.freight
-      SET
-        freight_name = @freightName,
-        description = @description,
-        active = @active,
-        updated_at = SYSUTCDATETIME(),
-        updated_by = @userId
-      OUTPUT
-        INSERTED.id,
-        INSERTED.uuid,
-        INSERTED.freight_name,
-        INSERTED.description,
-        INSERTED.active,
-        INSERTED.created_at,
-        INSERTED.updated_at,
-        INSERTED.created_by,
-        INSERTED.updated_by
-      WHERE uuid = @uuid
-    `, {
-      uuid: normalizeUuid(uuid),
-      freightName,
-      description,
-      active: input.active ? 1 : 0,
-      userId: userId ?? null,
+    const row = await getPrisma().freight.update({
+      where: { uuid: normalizeUuid(uuid) },
+      data: {
+        freight_name: freightName,
+        description,
+        active: input.active,
+        updated_by: userId ?? null,
+      },
     })
-
-    const row = rows[0]
-    if (!row) {
-      throw createError({ statusCode: 404, statusMessage: 'Freight not found' })
-    }
     return mapFreightRow(row)
   }
   catch (err: unknown) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw createError({ statusCode: 404, statusMessage: 'Freight not found' })
+    }
     if (isDuplicateFreightError(err)) {
       throw createError({
         statusCode: 400,
@@ -181,16 +133,16 @@ export async function updateFreight(
 }
 
 export async function deleteFreight(uuid: string): Promise<void> {
-  await ensureFreightTable()
-
-  const pool = await getMssqlPool()
-  const result = await pool.request()
-    .input('uuid', normalizeUuid(uuid))
-    .query('DELETE FROM dbo.freight WHERE uuid = @uuid')
-
-  const affected = result.rowsAffected[0] ?? 0
-  if (!affected) {
-    throw createError({ statusCode: 404, statusMessage: 'Freight not found' })
+  try {
+    await getPrisma().freight.delete({
+      where: { uuid: normalizeUuid(uuid) },
+    })
+  }
+  catch (err: unknown) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw createError({ statusCode: 404, statusMessage: 'Freight not found' })
+    }
+    throw err
   }
 }
 

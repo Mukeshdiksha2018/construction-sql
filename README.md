@@ -1,6 +1,10 @@
-# Nuxt Minimal Starter
+# Construction SQL (Nuxt + MSSQL)
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+Nuxt app with Nimble auth and SQL Server data via Prisma.
+
+## Database
+
+See **[DATABASE.md](./DATABASE.md)** for Prisma setup, migrations (`npm run db:migrate`), and connection configuration.
 
 ## Setup
 

@@ -8,7 +8,13 @@
     "generate": "nuxt generate",
     "preview": "dotenvx run -- node -e \"process.env.PORT=process.env.NUXT_DEV_SERVER_PORT||'3000'; require('child_process').execSync('nuxt preview', {stdio:'inherit', env:process.env});\"",
     "start": "dotenvx run -- node -e \"process.env.PORT=process.env.NUXT_DEV_SERVER_PORT||'3000'; require('child_process').execSync('node .output/server/index.mjs', {stdio:'inherit', env:process.env});\"",
-    "postinstall": "nuxt prepare",
+    "postinstall": "nuxt prepare && prisma generate",
+    "db:generate": "prisma generate",
+    "db:migrate": "dotenvx run -- node scripts/run-prisma.mjs migrate deploy",
+    "db:migrate:dev": "dotenvx run -- node scripts/run-prisma.mjs migrate dev",
+    "db:migrate:status": "dotenvx run -- node scripts/run-prisma.mjs migrate status",
+    "db:studio": "dotenvx run -- node scripts/run-prisma.mjs studio",
+    "db:push": "dotenvx run -- node scripts/run-prisma.mjs db push",
     "test": "vitest",
     "test:run": "vitest run",
     "test:watch": "vitest --watch",
@@ -21,6 +27,7 @@
   "dependencies": {
     "@nuxt/ui": "^4.8.0",
     "@pinia/nuxt": "^0.11.0",
+    "@prisma/client": "^6.19.3",
     "@tailwindcss/vite": "^4.1.14",
     "@tiptap/extension-image": "^3.12.1",
     "@tiptap/extension-link": "^3.12.1",
@@ -56,6 +63,7 @@
     "@vue/test-utils": "^2.4.6",
     "happy-dom": "^15.11.6",
     "jsdom": "^25.0.1",
+    "prisma": "^6.19.3",
     "vitest": "^3.2.4"
   }
 }
