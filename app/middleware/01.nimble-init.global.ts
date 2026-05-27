@@ -1,5 +1,6 @@
 import { getPathForMenuId } from '~/utils/nimbleMenuIds'
 import type { NimbleSession } from '~/stores/auth'
+import { fetchServerSession } from '~/utils/auth-session'
 
 function parsePathWithQuery(pathWithQuery: string): { path: string, query: Record<string, string> } {
   const [path, rawQuery = ''] = pathWithQuery.split('?')
@@ -23,8 +24,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   const authStore = useAuthStore()
   const corporationStore = useCorporationStore()
+  const serverSession = await fetchServerSession()
 
-  if (authId && !authStore.isAuthenticated) {
+  if (serverSession?.token) {
+    if (!authStore.isAuthenticated || authStore.token !== serverSession.token) {
+      authStore.setSession(serverSession)
+    }
+  }
+
+  if (authId && !serverSession?.token) {
     try {
       const result = await $fetch<{ session: NimbleSession }>('/api/auth/exchange-oauth', {
         method: 'POST',

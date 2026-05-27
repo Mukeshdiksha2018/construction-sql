@@ -31,6 +31,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (nimbleOn && authId) {
+    if (import.meta.server) {
+      // Let client bootstrap exchange authId and set browser cookie.
+      return
+    }
     try {
       const result = await $fetch<{ session: NimbleSession }>('/api/auth/exchange-oauth', {
         method: 'POST',

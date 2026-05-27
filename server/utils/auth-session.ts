@@ -50,8 +50,30 @@ export function decodeSessionCookie(cookieValue: string): NimbleSessionPayload |
 
 export function getSessionFromEvent(event: H3Event): NimbleSessionPayload | null {
   const cookie = getCookie(event, AUTH_SESSION_COOKIE)
-  if (!cookie) return null
-  return decodeSessionCookie(cookie)
+  const cookieSession = cookie ? decodeSessionCookie(cookie) : null
+  if (cookieSession?.token) return cookieSession
+
+  const authHeader = getHeader(event, 'authorization')
+  const bearerPrefix = 'Bearer '
+  if (!authHeader || !authHeader.startsWith(bearerPrefix)) {
+    return null
+  }
+
+  const token = authHeader.slice(bearerPrefix.length).trim()
+  if (!token) return null
+
+  // Fallback for environments where third-party cookies are blocked in iframes.
+  // We still require a token, and keep the same session shape for downstream handlers.
+  return {
+    token,
+    authID: '',
+    clientUrl: '',
+    clientFullUrl: '',
+    userID: '',
+    userName: '',
+    urlID: 0,
+    email: '',
+  }
 }
 
 export function setSessionCookie(event: H3Event, session: NimbleSessionPayload) {
