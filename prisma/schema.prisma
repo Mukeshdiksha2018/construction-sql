@@ -96,3 +96,21 @@ model Reason {
   @@index([created_at(sort: Desc)])
   @@map("reasons")
 }
+
+/// Global project types shared across corporations.
+model ProjectType {
+  id          BigInt   @id @default(autoincrement())
+  uuid        String   @unique @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  name        String   @unique @db.NVarChar(255)
+  description String?  @db.NVarChar(Max)
+  color       String   @default("#3B82F6") @db.NVarChar(7)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.DateTime2
+  updated_at  DateTime @updatedAt @db.DateTime2
+  created_by  String?  @db.NVarChar(128)
+  updated_by  String?  @db.NVarChar(128)
+
+  @@index([is_active])
+  @@index([created_at(sort: Desc)])
+  @@map("project_types")
+}
