@@ -22,7 +22,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const corporationId = String(to.query.corporationId ?? '').trim()
   const menuRedirect = toMenuRedirect(getPathForMenuId(menuId), corporationId)
 
-  if (!authStore.isAuthenticated && nimbleOn && authId) {
+  const serverSession = await fetchServerSession()
+  if (serverSession?.token) {
+    if (!authStore.isAuthenticated || authStore.token !== serverSession.token) {
+      authStore.setSession(serverSession)
+    }
+    return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect))
+  }
+
+  if (nimbleOn && authId) {
     try {
       const result = await $fetch<{ session: NimbleSession }>('/api/auth/exchange-oauth', {
         method: 'POST',
@@ -40,12 +48,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (authStore.isAuthenticated) {
-    return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect))
-  }
-
-  const session = await fetchServerSession()
-  if (session) {
-    authStore.setSession(session)
-    return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect))
+    authStore.clear()
   }
 })

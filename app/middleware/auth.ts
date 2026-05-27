@@ -8,7 +8,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const nimbleOn = String(runtimeConfig.public.nimbleIntegrations || '').toLowerCase() === 'true'
   const authId = String(to.query.authId ?? '').trim()
 
-  if (!authStore.isAuthenticated && nimbleOn && authId) {
+  const serverSession = await fetchServerSession()
+  if (serverSession?.token) {
+    if (!authStore.isAuthenticated || authStore.token !== serverSession.token) {
+      authStore.setSession(serverSession)
+    }
+    return
+  }
+
+  if (nimbleOn && authId) {
     try {
       const result = await $fetch<{ session: NimbleSession }>('/api/auth/exchange-oauth', {
         method: 'POST',
@@ -24,13 +32,11 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
   }
 
-  if (!authStore.isAuthenticated) {
-    const session = await fetchServerSession()
-    if (session) {
-      authStore.setSession(session)
-      return
-    }
+  if (authStore.isAuthenticated) {
+    authStore.clear()
+  }
 
+  if (!authStore.isAuthenticated) {
     return navigateTo({
       path: '/',
       query: { redirect: to.fullPath },
