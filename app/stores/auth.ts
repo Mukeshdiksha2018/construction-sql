@@ -1,3 +1,5 @@
+import { defineStore } from 'pinia'
+
 export interface NimbleSession {
   token: string
   authID: string

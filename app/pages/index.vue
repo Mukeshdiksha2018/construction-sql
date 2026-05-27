@@ -75,7 +75,7 @@
             Login to Your Account
           </h2>
 
-          <form @submit.prevent="handleSubmit">
+          <form @submit.prevent="submit">
             <div class="mb-6">
               <label
                 for="email"
@@ -168,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import type { NimbleSession } from '~/stores/auth'
+import { getSafeRedirect } from '~/utils/safe-redirect'
 
 definePageMeta({
   layout: false,
@@ -178,26 +178,15 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const { isDark, toggleDarkMode, initializeTheme, watchSystemTheme } = useDarkMode()
-
-const email = ref('')
-const password = ref('')
-const isLoading = ref(false)
-const errMessage = ref<string | null>(null)
-const showPassword = ref(false)
-
-function togglePasswordVisibility() {
-  showPassword.value = !showPassword.value
-}
-
-function getSafeRedirect(redirect: unknown): string {
-  const fallback = '/dashboard'
-  if (redirect == null || typeof redirect !== 'string') return fallback
-  const s = redirect.trim()
-  if (!s) return fallback
-  if (!s.startsWith('/')) return fallback
-  if (s.startsWith('//') || s.includes('javascript:') || s.includes('data:')) return fallback
-  return s
-}
+const {
+  email,
+  password,
+  isLoading,
+  errMessage,
+  showPassword,
+  togglePasswordVisibility,
+  submit,
+} = useLoginForm()
 
 onMounted(() => {
   initializeTheme()
@@ -207,34 +196,4 @@ onMounted(() => {
     router.replace(getSafeRedirect(route.query.redirect))
   }
 })
-
-async function handleSubmit() {
-  isLoading.value = true
-  errMessage.value = null
-
-  try {
-    const data = await $fetch<{ session: NimbleSession }>('/api/auth/login', {
-      method: 'POST',
-      body: {
-        email: email.value,
-        password: password.value,
-      },
-    })
-
-    authStore.setSession(data.session)
-
-    const redirectTo = getSafeRedirect(route.query.redirect)
-    await router.push(redirectTo)
-  }
-  catch (error: unknown) {
-    const fetchError = error as { data?: { statusMessage?: string }, message?: string }
-    errMessage.value
-      = fetchError?.data?.statusMessage
-        || fetchError?.message
-        || 'Login failed. Please try again.'
-  }
-  finally {
-    isLoading.value = false
-  }
-}
 </script>
