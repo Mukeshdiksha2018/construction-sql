@@ -1,17 +1,12 @@
 <template>
-  <LayoutPlaceholder
-    :title="isNew ? 'New Project' : 'Edit Project'"
-    :description="`Project form (${projectId}) will appear here.`"
-  />
+  <ProjectsProjectDetailsForm />
 </template>
 
 <script setup lang="ts">
+import ProjectsProjectDetailsForm from '~/components/projects/ProjectDetailsForm.vue'
+
 definePageMeta({
   layout: 'main-layout',
   middleware: 'auth',
 })
-
-const route = useRoute()
-const projectId = computed(() => String(route.params.id ?? ''))
-const isNew = computed(() => projectId.value === 'new')
 </script>
