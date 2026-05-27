@@ -96,3 +96,173 @@ model Reason {
   @@index([created_at(sort: Desc)])
   @@map("reasons")
 }
+
+/// Global project types shared across corporations.
+model ProjectType {
+  id          BigInt   @id @default(autoincrement())
+  uuid        String   @unique @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  name        String   @unique @db.NVarChar(255)
+  description String?  @db.NVarChar(Max)
+  color       String   @default("#3B82F6") @db.NVarChar(7)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.DateTime2
+  updated_at  DateTime @updatedAt @db.DateTime2
+  created_by  String?  @db.NVarChar(128)
+  updated_by  String?  @db.NVarChar(128)
+
+  @@index([is_active])
+  @@index([created_at(sort: Desc)])
+  @@map("project_types")
+}
+
+/// Global service types shared across corporations.
+model ServiceType {
+  id          BigInt   @id @default(autoincrement())
+  uuid        String   @unique @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  name        String   @unique @db.NVarChar(255)
+  description String?  @db.NVarChar(Max)
+  color       String   @default("#3D5C7C") @db.NVarChar(7)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.DateTime2
+  updated_at  DateTime @updatedAt @db.DateTime2
+  created_by  String?  @db.NVarChar(128)
+  updated_by  String?  @db.NVarChar(128)
+
+  @@index([is_active])
+  @@index([created_at(sort: Desc)])
+  @@map("service_types")
+}
+
+/// Core project record.
+model Project {
+  id                                  BigInt   @id @default(autoincrement())
+  uuid                                String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid                    String   @db.NVarChar(36)
+  project_name                        String   @db.NVarChar(255)
+  project_id                          String   @db.NVarChar(100)
+  project_type_uuid                   String?  @db.NVarChar(36)
+  service_type_uuid                   String?  @db.NVarChar(36)
+  project_description                 String?  @db.NVarChar(Max)
+  estimated_amount                    Decimal? @db.Decimal(18, 2)
+  area_sq_ft                          Decimal? @db.Decimal(18, 2)
+  no_of_rooms                         Int?
+  contingency_percentage              Decimal? @db.Decimal(5, 2)
+  customer_name                       String?  @db.NVarChar(255)
+  customer_uuid                       String?  @db.NVarChar(36)
+  project_status                      String   @default("Pending") @db.NVarChar(50)
+  project_start_date                  DateTime? @db.DateTime2
+  project_estimated_completion_date   DateTime? @db.DateTime2
+  only_total                          Boolean  @default(false)
+  enable_labor                        Boolean  @default(false)
+  enable_material                     Boolean  @default(false)
+  attachments                         String   @default("[]") @db.NVarChar(Max)
+  enable_location_wise                Boolean  @default(false)
+  location_basis_area                 Boolean  @default(false)
+  location_basis_no_of_rooms          Boolean  @default(false)
+  is_active                           Boolean  @default(true)
+  created_at                          DateTime @default(now()) @db.DateTime2
+  updated_at                          DateTime @updatedAt @db.DateTime2
+  created_by                          String?  @db.NVarChar(128)
+  updated_by                          String?  @db.NVarChar(128)
+
+  addresses          ProjectAddress[]
+  location_breakdowns ProjectLocationBreakdown[]
+  documents          ProjectDocument[]
+
+  @@index([corporation_uuid])
+  @@index([is_active])
+  @@index([created_at(sort: Desc)])
+  @@map("projects")
+}
+
+/// Address (shipment / bill / final-destination) linked to a project.
+model ProjectAddress {
+  id                              BigInt   @id @default(autoincrement())
+  uuid                            String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  project_uuid                    String   @db.NVarChar(36)
+  address_type                    String   @db.NVarChar(50)
+  contact_person                  String?  @db.NVarChar(255)
+  email                           String?  @db.NVarChar(255)
+  phone                           String?  @db.NVarChar(50)
+  address_line_1                  String   @db.NVarChar(500)
+  address_line_2                  String?  @db.NVarChar(500)
+  city                            String?  @db.NVarChar(100)
+  state                           String?  @db.NVarChar(100)
+  zip_code                        String?  @db.NVarChar(20)
+  country                         String?  @db.NVarChar(10)
+  is_primary                      Boolean  @default(false)
+  is_active                       Boolean  @default(true)
+  copied_from_billing_address_uuid String? @db.NVarChar(36)
+  created_at                      DateTime @default(now()) @db.DateTime2
+  updated_at                      DateTime @updatedAt @db.DateTime2
+
+  project Project @relation(fields: [project_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([project_uuid])
+  @@index([address_type])
+  @@index([is_primary])
+  @@map("project_addresses")
+}
+
+/// Location-wise area / room breakdown rows for a project.
+model ProjectLocationBreakdown {
+  id           BigInt   @id @default(autoincrement())
+  uuid         String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  project_uuid String   @db.NVarChar(36)
+  location_uuid String  @db.NVarChar(36)
+  area_sq_ft   Decimal? @db.Decimal(18, 2)
+  no_of_rooms  Int?
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now()) @db.DateTime2
+  updated_at   DateTime @updatedAt @db.DateTime2
+
+  project Project @relation(fields: [project_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([project_uuid])
+  @@index([location_uuid])
+  @@map("project_location_breakdowns")
+}
+
+/// Document / attachment uploaded against a project.
+model ProjectDocument {
+  id            BigInt   @id @default(autoincrement())
+  uuid          String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  project_uuid  String   @db.NVarChar(36)
+  document_name String   @db.NVarChar(255)
+  document_type String   @db.NVarChar(50)
+  file_size     BigInt
+  mime_type     String   @db.NVarChar(100)
+  file_url      String   @db.NVarChar(Max)
+  file_path     String   @db.NVarChar(Max)
+  description   String?  @db.NVarChar(Max)
+  tags          String   @default("[]") @db.NVarChar(Max)
+  is_primary    Boolean  @default(false)
+  is_active     Boolean  @default(true)
+  uploaded_by   String?  @db.NVarChar(128)
+  created_at    DateTime @default(now()) @db.DateTime2
+  updated_at    DateTime @updatedAt @db.DateTime2
+
+  project Project @relation(fields: [project_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([project_uuid])
+  @@index([is_active])
+  @@map("project_documents")
+}
+
+/// Global terms and conditions templates.
+model TermsAndCondition {
+  id         BigInt   @id @default(autoincrement())
+  uuid       String   @unique @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  name       String   @unique @db.NVarChar(255)
+  content    String   @db.NVarChar(Max)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now()) @db.DateTime2
+  updated_at DateTime @updatedAt @db.DateTime2
+  created_by String?  @db.NVarChar(128)
+  updated_by String?  @db.NVarChar(128)
+
+  @@index([is_active])
+  @@index([name])
+  @@index([created_at(sort: Desc)])
+  @@map("terms_and_conditions")
+}

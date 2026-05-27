@@ -22,10 +22,12 @@ export default defineNuxtConfig({
     // Signs HTTP-only session cookie (falls back to NIMBLE_WEBHOOK_SECRET)
     authSessionSecret: process.env.NUXT_AUTH_SESSION_SECRET || process.env.NIMBLE_WEBHOOK_SECRET || '',
     public: {
-      // NUXT_PUBLIC_NIMBLE_OAUTH_EXCHANGE_URL — base for /v1/OpenApiauth/Login
+      // NUXT_PUBLIC_NIMBLE_OAUTH_EXCHANGE_URL — base for Nimble OpenApiAuth endpoints
       nimbleOauthExchangeUrl: '',
       // NUXT_PUBLIC_NIMBLE_PAYABLE_ENV — "url" field in login payload (e.g. qa22)
       nimblePayableEnv: '',
+      // NUXT_PUBLIC_NIMBLE_INTEGRATIONS — true to enable menuId-driven tab filtering
+      nimbleIntegrations: process.env.NUXT_PUBLIC_NIMBLE_INTEGRATIONS || 'false',
     },
   },
 })

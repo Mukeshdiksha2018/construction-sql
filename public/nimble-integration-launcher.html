@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nimble Dev Launcher (Construction SQL)</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --surface: #f8fafc;
+      --border: #334155;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #2563eb;
+      --sidebar-collapsed: 56px;
+      --sidebar-expanded: 380px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+    }
+    .app-shell {
+      height: 100vh;
+      width: 100vw;
+      display: grid;
+      grid-template-columns: var(--sidebar-collapsed) minmax(0, 1fr);
+      transition: grid-template-columns 220ms ease;
+    }
+    .app-shell.sidebar-open {
+      grid-template-columns: var(--sidebar-expanded) minmax(0, 1fr);
+    }
+    .launcher-sidebar {
+      background: linear-gradient(180deg, #111827 0%, #0b1220 100%);
+      border-right: 1px solid var(--border);
+      color: var(--text);
+      overflow: hidden;
+      position: relative;
+    }
+    .launcher-sidebar::before {
+      content: ">";
+      position: absolute;
+      top: 0.9rem;
+      right: 0.75rem;
+      font-weight: 700;
+      color: #93c5fd;
+      opacity: 0.9;
+      transition: transform 220ms ease;
+      pointer-events: none;
+    }
+    .app-shell.sidebar-open .launcher-sidebar::before { transform: rotate(180deg); }
+    .sidebar-inner {
+      width: var(--sidebar-expanded);
+      height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 1rem 1rem 1.25rem;
+    }
+    .sidebar-title {
+      font-size: 1rem;
+      font-weight: 700;
+      margin: 0 0 0.35rem;
+      color: #f8fafc;
+    }
+    .sub {
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.45;
+      margin-bottom: 0.85rem;
+    }
+    label {
+      display: block;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #cbd5e1;
+      margin-bottom: 0.3rem;
+    }
+    .sidebar-inner input[type="text"] {
+      width: 100%;
+      padding: 0.55rem 0.65rem;
+      border-radius: 7px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: #f8fafc;
+      font-size: 0.82rem;
+      margin-bottom: 0.8rem;
+    }
+    .inline-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 0.25rem 0 0.65rem;
+      padding: 0.5rem 0.55rem;
+      border: 1px solid #334155;
+      border-radius: 7px;
+      background: #0f172a;
+      font-size: 0.74rem;
+      color: #e2e8f0;
+    }
+    .inline-toggle input[type="checkbox"] { margin: 0; accent-color: var(--accent); }
+    .sections {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.65rem;
+      margin-top: 0.9rem;
+    }
+    .section-card {
+      border: 1px solid #334155;
+      border-radius: 10px;
+      background: #0f172a;
+      padding: 0.6rem;
+    }
+    .section-title {
+      font-size: 0.63rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #93c5fd;
+      margin: 0 0 0.45rem;
+      font-weight: 700;
+    }
+    .actions-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.45rem;
+    }
+    .actions-grid button {
+      width: 100%;
+      margin: 0;
+      padding: 0.52rem 0.58rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      line-height: 1.25;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 7px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .actions-grid button:hover { filter: brightness(1.06); }
+    .hint {
+      margin-top: 0.85rem;
+      font-size: 0.7rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .app-stage {
+      background: var(--surface);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-width: 0;
+    }
+    .embed-head {
+      padding: 0.6rem 0.9rem;
+      border-bottom: 1px solid #e2e8f0;
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+    .embed-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #334155;
+    }
+    .embed-url {
+      font-size: 0.72rem;
+      color: #64748b;
+      word-break: break-all;
+      margin-left: auto;
+      text-align: right;
+    }
+    .app-frame {
+      display: block;
+      width: 100%;
+      height: calc(100vh - 44px);
+      border: 0;
+      background: #fff;
+    }
+    code {
+      font-size: 0.72rem;
+      background: #1e293b;
+      color: #bfdbfe;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="launcher-sidebar">
+      <div class="sidebar-inner">
+        <h1 class="sidebar-title">Nimble dev launcher</h1>
+        <p class="sub">
+          Launches this app with Nimble-like URL params:
+          <code>authId</code> and <code>corporationId</code>.
+          Use this to test iframe embedding and route-level navigation.
+        </p>
+
+        <label for="origin">App origin</label>
+        <input type="text" id="origin" value="http://localhost:3000" autocomplete="off" />
+
+        <label for="authId">authId</label>
+        <input type="text" id="authId" value="17052e12-1944-4d02-adc9-aace780c9104" autocomplete="off" />
+
+        <label for="corporationId">corporationId (Nimble)</label>
+        <input type="text" id="corporationId" value="46EC63ACAE5655B44FDFA640955CBEB50000" autocomplete="off" />
+
+        <label class="inline-toggle" for="sameTab">
+          <input type="checkbox" id="sameTab" />
+          <span>Open in same tab (instead of iframe)</span>
+        </label>
+        <label class="inline-toggle" for="lightweightNav">
+          <input type="checkbox" id="lightweightNav" />
+          <span>Lightweight iframe navigation (postMessage)</span>
+        </label>
+
+        <div class="sections">
+          <section class="section-card">
+            <div class="section-title">Payables</div>
+            <div class="actions-grid">
+              <button type="button" id="go-payables">Payables — Vendor Invoices</button>
+            </div>
+          </section>
+          <section class="section-card">
+            <div class="section-title">Projects</div>
+            <div class="actions-grid">
+              <button type="button" id="go-projects-main">Projects — Main (Project Details)</button>
+              <button type="button" id="go-projects-items">Projects — Items</button>
+              <button type="button" id="go-projects-cost-codes">Projects — Cost Codes</button>
+              <button type="button" id="go-projects-estimates">Projects — Estimates</button>
+            </div>
+          </section>
+          <section class="section-card">
+            <div class="section-title">Purchase Orders</div>
+            <div class="actions-grid">
+              <button type="button" id="go-purchase-orders">Purchase Orders (list)</button>
+              <button type="button" id="go-receipt-notes">Stock Receipt Notes</button>
+            </div>
+          </section>
+          <section class="section-card">
+            <div class="section-title">Configurations</div>
+            <div class="actions-grid">
+              <button type="button" id="go-config-project-types">Configurations — Project Types</button>
+              <button type="button" id="go-config-service-types">Configurations — Service Types</button>
+              <button type="button" id="go-config-terms">Configurations — Terms and Conditions</button>
+            </div>
+          </section>
+          <section class="section-card">
+            <div class="section-title">Masters</div>
+            <div class="actions-grid">
+              <button type="button" id="go-masters-freight">Masters — Freight</button>
+              <button type="button" id="go-masters-approval-checks">Masters — Approval Checks</button>
+              <button type="button" id="go-masters-po-instruction">Masters — PO Instruction</button>
+              <button type="button" id="go-masters-location">Masters — Location</button>
+              <button type="button" id="go-masters-reason">Masters — Reason</button>
+            </div>
+          </section>
+          <section class="section-card">
+            <div class="section-title">Reports</div>
+            <div class="actions-grid">
+              <button type="button" id="go-reports-home">Reports — Home</button>
+            </div>
+          </section>
+        </div>
+
+        <p class="hint">
+          Open from this app host: <code>http://localhost:3000/nimble-payables-launcher.html</code>
+        </p>
+      </div>
+    </aside>
+
+    <main class="app-stage">
+      <div class="embed-head">
+        <div class="embed-title">Embedded app iframe (Nimble-like)</div>
+        <div class="embed-url" id="currentUrl">Current iframe URL: not loaded</div>
+      </div>
+      <iframe
+        id="nimbleAppFrame"
+        class="app-frame"
+        title="Construction SQL App"
+        referrerpolicy="strict-origin-when-cross-origin"
+      ></iframe>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      var appShell = document.querySelector(".app-shell");
+      var launcherSidebar = document.querySelector(".launcher-sidebar");
+
+      function setSidebarOpen(open) {
+        if (!appShell) return;
+        appShell.classList.toggle("sidebar-open", !!open);
+      }
+
+      if (launcherSidebar && appShell) {
+        launcherSidebar.addEventListener("mouseenter", function () { setSidebarOpen(true); });
+        launcherSidebar.addEventListener("mouseleave", function () { setSidebarOpen(false); });
+      }
+
+      var VENDOR_INVOICES_MENU_ID = "0x010000000000000000000000000000011133";
+      var PURCHASE_ORDERS_TAB_MENU_ID = "0x010000000000000000000000000000011131";
+      var STOCK_RECEIPT_NOTE_TAB_MENU_ID = "0x010000000000000000000000000000011134";
+      var PROJECTS_ITEMS_TAB_MENU_ID = "0x010000000000000000000000000000011138";
+      var PROJECTS_COST_CODES_TAB_MENU_ID = "0x010000000000000000000000000000011139";
+      var PROJECTS_ESTIMATES_TAB_MENU_ID = "0x010000000000000000000000000000011140";
+      var MASTERS_FREIGHT_MENU_ID = "0x010000000000000000000000000000011146";
+      var MASTERS_APPROVAL_CHECKS_MENU_ID = "0x010000000000000000000000000000011160";
+      var MASTERS_PO_INSTRUCTION_MENU_ID = "0x010000000000000000000000000000011151";
+      var MASTERS_REASON_MENU_ID = "0x010000000000000000000000000000011148";
+      var CONFIG_PROJECT_TYPES_MENU_ID = "0x010000000000000000000000000000011149";
+      var CONFIG_SERVICE_TYPES_MENU_ID = "0x010000000000000000000000000000011150";
+      var CONFIG_TERMS_MENU_ID = "0x010000000000000000000000000000011153";
+      var PROJECTS_MAIN_MENU_ID = "0x010000000000000000000000000000011131";
+      var launcherBridgeToken = (function () {
+        var token = localStorage.getItem("nimbleLauncherBridgeToken");
+        if (!token) {
+          token = String(Date.now()) + "-" + Math.random().toString(36).slice(2);
+          localStorage.setItem("nimbleLauncherBridgeToken", token);
+        }
+        return token;
+      })();
+
+      var iframeReadyForLightweightNav = false;
+      var lastLauncherContextKey = "";
+
+      function launcherContextKey() {
+        var authId = document.getElementById("authId").value.trim();
+        var corporationId = document.getElementById("corporationId").value.trim();
+        return authId + "|" + corporationId;
+      }
+
+      function syncLauncherContextKey() {
+        var nextKey = launcherContextKey();
+        if (nextKey !== lastLauncherContextKey) {
+          lastLauncherContextKey = nextKey;
+          iframeReadyForLightweightNav = false;
+          return true;
+        }
+        return false;
+      }
+
+      function baseQuery() {
+        var authId = document.getElementById("authId").value.trim();
+        var corporationId = document.getElementById("corporationId").value.trim();
+        var q = new URLSearchParams();
+        if (authId) q.set("authId", authId);
+        if (corporationId) q.set("corporationId", corporationId);
+        q.set("launcherBridgeToken", launcherBridgeToken);
+        return q;
+      }
+
+      function openInNewTab(path, extra) {
+        var origin = document.getElementById("origin").value.trim().replace(/\/+$/, "");
+        var openSameTab = !!document.getElementById("sameTab")?.checked;
+        var lightweightNav = !!document.getElementById("lightweightNav")?.checked;
+        var iframe = document.getElementById("nimbleAppFrame");
+        var currentUrl = document.getElementById("currentUrl");
+        if (!origin) {
+          alert("Set app origin (e.g. http://localhost:3000)");
+          return;
+        }
+
+        var q = baseQuery();
+        if (extra) {
+          Object.keys(extra).forEach(function (k) { q.set(k, extra[k]); });
+        }
+        var url = origin + path + "?" + q.toString();
+        var queryObj = {};
+        q.forEach(function (value, key) { queryObj[key] = value; });
+
+        if (openSameTab) {
+          window.location.assign(url);
+          return;
+        }
+        if (iframe) {
+          var contextChanged = syncLauncherContextKey();
+          if (lightweightNav && !contextChanged && iframeReadyForLightweightNav && iframe.contentWindow) {
+            try {
+              iframe.contentWindow.postMessage(
+                {
+                  type: "NIMBLE_LAUNCHER_NAVIGATE",
+                  path: path,
+                  query: queryObj,
+                  bridgeToken: launcherBridgeToken
+                },
+                "*"
+              );
+              if (currentUrl) currentUrl.textContent = "Current iframe URL: " + url + " (lightweight)";
+              return;
+            } catch (_e) {}
+          }
+          iframe.src = url;
+          iframeReadyForLightweightNav = true;
+          if (currentUrl) currentUrl.textContent = "Current iframe URL: " + url;
+          return;
+        }
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+
+      document.getElementById("go-payables").addEventListener("click", function () {
+        openInNewTab("/payables", { tab: "vendor-invoices", menuId: VENDOR_INVOICES_MENU_ID });
+      });
+      document.getElementById("go-projects-main").addEventListener("click", function () {
+        openInNewTab("/projects", { tab: "project-details", menuId: PROJECTS_MAIN_MENU_ID });
+      });
+      document.getElementById("go-projects-items").addEventListener("click", function () {
+        openInNewTab("/projects", { tab: "items", menuId: PROJECTS_ITEMS_TAB_MENU_ID });
+      });
+      document.getElementById("go-projects-cost-codes").addEventListener("click", function () {
+        openInNewTab("/projects", { tab: "cost-codes", menuId: PROJECTS_COST_CODES_TAB_MENU_ID });
+      });
+      document.getElementById("go-projects-estimates").addEventListener("click", function () {
+        openInNewTab("/projects", { tab: "estimates", menuId: PROJECTS_ESTIMATES_TAB_MENU_ID });
+      });
+      document.getElementById("go-purchase-orders").addEventListener("click", function () {
+        openInNewTab("/purchase-orders", { tab: "purchase-orders", menuId: PURCHASE_ORDERS_TAB_MENU_ID });
+      });
+      document.getElementById("go-receipt-notes").addEventListener("click", function () {
+        openInNewTab("/purchase-orders", { tab: "stock-receipt-note", menuId: STOCK_RECEIPT_NOTE_TAB_MENU_ID });
+      });
+
+      document.getElementById("go-config-project-types").addEventListener("click", function () {
+        openInNewTab("/configurations", { tab: "project-types", menuId: CONFIG_PROJECT_TYPES_MENU_ID });
+      });
+      document.getElementById("go-config-service-types").addEventListener("click", function () {
+        openInNewTab("/configurations", { tab: "service-types", menuId: CONFIG_SERVICE_TYPES_MENU_ID });
+      });
+      document.getElementById("go-config-terms").addEventListener("click", function () {
+        openInNewTab("/configurations", { tab: "terms-and-conditions", menuId: CONFIG_TERMS_MENU_ID });
+      });
+
+      document.getElementById("go-masters-freight").addEventListener("click", function () {
+        openInNewTab("/masters", { tab: "freight", menuId: MASTERS_FREIGHT_MENU_ID });
+      });
+      document.getElementById("go-masters-approval-checks").addEventListener("click", function () {
+        openInNewTab("/masters", { tab: "approval-checks", menuId: MASTERS_APPROVAL_CHECKS_MENU_ID });
+      });
+      document.getElementById("go-masters-po-instruction").addEventListener("click", function () {
+        openInNewTab("/masters", { tab: "po-instruction", menuId: MASTERS_PO_INSTRUCTION_MENU_ID });
+      });
+      document.getElementById("go-masters-location").addEventListener("click", function () {
+        openInNewTab("/masters", { tab: "location" });
+      });
+      document.getElementById("go-masters-reason").addEventListener("click", function () {
+        openInNewTab("/masters", { tab: "reason", menuId: MASTERS_REASON_MENU_ID });
+      });
+
+      document.getElementById("go-reports-home").addEventListener("click", function () {
+        openInNewTab("/reports");
+      });
+
+      ["authId", "corporationId", "origin"].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("change", function () { syncLauncherContextKey(); });
+        el.addEventListener("input", function () { syncLauncherContextKey(); });
+      });
+    })();
+  </script>
+</body>
+</html>

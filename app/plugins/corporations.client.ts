@@ -8,11 +8,17 @@ export default defineNuxtPlugin(async () => {
   const corporationStore = useCorporationStore()
 
   async function ensureSession() {
-    if (!authStore.isAuthenticated) {
-      const session = await fetchServerSession()
-      if (session) {
+    const session = await fetchServerSession()
+    if (session?.token) {
+      if (!authStore.isAuthenticated || authStore.token !== session.token) {
         authStore.setSession(session)
       }
+      return
+    }
+
+    if (authStore.isAuthenticated) {
+      authStore.clear()
+      corporationStore.clear()
     }
   }
 

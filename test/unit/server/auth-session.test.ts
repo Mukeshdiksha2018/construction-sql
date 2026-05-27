@@ -11,7 +11,16 @@ vi.stubGlobal('createError', (opts: { statusCode: number, statusMessage: string 
   return error
 })
 
-const { encodeSessionCookie, decodeSessionCookie } = await import('../../../server/utils/auth-session')
+const mockGetCookie = vi.fn()
+const mockGetHeader = vi.fn()
+vi.stubGlobal('getCookie', mockGetCookie)
+vi.stubGlobal('getHeader', mockGetHeader)
+
+const {
+  encodeSessionCookie,
+  decodeSessionCookie,
+  getSessionFromEvent,
+} = await import('../../../server/utils/auth-session')
 
 const sampleSession: NimbleSessionPayload = {
   token: 'jwt-token',
@@ -27,6 +36,8 @@ const sampleSession: NimbleSessionPayload = {
 describe('auth-session cookie', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetCookie.mockReturnValue(undefined)
+    mockGetHeader.mockReturnValue(undefined)
   })
 
   it('encodes and decodes a session payload', () => {
@@ -42,5 +53,41 @@ describe('auth-session cookie', () => {
 
   it('rejects invalid cookie format', () => {
     expect(decodeSessionCookie('not-valid')).toBeNull()
+  })
+
+  it('reads session from signed cookie when present', () => {
+    const encoded = encodeSessionCookie(sampleSession)
+    mockGetCookie.mockReturnValue(encoded)
+
+    const session = getSessionFromEvent({} as never)
+
+    expect(mockGetCookie).toHaveBeenCalled()
+    expect(session).toEqual(sampleSession)
+  })
+
+  it('falls back to bearer token when cookie is missing', () => {
+    mockGetCookie.mockReturnValue(undefined)
+    mockGetHeader.mockReturnValue('Bearer jwt-fallback-token')
+
+    const session = getSessionFromEvent({} as never)
+
+    expect(session).toEqual({
+      token: 'jwt-fallback-token',
+      authID: '',
+      clientUrl: '',
+      clientFullUrl: '',
+      userID: '',
+      userName: '',
+      urlID: 0,
+      email: '',
+    })
+  })
+
+  it('returns null when no cookie and invalid bearer header', () => {
+    mockGetCookie.mockReturnValue(undefined)
+    mockGetHeader.mockReturnValue('Basic abc123')
+
+    const session = getSessionFromEvent({} as never)
+    expect(session).toBeNull()
   })
 })

@@ -55,6 +55,7 @@ import MastersPOInstruction from '~/components/masters/POInstruction.vue'
 import MastersLocation from '~/components/masters/Location.vue'
 import MastersReason from '~/components/masters/Reason.vue'
 import { MASTERS_TABS, useTabRouting } from '~/composables/useTabRouting'
+import { getVisibleTabsForNimble, NIMBLE_MENU_IDS_BY_MASTERS_TAB } from '~/utils/nimbleMenuIds'
 
 definePageMeta({
   layout: 'main-layout',
@@ -62,6 +63,18 @@ definePageMeta({
 })
 
 const route = useRoute()
+const runtimeConfig = useRuntimeConfig()
+const nimbleOn = runtimeConfig.public.nimbleIntegrations === 'true'
+
+const visibleTabs = computed(() => {
+  const filtered = getVisibleTabsForNimble(
+    MASTERS_TABS,
+    NIMBLE_MENU_IDS_BY_MASTERS_TAB,
+    String(route.query.menuId ?? ''),
+    nimbleOn,
+  )
+  return filtered.length ? filtered : MASTERS_TABS
+})
 
 const {
   currentTab,
@@ -70,7 +83,7 @@ const {
   initializeUrl,
   refreshTabState,
   tabs,
-} = useTabRouting(MASTERS_TABS, 'freight')
+} = useTabRouting(visibleTabs.value, visibleTabs.value[0]?.name || 'freight')
 
 const tabItems = computed<TabsItem[]>(() =>
   tabs.map(tab => ({
