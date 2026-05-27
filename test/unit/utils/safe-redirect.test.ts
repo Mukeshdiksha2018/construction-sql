@@ -1,22 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { getSafeRedirect } from '../../../app/utils/safe-redirect'
+import { DEFAULT_AUTHENTICATED_ROUTE, getSafeRedirect } from '../../../app/utils/safe-redirect'
 
 describe('getSafeRedirect', () => {
   it('returns fallback for null/undefined', () => {
-    expect(getSafeRedirect(null)).toBe('/dashboard')
-    expect(getSafeRedirect(undefined)).toBe('/dashboard')
+    expect(getSafeRedirect(null)).toBe(DEFAULT_AUTHENTICATED_ROUTE)
+    expect(getSafeRedirect(undefined)).toBe(DEFAULT_AUTHENTICATED_ROUTE)
   })
 
   it('returns fallback for empty or non-path values', () => {
-    expect(getSafeRedirect('')).toBe('/dashboard')
-    expect(getSafeRedirect('dashboard')).toBe('/dashboard')
-    expect(getSafeRedirect('https://evil.com')).toBe('/dashboard')
+    expect(getSafeRedirect('')).toBe(DEFAULT_AUTHENTICATED_ROUTE)
+    expect(getSafeRedirect('projects')).toBe(DEFAULT_AUTHENTICATED_ROUTE)
+    expect(getSafeRedirect('https://evil.com')).toBe(DEFAULT_AUTHENTICATED_ROUTE)
   })
 
   it('blocks open redirects', () => {
-    expect(getSafeRedirect('//evil.com')).toBe('/dashboard')
-    expect(getSafeRedirect('/ok/javascript:alert(1)')).toBe('/dashboard')
-    expect(getSafeRedirect('/ok/data:text/html,x')).toBe('/dashboard')
+    expect(getSafeRedirect('//evil.com')).toBe(DEFAULT_AUTHENTICATED_ROUTE)
+    expect(getSafeRedirect('/ok/javascript:alert(1)')).toBe(DEFAULT_AUTHENTICATED_ROUTE)
+    expect(getSafeRedirect('/ok/data:text/html,x')).toBe(DEFAULT_AUTHENTICATED_ROUTE)
   })
 
   it('allows safe same-origin paths', () => {

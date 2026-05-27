@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_AUTHENTICATED_ROUTE } from '../../../app/utils/safe-redirect'
 import { useAuthStore, type NimbleSession } from '../../../app/stores/auth'
 
 const mockPush = vi.fn()
@@ -48,7 +49,7 @@ describe('useLoginForm', () => {
 
     const authStore = useAuthStore()
     expect(authStore.isAuthenticated).toBe(true)
-    expect(mockPush).toHaveBeenCalledWith('/dashboard')
+    expect(mockPush).toHaveBeenCalledWith(DEFAULT_AUTHENTICATED_ROUTE)
   })
 
   it('redirects to safe query redirect when present', async () => {
