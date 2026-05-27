@@ -1,4 +1,4 @@
-import { softDeleteProjectDocument } from '../utils/projectDocuments'
+import { softDeleteProjectDocument } from '../../utils/projectDocuments'
 
 /**
  * POST /api/projects/remove-file

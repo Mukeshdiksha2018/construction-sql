@@ -1,4 +1,4 @@
-import { mssqlQueryParams } from '../utils/mssql'
+import { mssqlQueryParams } from '../../utils/mssql'
 
 /**
  * GET /api/projects/dependency-status?project_uuid=xxx

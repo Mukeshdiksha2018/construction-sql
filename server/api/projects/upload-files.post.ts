@@ -1,4 +1,4 @@
-import { createProjectDocument } from '../utils/projectDocuments'
+import { createProjectDocument } from '../../utils/projectDocuments'
 
 /**
  * POST /api/projects/upload-files
