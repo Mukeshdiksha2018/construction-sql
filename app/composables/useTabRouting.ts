@@ -5,6 +5,7 @@ import { computed, readonly } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 export type ProjectsTabName = 'project-details' | 'items' | 'estimates' | 'cost-codes'
+export type ConfigurationsTabName = 'project-types' | 'service-types' | 'terms-and-conditions'
 
 export type MastersTabName =
   | 'freight'
@@ -53,6 +54,27 @@ export const MASTERS_TABS: TabConfig[] = [
   { name: 'po-instruction', label: 'PO Instruction', icon: 'i-heroicons-document-text', value: 'po-instruction' },
   { name: 'location', label: 'Location', icon: 'i-heroicons-map-pin', value: 'location' },
   { name: 'reason', label: 'Reason', icon: 'i-heroicons-document-text', value: 'reason' },
+]
+
+export const CONFIGURATIONS_TABS: TabConfig[] = [
+  {
+    name: 'project-types',
+    label: 'Project Types',
+    icon: 'i-heroicons-chart-bar-square',
+    value: 'project-types',
+  },
+  {
+    name: 'service-types',
+    label: 'Service Types',
+    icon: 'i-heroicons-scale',
+    value: 'service-types',
+  },
+  {
+    name: 'terms-and-conditions',
+    label: 'Terms and Conditions Master',
+    icon: 'i-heroicons-document-text',
+    value: 'terms-and-conditions',
+  },
 ]
 
 export function useTabRouting(tabs: TabConfig[], defaultTab: string) {
