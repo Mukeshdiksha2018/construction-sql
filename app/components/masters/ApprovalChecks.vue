@@ -1,3 +1,7 @@
 <template>
-  <LayoutPlaceholder title="Approval Checks" description="Approval checks master data will appear here." />
+  <MastersApprovalChecksManagement />
 </template>
+
+<script setup lang="ts">
+import MastersApprovalChecksManagement from '~/components/masters/ApprovalChecksManagement.vue'
+</script>
