@@ -1,3 +1,7 @@
 <template>
-  <LayoutPlaceholder title="PO Instruction" description="PO instruction master data will appear here." />
+  <MastersPOInstructionManagement />
 </template>
+
+<script setup lang="ts">
+import MastersPOInstructionManagement from '~/components/masters/POInstructionManagement.vue'
+</script>
