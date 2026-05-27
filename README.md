@@ -1,6 +1,10 @@
-# Nuxt Minimal Starter
+# Construction SQL (Nuxt + MSSQL)
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+Nuxt app with Nimble auth and SQL Server data via Prisma.
+
+## Database
+
+See **[DATABASE.md](./DATABASE.md)** for Prisma setup, migrations (`npm run db:migrate`), and connection configuration.
 
 ## Setup
 
@@ -22,7 +26,7 @@ bun install
 
 ## Development Server
 
-Start the development server on `http://localhost:3000`:
+Start the development server on `http://localhost:<NUXT_DEV_SERVER_PORT>` (from `.env`, defaults to `3000`):
 
 ```bash
 # npm
@@ -37,6 +41,8 @@ yarn dev
 # bun
 bun run dev
 ```
+
+If the configured port is busy, Nuxt may automatically use another local port (for example `3001`). In that case, open the exact `Local:` URL printed in terminal; API routes still work on that same origin because app calls use relative `/api/...` paths.
 
 ## Production
 
