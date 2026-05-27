@@ -6,8 +6,6 @@ export interface NavItem {
 }
 
 export const desktopNavItems: NavItem[] = [
-  { label: 'Dashboard', to: '/dashboard', icon: 'i-heroicons-chart-bar-solid' },
-  { label: 'Corporation', to: '/corporation', icon: 'i-heroicons-building-office-2-solid' },
   { label: 'Projects', to: '/projects', icon: 'i-heroicons-folder-solid' },
   { label: 'Vendors', to: '/vendors', icon: 'i-heroicons-user-group-solid' },
   { label: 'Customers', to: '/customers', icon: 'i-heroicons-user-circle-solid' },
