@@ -249,6 +249,55 @@ model ProjectDocument {
   @@map("project_documents")
 }
 
+/// Cost code divisions (e.g., Division 01 – General Requirements).
+model CostCodeDivision {
+  id                               BigInt                 @id @default(autoincrement())
+  uuid                             String                 @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid                 String                 @db.NVarChar(36)
+  division_number                  String                 @db.NVarChar(50)
+  division_name                    String                 @db.NVarChar(255)
+  division_order                   Int                    @default(1)
+  description                      String?                @db.NVarChar(Max)
+  is_active                        Boolean                @default(true)
+  exclude_in_estimates_and_reports Boolean                @default(false)
+  created_at                       DateTime               @default(now()) @db.DateTime2
+  updated_at                       DateTime               @updatedAt @db.DateTime2
+
+  configurations CostCodeConfiguration[]
+
+  @@unique([corporation_uuid, division_number])
+  @@index([corporation_uuid])
+  @@index([is_active])
+  @@map("cost_code_divisions")
+}
+
+/// Individual cost codes within a division.
+model CostCodeConfiguration {
+  id                           BigInt    @id @default(autoincrement())
+  uuid                         String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid             String    @db.NVarChar(36)
+  division_uuid                String?   @db.NVarChar(36)
+  cost_code_number             String    @db.NVarChar(50)
+  cost_code_name               String    @db.NVarChar(255)
+  parent_cost_code_uuid        String?   @db.NVarChar(36)
+  order_number                 Int?
+  gl_account_uuid              String?   @db.NVarChar(36)
+  effective_from               DateTime? @db.DateTime2
+  description                  String?   @db.NVarChar(Max)
+  update_previous_transactions Boolean   @default(false)
+  is_active                    Boolean   @default(true)
+  created_at                   DateTime  @default(now()) @db.DateTime2
+  updated_at                   DateTime  @updatedAt @db.DateTime2
+
+  division CostCodeDivision? @relation(fields: [division_uuid], references: [uuid])
+
+  @@unique([corporation_uuid, cost_code_number])
+  @@index([corporation_uuid])
+  @@index([division_uuid])
+  @@index([is_active])
+  @@map("cost_code_configurations")
+}
+
 /// Global terms and conditions templates.
 model TermsAndCondition {
   id         BigInt   @id @default(autoincrement())

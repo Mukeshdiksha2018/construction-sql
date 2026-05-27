@@ -51,7 +51,7 @@ const options = computed(() => {
   const active = store.getActiveConfigurations(props.corporationUuid)
   return active
     .filter((c: any) => c.uuid !== props.excludeUuid)
-    .map((c: any) => ({ label: c.name || c.cost_code, value: c.uuid, costCode: c }))
+    .map((c: any) => ({ label: `${c.cost_code_number} - ${c.cost_code_name}`, value: c.uuid, costCode: c }))
 })
 
 const optionsMap = computed(() => new Map(options.value.map(o => [o.value, o])))
