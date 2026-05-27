@@ -74,9 +74,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
     const currentTab = String(to.query.tab ?? '')
     const nextTab = String(nextQuery.tab ?? '')
     const samePath = currentPath === path
+    const isNestedPath = path !== '/' && currentPath.startsWith(`${path}/`)
     const sameTab = currentTab === nextTab
 
-    if (!samePath || (nextTab && !sameTab)) {
+    if ((!samePath && !isNestedPath) || (samePath && nextTab && !sameTab)) {
       return navigateTo({ path, query: nextQuery }, { replace: true })
     }
   }

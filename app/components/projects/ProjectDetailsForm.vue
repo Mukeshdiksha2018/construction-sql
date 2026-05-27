@@ -128,9 +128,9 @@ import { useCorporationStore } from '~/stores/corporations'
 interface FormModel {
   project_name: string
   project_id: string
-  project_type_uuid: string | null
-  service_type_uuid: string | null
-  customer_uuid: string | null
+  project_type_uuid: string | undefined
+  service_type_uuid: string | undefined
+  customer_uuid: string | undefined
   project_status: string
   project_start_date: string
   project_estimated_completion_date: string
@@ -158,9 +158,9 @@ const customerOptions = ref<Array<{ uuid: string, label: string }>>([])
 const form = reactive<FormModel>({
   project_name: '',
   project_id: '',
-  project_type_uuid: null,
-  service_type_uuid: null,
-  customer_uuid: null,
+  project_type_uuid: undefined,
+  service_type_uuid: undefined,
+  customer_uuid: undefined,
   project_status: 'Pending',
   project_start_date: '',
   project_estimated_completion_date: '',
@@ -206,9 +206,9 @@ function toDateInput(value: string | null | undefined): string {
 function hydrateForm(project: any) {
   form.project_name = project.project_name || ''
   form.project_id = project.project_id || ''
-  form.project_type_uuid = project.project_type_uuid || null
-  form.service_type_uuid = project.service_type_uuid || null
-  form.customer_uuid = project.customer_uuid || null
+  form.project_type_uuid = project.project_type_uuid || undefined
+  form.service_type_uuid = project.service_type_uuid || undefined
+  form.customer_uuid = project.customer_uuid || undefined
   form.project_status = project.project_status || 'Pending'
   form.project_start_date = toDateInput(project.project_start_date)
   form.project_estimated_completion_date = toDateInput(project.project_estimated_completion_date)
