@@ -2,7 +2,7 @@ import { defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { PROJECTS_TABS, useTabRouting } from '~/composables/useTabRouting'
+import { MASTERS_TABS, PROJECTS_TABS, useTabRouting } from '~/composables/useTabRouting'
 
 const Harness = defineComponent({
   setup() {
@@ -71,6 +71,21 @@ describe('useTabRouting', () => {
       'cost-codes',
       'items',
       'estimates',
+    ])
+  })
+
+  it('exposes all masters tabs in order', () => {
+    expect(MASTERS_TABS.map(t => t.name)).toEqual([
+      'freight',
+      'ship-via',
+      'approval-checks',
+      'po-instruction',
+      'location',
+      'uom',
+      'uom-types',
+      'charges',
+      'sales-tax',
+      'reason',
     ])
   })
 })

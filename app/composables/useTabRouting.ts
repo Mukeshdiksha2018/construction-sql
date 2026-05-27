@@ -6,6 +6,18 @@ import { useRoute, useRouter } from 'vue-router'
 
 export type ProjectsTabName = 'project-details' | 'items' | 'estimates' | 'cost-codes'
 
+export type MastersTabName =
+  | 'freight'
+  | 'ship-via'
+  | 'approval-checks'
+  | 'po-instruction'
+  | 'location'
+  | 'uom'
+  | 'uom-types'
+  | 'charges'
+  | 'sales-tax'
+  | 'reason'
+
 export interface TabConfig {
   name: string
   label: string
@@ -38,6 +50,19 @@ export const PROJECTS_TABS: TabConfig[] = [
     icon: 'i-heroicons-calculator',
     value: 'estimates',
   },
+]
+
+export const MASTERS_TABS: TabConfig[] = [
+  { name: 'freight', label: 'Freight', icon: 'i-heroicons-truck', value: 'freight' },
+  { name: 'ship-via', label: 'Ship VIA', icon: 'i-heroicons-paper-airplane', value: 'ship-via' },
+  { name: 'approval-checks', label: 'Approval Checks', icon: 'i-heroicons-check-circle', value: 'approval-checks' },
+  { name: 'po-instruction', label: 'PO Instruction', icon: 'i-heroicons-document-text', value: 'po-instruction' },
+  { name: 'location', label: 'Location', icon: 'i-heroicons-map-pin', value: 'location' },
+  { name: 'uom', label: 'UOM', icon: 'i-heroicons-scale', value: 'uom' },
+  { name: 'uom-types', label: 'UOM Types', icon: 'i-heroicons-squares-2x2', value: 'uom-types' },
+  { name: 'charges', label: 'Charges', icon: 'i-heroicons-currency-dollar', value: 'charges' },
+  { name: 'sales-tax', label: 'Sales Tax', icon: 'i-heroicons-receipt-percent', value: 'sales-tax' },
+  { name: 'reason', label: 'Reason', icon: 'i-heroicons-document-text', value: 'reason' },
 ]
 
 export function useTabRouting(tabs: TabConfig[], defaultTab: string) {
