@@ -14,9 +14,6 @@
           <section v-if="item.value === 'freight'">
             <MastersFreight />
           </section>
-          <section v-else-if="item.value === 'ship-via'">
-            <MastersShipVia />
-          </section>
           <section v-else-if="item.value === 'approval-checks'">
             <MastersApprovalChecks />
           </section>
@@ -25,18 +22,6 @@
           </section>
           <section v-else-if="item.value === 'location'">
             <MastersLocation />
-          </section>
-          <section v-else-if="item.value === 'uom'">
-            <MastersUOM />
-          </section>
-          <section v-else-if="item.value === 'uom-types'">
-            <MastersUOMTypes />
-          </section>
-          <section v-else-if="item.value === 'charges'">
-            <MastersCharges />
-          </section>
-          <section v-else-if="item.value === 'sales-tax'">
-            <MastersSalesTax />
           </section>
           <section v-else-if="item.value === 'reason'">
             <MastersReason />
@@ -65,14 +50,9 @@
 import type { TabsItem } from '@nuxt/ui'
 import { computed, onMounted, watch } from 'vue'
 import MastersFreight from '~/components/masters/Freight.vue'
-import MastersShipVia from '~/components/masters/ShipVia.vue'
 import MastersApprovalChecks from '~/components/masters/ApprovalChecks.vue'
 import MastersPOInstruction from '~/components/masters/POInstruction.vue'
 import MastersLocation from '~/components/masters/Location.vue'
-import MastersUOM from '~/components/masters/UOM.vue'
-import MastersUOMTypes from '~/components/masters/UOMTypes.vue'
-import MastersCharges from '~/components/masters/Charges.vue'
-import MastersSalesTax from '~/components/masters/SalesTax.vue'
 import MastersReason from '~/components/masters/Reason.vue'
 import { MASTERS_TABS, useTabRouting } from '~/composables/useTabRouting'
 
