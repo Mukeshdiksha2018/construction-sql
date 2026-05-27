@@ -51,6 +51,7 @@ import ProjectsItems from '~/components/projects/Items.vue'
 import ProjectsEstimates from '~/components/projects/Estimates.vue'
 import ProjectsCostCodes from '~/components/projects/CostCodes.vue'
 import { PROJECTS_TABS, useTabRouting } from '~/composables/useTabRouting'
+import { getVisibleTabsForNimble, NIMBLE_MENU_IDS_BY_PROJECTS_TAB } from '~/utils/nimbleMenuIds'
 
 definePageMeta({
   layout: 'main-layout',
@@ -59,6 +60,18 @@ definePageMeta({
 
 const route = useRoute()
 const router = useRouter()
+const runtimeConfig = useRuntimeConfig()
+const nimbleOn = runtimeConfig.public.nimbleIntegrations === 'true'
+
+const visibleTabs = computed(() => {
+  const filtered = getVisibleTabsForNimble(
+    PROJECTS_TABS,
+    NIMBLE_MENU_IDS_BY_PROJECTS_TAB,
+    String(route.query.menuId ?? ''),
+    nimbleOn,
+  )
+  return filtered.length ? filtered : PROJECTS_TABS
+})
 
 const {
   currentTab,
@@ -67,7 +80,7 @@ const {
   initializeUrl,
   refreshTabState,
   tabs,
-} = useTabRouting(PROJECTS_TABS, 'project-details')
+} = useTabRouting(visibleTabs.value, visibleTabs.value[0]?.name || 'project-details')
 
 const tabItems = computed<TabsItem[]>(() =>
   tabs.map(tab => ({

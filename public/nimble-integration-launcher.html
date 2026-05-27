@@ -314,6 +314,12 @@
       var PROJECTS_COST_CODES_TAB_MENU_ID = "0x010000000000000000000000000000011139";
       var PROJECTS_ESTIMATES_TAB_MENU_ID = "0x010000000000000000000000000000011140";
       var MASTERS_FREIGHT_MENU_ID = "0x010000000000000000000000000000011146";
+      var MASTERS_APPROVAL_CHECKS_MENU_ID = "0x010000000000000000000000000000011160";
+      var MASTERS_PO_INSTRUCTION_MENU_ID = "0x010000000000000000000000000000011151";
+      var MASTERS_REASON_MENU_ID = "0x010000000000000000000000000000011148";
+      var CONFIG_PROJECT_TYPES_MENU_ID = "0x010000000000000000000000000000011149";
+      var CONFIG_SERVICE_TYPES_MENU_ID = "0x010000000000000000000000000000011150";
+      var CONFIG_TERMS_MENU_ID = "0x010000000000000000000000000000011153";
       var PROJECTS_MAIN_MENU_ID = "0x010000000000000000000000000000011131";
       var launcherBridgeToken = (function () {
         var token = localStorage.getItem("nimbleLauncherBridgeToken");
@@ -424,29 +430,29 @@
       });
 
       document.getElementById("go-config-project-types").addEventListener("click", function () {
-        openInNewTab("/configurations", { tab: "project-types" });
+        openInNewTab("/configurations", { tab: "project-types", menuId: CONFIG_PROJECT_TYPES_MENU_ID });
       });
       document.getElementById("go-config-service-types").addEventListener("click", function () {
-        openInNewTab("/configurations", { tab: "service-types" });
+        openInNewTab("/configurations", { tab: "service-types", menuId: CONFIG_SERVICE_TYPES_MENU_ID });
       });
       document.getElementById("go-config-terms").addEventListener("click", function () {
-        openInNewTab("/configurations", { tab: "terms-and-conditions" });
+        openInNewTab("/configurations", { tab: "terms-and-conditions", menuId: CONFIG_TERMS_MENU_ID });
       });
 
       document.getElementById("go-masters-freight").addEventListener("click", function () {
         openInNewTab("/masters", { tab: "freight", menuId: MASTERS_FREIGHT_MENU_ID });
       });
       document.getElementById("go-masters-approval-checks").addEventListener("click", function () {
-        openInNewTab("/masters", { tab: "approval-checks" });
+        openInNewTab("/masters", { tab: "approval-checks", menuId: MASTERS_APPROVAL_CHECKS_MENU_ID });
       });
       document.getElementById("go-masters-po-instruction").addEventListener("click", function () {
-        openInNewTab("/masters", { tab: "po-instruction" });
+        openInNewTab("/masters", { tab: "po-instruction", menuId: MASTERS_PO_INSTRUCTION_MENU_ID });
       });
       document.getElementById("go-masters-location").addEventListener("click", function () {
         openInNewTab("/masters", { tab: "location" });
       });
       document.getElementById("go-masters-reason").addEventListener("click", function () {
-        openInNewTab("/masters", { tab: "reason" });
+        openInNewTab("/masters", { tab: "reason", menuId: MASTERS_REASON_MENU_ID });
       });
 
       document.getElementById("go-reports-home").addEventListener("click", function () {

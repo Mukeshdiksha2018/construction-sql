@@ -47,6 +47,7 @@ import ConfigurationsProjectTypes from '~/components/configurations/ProjectTypes
 import ConfigurationsServiceTypes from '~/components/configurations/ServiceTypes.vue'
 import ConfigurationsTermsAndConditions from '~/components/configurations/TermsAndConditions.vue'
 import { CONFIGURATIONS_TABS, useTabRouting } from '~/composables/useTabRouting'
+import { getVisibleTabsForNimble, NIMBLE_MENU_IDS_BY_CONFIGURATIONS_TAB } from '~/utils/nimbleMenuIds'
 
 definePageMeta({
   middleware: 'auth',
@@ -54,6 +55,18 @@ definePageMeta({
 })
 
 const route = useRoute()
+const runtimeConfig = useRuntimeConfig()
+const nimbleOn = runtimeConfig.public.nimbleIntegrations === 'true'
+
+const visibleTabs = computed(() => {
+  const filtered = getVisibleTabsForNimble(
+    CONFIGURATIONS_TABS,
+    NIMBLE_MENU_IDS_BY_CONFIGURATIONS_TAB,
+    String(route.query.menuId ?? ''),
+    nimbleOn,
+  )
+  return filtered.length ? filtered : CONFIGURATIONS_TABS
+})
 
 const {
   currentTab,
@@ -61,7 +74,7 @@ const {
   initializeUrl,
   refreshTabState,
   tabs,
-} = useTabRouting(CONFIGURATIONS_TABS, 'project-types')
+} = useTabRouting(visibleTabs.value, visibleTabs.value[0]?.name || 'project-types')
 
 const tabItems = computed<TabsItem[]>(() =>
   tabs.map(tab => ({
