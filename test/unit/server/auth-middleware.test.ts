@@ -11,8 +11,12 @@ describe('isPublicApiRoute', () => {
     expect(isPublicApiRoute('/api/auth/logout', 'POST')).toBe(true)
   })
 
+  it('allows auth bootstrap endpoints', () => {
+    expect(isPublicApiRoute('/api/auth/session', 'GET')).toBe(true)
+    expect(isPublicApiRoute('/api/auth/exchange-oauth', 'POST')).toBe(true)
+  })
+
   it('protects other API routes', () => {
-    expect(isPublicApiRoute('/api/auth/session', 'GET')).toBe(false)
     expect(isPublicApiRoute('/api/db/health', 'GET')).toBe(false)
   })
 })

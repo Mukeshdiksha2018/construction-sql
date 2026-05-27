@@ -55,10 +55,15 @@ export function getSessionFromEvent(event: H3Event): NimbleSessionPayload | null
 }
 
 export function setSessionCookie(event: H3Event, session: NimbleSessionPayload) {
+  const nimbleOn = String(useRuntimeConfig().public.nimbleIntegrations || '').toLowerCase() === 'true'
+  const isProd = process.env.NODE_ENV === 'production'
+  const sameSite = nimbleOn && isProd ? 'none' : 'lax'
+  const secure = isProd
+
   setCookie(event, AUTH_SESSION_COOKIE, encodeSessionCookie(session), {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure,
+    sameSite,
     path: '/',
     maxAge: 60 * 60 * 24, // 24 hours
   })

@@ -168,10 +168,22 @@
 </template>
 
 <script setup lang="ts">
+import type { NimbleSession } from '~/stores/auth'
+import { getPathForMenuId } from '~/utils/nimbleMenuIds'
+
 definePageMeta({
   layout: false,
   middleware: 'guest',
 })
+
+function toMenuRedirect(menuPath: string | undefined, corporationId: string): string | null {
+  if (!menuPath) return null
+  const [path = '', rawQuery = ''] = menuPath.split('?')
+  const params = new URLSearchParams(rawQuery)
+  if (corporationId) params.set('corporationId', corporationId)
+  const queryString = params.toString()
+  return queryString ? `${path}?${queryString}` : path
+}
 
 const { isDark, toggleDarkMode, initializeTheme, watchSystemTheme } = useDarkMode()
 const {
@@ -184,8 +196,43 @@ const {
   submit,
 } = useLoginForm()
 
-onMounted(() => {
+const route = useRoute()
+const router = useRouter()
+const runtimeConfig = useRuntimeConfig()
+const authStore = useAuthStore()
+
+onMounted(async () => {
   initializeTheme()
   watchSystemTheme()
+
+  const nimbleOn = String(runtimeConfig.public.nimbleIntegrations || '').toLowerCase() === 'true'
+  if (!nimbleOn) return
+
+  const authId = String(route.query.authId ?? '').trim()
+  if (!authId) return
+
+  const menuId = String(route.query.menuId ?? '').trim()
+  const corporationId = String(route.query.corporationId ?? '').trim()
+
+  try {
+    const result = await $fetch<{ session: NimbleSession }>('/api/auth/exchange-oauth', {
+      method: 'POST',
+      body: { authId },
+      credentials: 'include',
+    })
+
+    if (result?.session) {
+      authStore.setSession(result.session)
+      const menuRedirect = toMenuRedirect(getPathForMenuId(menuId), corporationId)
+      if (menuRedirect) {
+        await router.replace(menuRedirect)
+        return
+      }
+      await router.replace('/projects')
+    }
+  }
+  catch {
+    // Keep user on login page when authId exchange fails.
+  }
 })
 </script>
