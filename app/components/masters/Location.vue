@@ -1,3 +1,7 @@
 <template>
-  <LayoutPlaceholder title="Location" description="Location master data will appear here." />
+  <MastersLocationManagement />
 </template>
+
+<script setup lang="ts">
+import MastersLocationManagement from '~/components/masters/LocationManagement.vue'
+</script>
