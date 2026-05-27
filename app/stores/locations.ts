@@ -42,7 +42,7 @@ export const useLocationsStore = defineStore('locations', {
   },
 
   actions: {
-    async fetchLocations() {
+    async fetchLocations(_force?: boolean) {
       this.loading = true
       this.error = null
       try {
