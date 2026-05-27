@@ -9,6 +9,7 @@
     :size="size"
     :class="className"
     :disabled="computedDisabled"
+    :loading="corporationStore.loading"
     value-key="value"
     :ui="menuUi"
     @update:model-value="handleSelection"

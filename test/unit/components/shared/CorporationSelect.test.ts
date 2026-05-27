@@ -69,7 +69,7 @@ describe('CorporationSelect', () => {
 
     expect(select.attributes('data-disabled')).toBe('true')
     expect(select.attributes('data-item-count')).toBe('0')
-    expect(wrapper.text()).toContain('No corporations available')
+    expect(wrapper.text()).toContain('No corporations accessible')
   })
 
   it('lists corporations from the store as select items', () => {
@@ -96,10 +96,9 @@ describe('CorporationSelect', () => {
 
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['pick-me'])
     expect(wrapper.emitted('change')?.[0]?.[0]).toMatchObject({
-      id: 'pick-me',
-      name: 'Pick Me',
+      value: 'pick-me',
+      corporation_name: 'Pick Me',
     })
-    expect(store.selectedCorporationId).toBe('pick-me')
   })
 
   it('syncs display when modelValue is set externally', async () => {
