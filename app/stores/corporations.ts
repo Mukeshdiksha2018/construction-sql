@@ -79,6 +79,6 @@ export const useCorporationStore = defineStore('corporation', {
   },
 
   persist: {
-    paths: ['corporations', 'selectedCorporationId', 'loaded'],
+    pick: ['corporations', 'selectedCorporationId', 'loaded'],
   },
 })
