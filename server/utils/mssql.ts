@@ -39,3 +39,17 @@ export async function mssqlQuery<T = Record<string, unknown>>(
   const result = await pool.request().query<T>(queryText)
   return result.recordset ?? []
 }
+
+/** Run a parameterized SQL query and return the recordset. */
+export async function mssqlQueryParams<T = Record<string, unknown>>(
+  queryText: string,
+  inputs: Record<string, unknown>,
+): Promise<T[]> {
+  const pool = await getMssqlPool()
+  const request = pool.request()
+  for (const [name, value] of Object.entries(inputs)) {
+    request.input(name, value)
+  }
+  const result = await request.query<T>(queryText)
+  return result.recordset ?? []
+}

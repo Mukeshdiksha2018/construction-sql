@@ -17,5 +17,11 @@ export default defineNuxtConfig({
   runtimeConfig: {
     // MSSQL — server-side only (set NUXT_MSSQL_CONNECTION_STRING in .env)
     mssqlConnectionString: '',
+    public: {
+      // NUXT_PUBLIC_NIMBLE_OAUTH_EXCHANGE_URL — base for /v1/OpenApiauth/Login
+      nimbleOauthExchangeUrl: '',
+      // NUXT_PUBLIC_NIMBLE_PAYABLE_ENV — "url" field in login payload (e.g. qa22)
+      nimblePayableEnv: '',
+    },
   },
 })
