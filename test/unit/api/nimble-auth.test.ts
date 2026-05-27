@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   AuthError,
+  buildNimbleExchangeOAuthUrl,
   buildNimbleLoginUrl,
+  buildNimbleValidateTokenUrl,
+  nimbleExchangeOAuth,
   nimbleLogin,
   parseLoginBody,
   resolveNimbleAuthConfig,
+  resolveNimbleOAuthConfig,
   type NimbleFetch,
 } from '../../../server/utils/nimble-auth'
 
@@ -60,6 +64,33 @@ describe('buildNimbleLoginUrl', () => {
   it('builds the OpenApiauth login endpoint', () => {
     expect(buildNimbleLoginUrl('https://qa-api-usermgmt.nimbleproperty.net')).toBe(
       'https://qa-api-usermgmt.nimbleproperty.net/v1/OpenApiauth/Login',
+    )
+  })
+})
+
+describe('Nimble OAuth URL/config helpers', () => {
+  it('builds ExchangeOAuth and ValidateToken endpoints', () => {
+    expect(buildNimbleExchangeOAuthUrl('https://qa-api-usermgmt.nimbleproperty.net')).toBe(
+      'https://qa-api-usermgmt.nimbleproperty.net/v1/OpenApiauth/ExchangeOAuth',
+    )
+    expect(buildNimbleValidateTokenUrl('https://qa-api-usermgmt.nimbleproperty.net')).toBe(
+      'https://qa-api-usermgmt.nimbleproperty.net/v1/OpenApiauth/ValidateToken',
+    )
+  })
+
+  it('resolves OAuth config and strips trailing slash', () => {
+    expect(
+      resolveNimbleOAuthConfig({
+        nimbleOauthExchangeUrl: 'https://qa-api-usermgmt.nimbleproperty.net/',
+      }),
+    ).toEqual({
+      baseUrl: 'https://qa-api-usermgmt.nimbleproperty.net',
+    })
+  })
+
+  it('throws 500 when OAuth base URL is missing', () => {
+    expect(() => resolveNimbleOAuthConfig({})).toThrowError(
+      expect.objectContaining({ statusCode: 500 }),
     )
   })
 })
@@ -170,6 +201,125 @@ describe('nimbleLogin', () => {
     await expect(nimbleLogin(credentials, config, fetchFn)).rejects.toMatchObject({
       statusCode: 403,
       message: 'Forbidden',
+    })
+  })
+})
+
+describe('nimbleExchangeOAuth', () => {
+  const config = {
+    baseUrl: 'https://qa-api-usermgmt.nimbleproperty.net',
+  }
+
+  it('calls exchange + validate and returns normalized session', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        token: 'jwt-token',
+        authID: null,
+        clientUrl: 'https://qa11.nimbleproperty.net',
+        clientFullUrl: null,
+        userID: null,
+        userName: 'Ajay Babu',
+        urlID: 0,
+        email: 'ajay@nimbleaccounting.com',
+        statusCode: 200,
+        status: 'OK',
+      })
+      .mockResolvedValueOnce({
+        userID: '98B42335C6DA998A455165C8BCE169610000',
+        clientID: '73A76E78F4BDEC844BFF374DCBD9F3D90000',
+        clientName: 'qa11',
+        userInfoID: '71150',
+        clientInfoID: '80250',
+        urlID: '17',
+        clientUrl: 'qa11.nimbleproperty.net',
+        statusCode: 200,
+        status: 'OK',
+      })
+
+    const result = await nimbleExchangeOAuth('auth-guid-123', config, fetchFn)
+
+    expect(fetchFn).toHaveBeenNthCalledWith(
+      1,
+      'https://qa-api-usermgmt.nimbleproperty.net/v1/OpenApiauth/ExchangeOAuth',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: {
+          token: 'auth-guid-123',
+        },
+      },
+    )
+    expect(fetchFn).toHaveBeenNthCalledWith(
+      2,
+      'https://qa-api-usermgmt.nimbleproperty.net/v1/OpenApiauth/ValidateToken',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: {
+          token: 'jwt-token',
+        },
+      },
+    )
+    expect(result.session).toEqual({
+      token: 'jwt-token',
+      authID: 'auth-guid-123',
+      clientUrl: 'https://qa11.nimbleproperty.net',
+      clientFullUrl: '',
+      userID: '98B42335C6DA998A455165C8BCE169610000',
+      userName: 'Ajay Babu',
+      urlID: 17,
+      email: 'ajay@nimbleaccounting.com',
+    })
+  })
+
+  it('throws 401 when exchange token generation fails', async () => {
+    const fetchFn = vi.fn().mockResolvedValue({
+      statusCode: 401,
+      status: 'Unauthorized',
+      message: 'Invalid authId',
+    })
+
+    await expect(nimbleExchangeOAuth('bad-auth-id', config, fetchFn)).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Unauthorized',
+    })
+  })
+
+  it('throws 401 when validate token fails', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        token: 'jwt-token',
+        statusCode: 200,
+        status: 'OK',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 401,
+        status: 'Unauthorized',
+      })
+
+    await expect(nimbleExchangeOAuth('auth-guid-123', config, fetchFn)).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Unauthorized',
+    })
+  })
+
+  it('maps upstream fetch rejection with statusCode/statusMessage', async () => {
+    const fetchFn = vi.fn().mockRejectedValue({
+      statusCode: 503,
+      statusMessage: 'Service Unavailable',
+    })
+
+    await expect(nimbleExchangeOAuth('auth-guid-123', config, fetchFn)).rejects.toMatchObject({
+      statusCode: 503,
+      message: 'Service Unavailable',
     })
   })
 })
