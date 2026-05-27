@@ -77,14 +77,9 @@ describe('useTabRouting', () => {
   it('exposes all masters tabs in order', () => {
     expect(MASTERS_TABS.map(t => t.name)).toEqual([
       'freight',
-      'ship-via',
       'approval-checks',
       'po-instruction',
       'location',
-      'uom',
-      'uom-types',
-      'charges',
-      'sales-tax',
       'reason',
     ])
   })
