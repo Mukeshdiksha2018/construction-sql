@@ -98,17 +98,98 @@
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Content <span class="text-red-500">*</span>
             </label>
-            <UTextarea
-              v-model="formState.content"
-              placeholder="Enter terms and conditions content..."
-              variant="subtle"
-              size="sm"
-              class="w-full"
-              :rows="14"
-            />
+            <ClientOnly>
+              <div class="w-full border border-default rounded-md flex flex-col bg-white dark:bg-gray-900">
+                <div v-if="unref(editor)" class="border-b border-default p-2 flex flex-wrap gap-1 bg-gray-50 dark:bg-gray-800">
+                  <USelect
+                    :model-value="getHeadingLevel()"
+                    :items="headingOptions"
+                    size="xs"
+                    variant="ghost"
+                    class="w-32"
+                    @update:model-value="(value: number | string) => setHeading(value)"
+                  />
+                  <UButton
+                    icon="i-lucide-list"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :class="{ 'bg-gray-200 dark:bg-gray-700': unref(editor)?.isActive('bulletList') }"
+                    @click="unref(editor)?.chain().focus().toggleBulletList().run()"
+                  />
+                  <UButton
+                    icon="i-lucide-list-ordered"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :class="{ 'bg-gray-200 dark:bg-gray-700': unref(editor)?.isActive('orderedList') }"
+                    @click="unref(editor)?.chain().focus().toggleOrderedList().run()"
+                  />
+                  <div class="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
+                  <UButton
+                    icon="i-lucide-bold"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :class="{ 'bg-gray-200 dark:bg-gray-700': unref(editor)?.isActive('bold') }"
+                    @click="unref(editor)?.chain().focus().toggleBold().run()"
+                  />
+                  <UButton
+                    icon="i-lucide-italic"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :class="{ 'bg-gray-200 dark:bg-gray-700': unref(editor)?.isActive('italic') }"
+                    @click="unref(editor)?.chain().focus().toggleItalic().run()"
+                  />
+                  <UButton
+                    icon="i-lucide-strikethrough"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :class="{ 'bg-gray-200 dark:bg-gray-700': unref(editor)?.isActive('strike') }"
+                    @click="unref(editor)?.chain().focus().toggleStrike().run()"
+                  />
+                  <div class="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
+                  <UButton
+                    icon="i-lucide-text-quote"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :class="{ 'bg-gray-200 dark:bg-gray-700': unref(editor)?.isActive('blockquote') }"
+                    @click="unref(editor)?.chain().focus().toggleBlockquote().run()"
+                  />
+                  <UButton
+                    icon="i-lucide-square-code"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :class="{ 'bg-gray-200 dark:bg-gray-700': unref(editor)?.isActive('codeBlock') }"
+                    @click="unref(editor)?.chain().focus().toggleCodeBlock().run()"
+                  />
+                </div>
+                <div class="p-4 min-h-56">
+                  <TiptapEditorContent
+                    v-if="unref(editor)"
+                    :editor="unref(editor)"
+                    class="prose prose-sm dark:prose-invert max-w-none focus:outline-none"
+                  />
+                  <div v-else class="flex items-center justify-center py-12 text-gray-500">
+                    Loading editor...
+                  </div>
+                </div>
+              </div>
+              <template #fallback>
+                <div class="flex items-center justify-center py-12 border border-default rounded-md">
+                  <p class="text-gray-600">
+                    Loading editor...
+                  </p>
+                </div>
+              </template>
+            </ClientOnly>
           </div>
         </div>
       </template>
@@ -155,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref, resolveComponent } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, reactive, ref, resolveComponent, unref, watch } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
 import { useTermsAndConditionsStore, type TermsAndCondition } from '~/stores/termsAndConditions'
 
@@ -180,6 +261,59 @@ const formState = reactive({
   name: '',
   content: '',
   isActive: 'Active' as 'Active' | 'Inactive' | '',
+})
+
+const editor = useEditor({
+  content: '',
+  extensions: [TiptapStarterKit],
+  editorProps: {
+    attributes: {
+      class: 'prose prose-sm dark:prose-invert max-w-none focus:outline-none',
+    },
+  },
+  onUpdate: ({ editor }) => {
+    formState.content = editor.getHTML()
+  },
+})
+
+const headingOptions = [
+  { label: 'Paragraph', value: 'paragraph' },
+  { label: 'Heading 1', value: 1 },
+  { label: 'Heading 2', value: 2 },
+  { label: 'Heading 3', value: 3 },
+  { label: 'Heading 4', value: 4 },
+]
+
+function getHeadingLevel(): number | string {
+  const editorInstance = unref(editor)
+  if (!editorInstance || typeof editorInstance.isActive !== 'function') return 'paragraph'
+  if (editorInstance.isActive('heading', { level: 1 })) return 1
+  if (editorInstance.isActive('heading', { level: 2 })) return 2
+  if (editorInstance.isActive('heading', { level: 3 })) return 3
+  if (editorInstance.isActive('heading', { level: 4 })) return 4
+  return 'paragraph'
+}
+
+function setHeading(value: number | string) {
+  const editorInstance = unref(editor)
+  if (!editorInstance || typeof editorInstance.chain !== 'function') return
+  if (value === 'paragraph') {
+    editorInstance.chain().focus().setParagraph().run()
+    return
+  }
+  if (typeof value === 'number') {
+    editorInstance.chain().focus().toggleHeading({ level: value as 1 | 2 | 3 | 4 }).run()
+  }
+}
+
+watch(showModal, (isOpen) => {
+  if (!isOpen) return
+  queueMicrotask(() => {
+    const editorInstance = unref(editor)
+    if (editorInstance) {
+      editorInstance.commands.setContent(formState.content || '')
+    }
+  })
 })
 
 const columns: TableColumn<TermsAndCondition>[] = [
@@ -344,5 +478,12 @@ async function handleDelete() {
 
 onMounted(async () => {
   await termsAndConditionsStore.fetchTermsAndConditions()
+})
+
+onBeforeUnmount(() => {
+  const editorInstance = unref(editor)
+  if (editorInstance && typeof editorInstance.destroy === 'function') {
+    editorInstance.destroy()
+  }
 })
 </script>
