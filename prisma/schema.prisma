@@ -80,3 +80,19 @@ model POInstruction {
   @@index([created_at(sort: Desc)])
   @@map("po_instructions")
 }
+
+/// Reason master data (global, non-corporation-specific).
+model Reason {
+  id         BigInt   @id @default(autoincrement())
+  uuid       String   @unique @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  reason     String   @db.NVarChar(Max)
+  active     Boolean  @default(true)
+  created_at DateTime @default(now()) @db.DateTime2
+  updated_at DateTime @updatedAt @db.DateTime2
+  created_by String?  @db.NVarChar(128)
+  updated_by String?  @db.NVarChar(128)
+
+  @@index([active])
+  @@index([created_at(sort: Desc)])
+  @@map("reasons")
+}

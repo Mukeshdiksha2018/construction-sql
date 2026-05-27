@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "nuxt build",
-    "dev": "nuxt dev",
+    "dev": "dotenvx run -- node -e \"process.env.PORT=process.env.NUXT_DEV_SERVER_PORT||process.env.PORT||'3000'; require('child_process').execSync('nuxt dev', {stdio:'inherit', env:process.env});\"",
     "generate": "nuxt generate",
     "preview": "dotenvx run -- node -e \"process.env.PORT=process.env.NUXT_DEV_SERVER_PORT||'3000'; require('child_process').execSync('nuxt preview', {stdio:'inherit', env:process.env});\"",
     "start": "dotenvx run -- node -e \"process.env.PORT=process.env.NUXT_DEV_SERVER_PORT||'3000'; require('child_process').execSync('node .output/server/index.mjs', {stdio:'inherit', env:process.env});\"",

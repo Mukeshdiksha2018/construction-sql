@@ -17,10 +17,10 @@ export default defineEventHandler(async (event) => {
     return { success: true, data, message: 'Approval Check updated successfully' }
   }
   catch (error: unknown) {
-    const err = error as { statusCode?: number, statusMessage?: string }
+    const err = error as { statusCode?: number, statusMessage?: string, message?: string }
     throw createError({
       statusCode: err.statusCode ?? 500,
-      statusMessage: err.statusMessage ?? 'Failed to update approval check',
+      statusMessage: err.statusMessage ?? err.message ?? 'Failed to update approval check',
     })
   }
 })
