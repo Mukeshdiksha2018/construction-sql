@@ -24,16 +24,18 @@
       <div class="space-y-3">
         <!-- Top row: Corporation (locked) + Project + Category + Item Type -->
         <div class="flex flex-wrap items-start gap-2">
-          <!-- Corporation (always locked to selected) -->
+          <!-- Corporation (always locked to selected corp) -->
           <div class="w-64 flex-shrink-0">
             <label class="block text-sm font-medium text-default mb-1">
               Corporation <span class="text-red-500">*</span>
             </label>
-            <UInput
-              :model-value="corpStore.selectedCorporation?.corporation_name || 'No corporation selected'"
+            <SharedCorporationSelect
+              :model-value="selectedCorporationId"
               disabled
               size="sm"
               class="w-full"
+              :show-icon="false"
+              :show-legal-name="false"
             />
           </div>
 
@@ -46,7 +48,7 @@
               :model-value="itemForm.project_uuid"
               placeholder="Select project"
               size="sm"
-              :corporation-uuid="corpStore.selectedCorporation?.uuid"
+              :corporation-uuid="corpId"
               class="w-full"
               @change="handleProjectChange"
             />
@@ -85,7 +87,7 @@
               :model-value="itemForm.item_type_uuid"
               placeholder="Select item type"
               size="sm"
-              :corporation-uuid="corpStore.selectedCorporation?.uuid"
+              :corporation-uuid="corpId"
               :disabled="!itemForm.item_category"
               class="w-full"
               @change="handleItemTypeChange"
@@ -208,7 +210,7 @@
                       :model-value="row.cost_code_configuration_uuid"
                       placeholder="Select cost code"
                       size="xs"
-                      :corporation-uuid="corpStore.selectedCorporation?.uuid"
+                      :corporation-uuid="corpId"
                       class="w-full"
                       @change="(v: unknown) => { const uuid = typeof v === 'string' ? v : (v as Record<string, string>)?.value ?? ''; row.cost_code_configuration_uuid = uuid }"
                     />
@@ -345,6 +347,11 @@ const modalOpen = computed({
   set: (v: boolean) => emit('update:modelValue', v),
 })
 
+// The CorporationSelect uses corp.id as its value key — pass selectedCorporationId directly
+const selectedCorporationId = computed(() => corpStore.selectedCorporationId ?? undefined)
+// The corporation's UUID used for API calls is corp.id in this store
+const corpId = computed(() => corpStore.selectedCorporation?.id ?? '')
+
 // ── Form state ──────────────────────────────────────────────────────────────
 const itemForm = ref({
   project_uuid: '',
@@ -374,7 +381,7 @@ const isSaving = ref(false)
 const editingItemLabel = computed(() => props.initialEditingItem ? 'Edit Item' : 'Add Item')
 
 const canShowItemsTable = computed(() =>
-  !!corpStore.selectedCorporation?.uuid
+  !!corpId.value
   && !!itemForm.value.project_uuid
   && !!itemForm.value.item_category
   && !!itemForm.value.item_type_uuid,
@@ -467,7 +474,7 @@ function handleItemTypeChange(itemType: unknown) {
 
 // ── Load existing rows when combination is selected ───────────────────────────
 watch(
-  () => [corpStore.selectedCorporation?.uuid, itemForm.value.project_uuid, itemForm.value.item_type_uuid],
+  () => [corpId.value, itemForm.value.project_uuid, itemForm.value.item_type_uuid],
   async ([corpUuid, projectUuid, itemTypeUuid]) => {
     if (!corpUuid || !projectUuid || !itemTypeUuid) {
       itemRows.value = []
@@ -518,7 +525,7 @@ function validateRows(): string | null {
 async function saveItem() {
   if (isSaving.value) return
 
-  const corpUuid = corpStore.selectedCorporation?.uuid
+  const corpUuid = corpId.value
   if (!corpUuid) {
     toast.add({ title: 'Error', description: 'No corporation selected', color: 'error', icon: 'i-heroicons-x-circle' })
     return
@@ -599,7 +606,7 @@ const isQuickItemTypeValid = computed(() =>
 
 function openQuickAddItemType() {
   quickItemTypeForm.value = {
-    corporation_uuid: corpStore.selectedCorporation?.uuid || '',
+    corporation_uuid: corpId.value,
     category: itemForm.value.item_category || '',
     spec_type: '',
     item_division_uuid: '',
@@ -618,7 +625,7 @@ async function saveQuickItemType() {
   isCreatingItemType.value = true
   try {
     const result = await itemTypesStore.createItemType({
-      corporation_uuid: corpStore.selectedCorporation?.uuid || null,
+      corporation_uuid: corpId.value || null,
       category: quickItemTypeForm.value.category,
       spec_type: quickItemTypeForm.value.spec_type.trim(),
       item_division_uuid: quickItemTypeForm.value.item_division_uuid?.trim() || null,

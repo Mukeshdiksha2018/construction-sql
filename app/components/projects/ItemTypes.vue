@@ -320,7 +320,7 @@ const isEditFormValid = computed(() =>
 )
 
 const filteredItemTypes = computed(() => {
-  const corpUuid = String(corpStore.selectedCorporation?.uuid || '')
+  const corpUuid = String(corpStore.selectedCorporationId || '')
   let filtered = itemTypesStore.itemTypes.filter((it) => {
     if (!corpUuid) return true
     const corp = String(it.corporation_uuid || '')
@@ -465,7 +465,7 @@ async function saveItemType() {
   }
   isCreating.value = true
   const result = await itemTypesStore.createItemType({
-    corporation_uuid: corpStore.selectedCorporation?.uuid || null,
+    corporation_uuid: corpStore.selectedCorporationId || null,
     category: itemTypeForm.value.category,
     spec_type: itemTypeForm.value.spec_type.trim(),
     item_type: itemTypeForm.value.item_type.trim(),
@@ -521,8 +521,8 @@ async function confirmDelete() {
 }
 
 watch(
-  () => corpStore.selectedCorporation?.uuid,
-  (uuid) => { if (uuid) itemTypesStore.fetchItemTypes(uuid) },
+  () => corpStore.selectedCorporationId,
+  (id) => { if (id) itemTypesStore.fetchItemTypes(id) },
   { immediate: true },
 )
 

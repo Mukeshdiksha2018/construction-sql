@@ -28,7 +28,7 @@
                 :model-value="selectedProjectFilter"
                 placeholder="Select project to filter"
                 size="sm"
-                :corporation-uuid="corpStore.selectedCorporation?.uuid"
+                :corporation-uuid="corpStore.selectedCorporationId"
                 @change="handleProjectFilterChange"
               />
               <div class="flex justify-end mt-3">
@@ -162,14 +162,14 @@ onMounted(() => {
   if (!route.query.subTab) {
     router.push({ query: { ...route.query, subTab: tabs[0].value } })
   }
-  if (corpStore.selectedCorporation?.uuid) {
-    projectsStore.fetchProjects(corpStore.selectedCorporation.uuid)
+  if (corpStore.selectedCorporationId) {
+    projectsStore.fetchProjects(corpStore.selectedCorporationId)
   }
 })
 
 watch(
-  () => corpStore.selectedCorporation?.uuid,
-  (uuid) => { if (uuid) projectsStore.fetchProjects(uuid) },
+  () => corpStore.selectedCorporationId,
+  (id) => { if (id) projectsStore.fetchProjects(id) },
   { immediate: true },
 )
 </script>

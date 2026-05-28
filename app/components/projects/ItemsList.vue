@@ -259,7 +259,7 @@ function openEditModal(item: PreferredItem) {
 }
 
 function onSaved() {
-  const corpUuid = corpStore.selectedCorporation?.uuid
+  const corpUuid = corpStore.selectedCorporationId
   if (corpUuid) itemsStore.fetchItems(corpUuid)
 }
 
@@ -293,11 +293,11 @@ async function confirmDelete() {
 }
 
 watch(
-  () => corpStore.selectedCorporation?.uuid,
-  (uuid) => {
-    if (uuid) {
-      itemsStore.fetchItems(uuid)
-      itemTypesStore.fetchItemTypes(uuid)
+  () => corpStore.selectedCorporationId,
+  (id) => {
+    if (id) {
+      itemsStore.fetchItems(id)
+      itemTypesStore.fetchItemTypes(id)
     }
   },
   { immediate: true },
