@@ -2,7 +2,7 @@
   <div>
     <!-- Loading -->
     <div v-if="itemsStore.loading">
-      <div class="relative overflow-auto rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+      <div class="relative overflow-auto rounded-2xl shadow border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div class="bg-gray-50 dark:bg-gray-700">
           <div class="grid grid-cols-7 gap-4 px-4 py-2 text-sm font-bold border-b border-gray-200 dark:border-gray-600">
             <div v-for="i in 6" :key="i" class="flex items-center gap-2"><USkeleton class="h-4 w-20" /></div>
@@ -38,8 +38,9 @@
               <th class="px-4 py-2 text-left">Project</th>
               <th class="px-4 py-2 text-left">Category</th>
               <th class="px-4 py-2 text-left">Item Type</th>
+              <th class="px-4 py-2 text-left">Spec</th>
               <th class="px-4 py-2 text-left">Item Name</th>
-              <th class="px-4 py-2 text-right">Unit Price</th>
+              <th class="px-4 py-2 text-right">Unit Cost</th>
               <th class="px-4 py-2 text-left">UOM</th>
               <th class="px-4 py-2 text-left">Status</th>
               <th class="px-4 py-2 text-right">Actions</th>
@@ -68,6 +69,9 @@
                 <span class="text-xs text-gray-600 dark:text-gray-400">{{ getItemTypeName(item.item_type_uuid) }}</span>
               </td>
               <td class="px-4 py-2">
+                <span class="text-xs text-gray-600 dark:text-gray-400">{{ item.item_sequence || '—' }}</span>
+              </td>
+              <td class="px-4 py-2">
                 <span class="text-sm font-medium">{{ item.item_name }}</span>
               </td>
               <td class="px-4 py-2 text-right">
@@ -78,11 +82,11 @@
               </td>
               <td class="px-4 py-2">
                 <UBadge
-                  :color="item.is_active ? 'success' : 'neutral'"
+                  :color="item.status === 'Active' ? 'success' : 'neutral'"
                   variant="soft"
                   size="xs"
                 >
-                  {{ item.is_active ? 'Active' : 'Inactive' }}
+                  {{ item.status || 'Inactive' }}
                 </UBadge>
               </td>
               <td class="px-4 py-2">
@@ -135,108 +139,14 @@
       </UButton>
     </div>
 
-    <!-- Add/Edit Modal -->
-    <UModal v-model:open="showFormModal" :ui="{ wrapper: 'max-w-2xl', body: 'p-6' }">
-      <template #header>
-        <div class="flex items-center justify-between w-full">
-          <h3 class="text-base font-semibold">{{ editingItem ? 'Edit Item' : 'Add New Item' }}</h3>
-          <UButton icon="i-heroicons-x-mark" size="xs" variant="solid" color="neutral" @click="closeFormModal" />
-        </div>
-      </template>
-      <template #body>
-        <div class="space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <!-- Item Name -->
-            <div class="md:col-span-2">
-              <label class="block text-sm font-medium text-default mb-1">
-                Item Name <span class="text-red-500">*</span>
-              </label>
-              <UInput v-model="form.item_name" placeholder="Enter item name" size="sm" class="w-full" />
-            </div>
+    <!-- Fullscreen Add/Edit Modal -->
+    <SharedPreferredItemsAddEditModal
+      v-model="showFormModal"
+      :initial-editing-item="editingItem"
+      @saved="onSaved"
+    />
 
-            <!-- Category -->
-            <div>
-              <label class="block text-sm font-medium text-default mb-1">Category</label>
-              <SharedItemCategorySelect
-                v-model="form.category"
-                placeholder="Select category"
-                size="sm"
-                class="w-full"
-              />
-            </div>
-
-            <!-- Item Type -->
-            <div>
-              <label class="block text-sm font-medium text-default mb-1">Item Type</label>
-              <SharedItemTypeSelect
-                v-model="form.item_type_uuid"
-                :corporation-uuid="corpStore.selectedCorporation?.uuid"
-                placeholder="Select item type"
-                size="sm"
-                class="w-full"
-              />
-            </div>
-
-            <!-- Unit Price -->
-            <div>
-              <label class="block text-sm font-medium text-default mb-1">Unit Price</label>
-              <UInput
-                v-model="form.unit_price"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                size="sm"
-                class="w-full"
-              />
-            </div>
-
-            <!-- Unit (UOM) -->
-            <div>
-              <label class="block text-sm font-medium text-default mb-1">Unit (UOM)</label>
-              <UInput v-model="form.unit" placeholder="e.g. sq ft, each, hour" size="sm" class="w-full" />
-            </div>
-
-            <!-- Status -->
-            <div>
-              <label class="block text-sm font-medium text-default mb-1">Status</label>
-              <USelect
-                v-model="form.status"
-                :items="statusOptions"
-                size="sm"
-                class="w-full"
-              />
-            </div>
-
-            <!-- Active -->
-            <div class="flex items-end">
-              <UCheckbox v-model="form.is_active" label="Active" class="text-sm" />
-            </div>
-          </div>
-
-          <!-- Description -->
-          <div>
-            <label class="block text-sm font-medium text-default mb-1">Description</label>
-            <UTextarea v-model="form.description" placeholder="Enter description" size="sm" class="w-full" :rows="3" />
-          </div>
-        </div>
-      </template>
-      <template #footer>
-        <div class="flex items-center justify-end gap-2">
-          <UButton variant="solid" color="neutral" @click="closeFormModal">Cancel</UButton>
-          <UButton
-            variant="solid"
-            color="primary"
-            :disabled="!form.item_name?.trim() || isSaving"
-            :loading="isSaving"
-            @click="saveItem"
-          >
-            {{ editingItem ? 'Update Item' : 'Create Item' }}
-          </UButton>
-        </div>
-      </template>
-    </UModal>
-
-    <!-- Delete Modal -->
+    <!-- Delete Confirmation Modal -->
     <UModal v-model:open="showDeleteModal">
       <template #header>
         <div class="flex items-center justify-between w-full">
@@ -254,7 +164,6 @@
             </div>
           </div>
           <div v-if="itemToDelete" class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <h4 class="font-medium mb-2">Item Details:</h4>
             <div class="text-sm"><span class="text-gray-500">Name:</span> <span class="font-medium">{{ itemToDelete.item_name }}</span></div>
           </div>
         </div>
@@ -291,14 +200,11 @@ const corpStore = useCorporationStore()
 const projectsStore = useProjectsStore()
 const itemsStore = usePreferredItemsStore()
 const itemTypesStore = useItemTypesStore()
-
 const toast = useToast()
 
 const currentPage = ref(1)
 const pageSize = 20
 const totalPages = computed(() => Math.ceil(filteredItems.value.length / pageSize))
-
-const statusOptions = ['Active', 'Inactive']
 
 const filteredItems = computed(() => {
   let list = [...itemsStore.items]
@@ -309,6 +215,7 @@ const filteredItems = computed(() => {
     const q = props.globalFilter.toLowerCase()
     list = list.filter(
       i => i.item_name.toLowerCase().includes(q)
+        || (i.item_sequence || '').toLowerCase().includes(q)
         || (i.unit || '').toLowerCase().includes(q)
         || getItemTypeName(i.item_type_uuid).toLowerCase().includes(q)
         || getCategoryLabel(i.category ?? '').toLowerCase().includes(q),
@@ -337,110 +244,26 @@ function formatCurrency(val: number | null | undefined): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val)
 }
 
-// Form state
+// Form / modal state
 const showFormModal = ref(false)
-const editingItem = ref<PreferredItem | null>(null)
-const isSaving = ref(false)
-const form = ref({
-  item_name: '',
-  category: '',
-  item_type_uuid: '',
-  unit_price: null as number | null,
-  unit: '',
-  description: '',
-  status: 'Active',
-  is_active: true,
-})
-
-function resetForm() {
-  form.value = { item_name: '', category: '', item_type_uuid: '', unit_price: null, unit: '', description: '', status: 'Active', is_active: true }
-}
+const editingItem = ref<Record<string, unknown> | null>(null)
 
 function openAddModal() {
   editingItem.value = null
-  resetForm()
   showFormModal.value = true
 }
 
 function openEditModal(item: PreferredItem) {
-  editingItem.value = item
-  form.value = {
-    item_name: item.item_name,
-    category: item.category || '',
-    item_type_uuid: item.item_type_uuid || '',
-    unit_price: item.unit_price,
-    unit: item.unit || '',
-    description: item.description || '',
-    status: item.status || 'Active',
-    is_active: item.is_active,
-  }
+  editingItem.value = item as unknown as Record<string, unknown>
   showFormModal.value = true
 }
 
-function closeFormModal() {
-  showFormModal.value = false
-  editingItem.value = null
-  resetForm()
-}
-
-async function saveItem() {
-  if (!form.value.item_name?.trim()) {
-    toast.add({ title: 'Validation Error', description: 'Item name is required', color: 'error', icon: 'i-heroicons-x-circle' })
-    return
-  }
-
+function onSaved() {
   const corpUuid = corpStore.selectedCorporation?.uuid
-  if (!corpUuid) {
-    toast.add({ title: 'Error', description: 'No corporation selected', color: 'error', icon: 'i-heroicons-x-circle' })
-    return
-  }
-
-  isSaving.value = true
-  let result: PreferredItem | null = null
-
-  if (editingItem.value) {
-    result = await itemsStore.updateItem(editingItem.value.uuid, {
-      item_name: form.value.item_name.trim(),
-      category: form.value.category || null,
-      item_type_uuid: form.value.item_type_uuid || null,
-      unit_price: form.value.unit_price,
-      unit: form.value.unit || null,
-      description: form.value.description || null,
-      status: form.value.status,
-      is_active: form.value.is_active,
-    })
-  }
-  else {
-    result = await itemsStore.createItem({
-      corporation_uuid: corpUuid,
-      item_name: form.value.item_name.trim(),
-      category: form.value.category || null,
-      item_type_uuid: form.value.item_type_uuid || null,
-      unit_price: form.value.unit_price,
-      unit: form.value.unit || null,
-      description: form.value.description || null,
-      status: form.value.status,
-      is_active: form.value.is_active,
-    })
-  }
-
-  isSaving.value = false
-
-  if (result) {
-    toast.add({
-      title: 'Success',
-      description: editingItem.value ? 'Item updated successfully' : 'Item created successfully',
-      color: 'success',
-      icon: 'i-heroicons-check-circle',
-    })
-    closeFormModal()
-  }
-  else {
-    toast.add({ title: 'Error', description: itemsStore.error || 'Failed to save item', color: 'error', icon: 'i-heroicons-x-circle' })
-  }
+  if (corpUuid) itemsStore.fetchItems(corpUuid)
 }
 
-// Delete state
+// Delete
 const showDeleteModal = ref(false)
 const itemToDelete = ref<PreferredItem | null>(null)
 const isDeleting = ref(false)
@@ -480,10 +303,7 @@ watch(
   { immediate: true },
 )
 
-watch(
-  () => props.globalFilter,
-  () => { currentPage.value = 1 },
-)
+watch(() => props.globalFilter, () => { currentPage.value = 1 })
 
 defineExpose({ openAddModal })
 </script>

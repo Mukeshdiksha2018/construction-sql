@@ -320,21 +320,29 @@ model ItemType {
 
 /// Preferred items attached to cost code configurations (the "Items" sub-tab).
 model CostCodePreferredItem {
-  id                          BigInt    @id @default(autoincrement())
-  uuid                        String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
-  corporation_uuid            String    @db.NVarChar(36)
-  project_uuid                String?   @db.NVarChar(36)
-  cost_code_configuration_uuid String?  @db.NVarChar(36)
-  item_type_uuid              String?   @db.NVarChar(36)
-  category                    String?   @db.NVarChar(50)
-  item_name                   String    @db.NVarChar(255)
-  unit_price                  Decimal?  @db.Decimal(18, 2)
-  unit                        String?   @db.NVarChar(50)
-  description                 String?   @db.NVarChar(Max)
-  status                      String    @default("Active") @db.NVarChar(50)
-  is_active                   Boolean   @default(true)
-  created_at                  DateTime  @default(now()) @db.DateTime2
-  updated_at                  DateTime  @updatedAt @db.DateTime2
+  id                           BigInt    @id @default(autoincrement())
+  uuid                         String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid             String    @db.NVarChar(36)
+  project_uuid                 String?   @db.NVarChar(36)
+  cost_code_configuration_uuid String?   @db.NVarChar(36)
+  item_type_uuid               String?   @db.NVarChar(36)
+  category                     String?   @db.NVarChar(50)
+  item_name                    String    @db.NVarChar(255)
+  item_sequence                String?   @db.NVarChar(100)
+  model_number                 String?   @db.NVarChar(100)
+  unit_price                   Decimal?  @db.Decimal(18, 2)
+  unit                         String?   @db.NVarChar(50)
+  location_uuid                String?   @db.NVarChar(36)
+  preferred_vendor_uuid        String?   @db.NVarChar(36)
+  initial_quantity             Decimal?  @db.Decimal(18, 4)
+  as_of_date                   DateTime? @db.DateTime2
+  reorder_point                Decimal?  @db.Decimal(18, 4)
+  maximum_limit                Decimal?  @db.Decimal(18, 4)
+  description                  String?   @db.NVarChar(Max)
+  status                       String    @default("Active") @db.NVarChar(50)
+  is_active                    Boolean   @default(true)
+  created_at                   DateTime  @default(now()) @db.DateTime2
+  updated_at                   DateTime  @updatedAt @db.DateTime2
 
   @@index([corporation_uuid])
   @@index([project_uuid])

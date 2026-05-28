@@ -7,19 +7,27 @@ export default defineEventHandler(async (event) => {
     if (!uuid) throw createError({ statusCode: 400, statusMessage: 'UUID is required' })
 
     const body = await readBody(event)
-    const payload = (body ?? {}) as Record<string, unknown>
+    const p = (body ?? {}) as Record<string, unknown>
 
     const data = await updatePreferredItem(uuid, {
-      ...(payload.project_uuid !== undefined && { project_uuid: typeof payload.project_uuid === 'string' ? payload.project_uuid : null }),
-      ...(payload.cost_code_configuration_uuid !== undefined && { cost_code_configuration_uuid: typeof payload.cost_code_configuration_uuid === 'string' ? payload.cost_code_configuration_uuid : null }),
-      ...(payload.item_type_uuid !== undefined && { item_type_uuid: typeof payload.item_type_uuid === 'string' ? payload.item_type_uuid : null }),
-      ...(payload.category !== undefined && { category: typeof payload.category === 'string' ? payload.category : null }),
-      ...(payload.item_name !== undefined && { item_name: String(payload.item_name) }),
-      ...(payload.unit_price !== undefined && { unit_price: payload.unit_price != null ? Number(payload.unit_price) : null }),
-      ...(payload.unit !== undefined && { unit: typeof payload.unit === 'string' ? payload.unit : null }),
-      ...(payload.description !== undefined && { description: typeof payload.description === 'string' ? payload.description : null }),
-      ...(payload.status !== undefined && { status: String(payload.status) }),
-      ...(payload.is_active !== undefined && { is_active: Boolean(payload.is_active) }),
+      ...(p.project_uuid !== undefined && { project_uuid: typeof p.project_uuid === 'string' ? p.project_uuid : null }),
+      ...(p.cost_code_configuration_uuid !== undefined && { cost_code_configuration_uuid: typeof p.cost_code_configuration_uuid === 'string' ? p.cost_code_configuration_uuid : null }),
+      ...(p.item_type_uuid !== undefined && { item_type_uuid: typeof p.item_type_uuid === 'string' ? p.item_type_uuid : null }),
+      ...(p.category !== undefined && { category: typeof p.category === 'string' ? p.category : null }),
+      ...(p.item_name !== undefined && { item_name: String(p.item_name) }),
+      ...(p.item_sequence !== undefined && { item_sequence: typeof p.item_sequence === 'string' ? p.item_sequence : null }),
+      ...(p.model_number !== undefined && { model_number: typeof p.model_number === 'string' ? p.model_number : null }),
+      ...(p.unit_price !== undefined && { unit_price: p.unit_price != null ? Number(p.unit_price) : null }),
+      ...(p.unit !== undefined && { unit: typeof p.unit === 'string' ? p.unit : null }),
+      ...(p.location_uuid !== undefined && { location_uuid: typeof p.location_uuid === 'string' ? p.location_uuid : null }),
+      ...(p.preferred_vendor_uuid !== undefined && { preferred_vendor_uuid: typeof p.preferred_vendor_uuid === 'string' ? p.preferred_vendor_uuid : null }),
+      ...(p.initial_quantity !== undefined && { initial_quantity: p.initial_quantity != null && p.initial_quantity !== '' ? Number(p.initial_quantity) : null }),
+      ...(p.as_of_date !== undefined && { as_of_date: typeof p.as_of_date === 'string' ? p.as_of_date : null }),
+      ...(p.reorder_point !== undefined && { reorder_point: p.reorder_point != null && p.reorder_point !== '' ? Number(p.reorder_point) : null }),
+      ...(p.maximum_limit !== undefined && { maximum_limit: p.maximum_limit != null && p.maximum_limit !== '' ? Number(p.maximum_limit) : null }),
+      ...(p.description !== undefined && { description: typeof p.description === 'string' ? p.description : null }),
+      ...(p.status !== undefined && { status: String(p.status) }),
+      ...(p.is_active !== undefined && { is_active: Boolean(p.is_active) }),
     })
 
     return { success: true, data, message: 'Item updated successfully' }
