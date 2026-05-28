@@ -298,6 +298,52 @@ model CostCodeConfiguration {
   @@map("cost_code_configurations")
 }
 
+/// Item types — procurement or construction, global (corporation_uuid nullable).
+model ItemType {
+  id                 BigInt    @id @default(autoincrement())
+  uuid               String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid   String?   @db.NVarChar(36)
+  category           String    @db.NVarChar(50)
+  spec_type          String    @db.NVarChar(255)
+  item_division_uuid String?   @db.NVarChar(36)
+  item_type          String    @db.NVarChar(255)
+  description        String?   @db.NVarChar(Max)
+  is_active          Boolean   @default(true)
+  created_at         DateTime  @default(now()) @db.DateTime2
+  updated_at         DateTime  @updatedAt @db.DateTime2
+
+  @@index([corporation_uuid])
+  @@index([category])
+  @@index([is_active])
+  @@map("item_types")
+}
+
+/// Preferred items attached to cost code configurations (the "Items" sub-tab).
+model CostCodePreferredItem {
+  id                          BigInt    @id @default(autoincrement())
+  uuid                        String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid            String    @db.NVarChar(36)
+  project_uuid                String?   @db.NVarChar(36)
+  cost_code_configuration_uuid String?  @db.NVarChar(36)
+  item_type_uuid              String?   @db.NVarChar(36)
+  category                    String?   @db.NVarChar(50)
+  item_name                   String    @db.NVarChar(255)
+  unit_price                  Decimal?  @db.Decimal(18, 2)
+  unit                        String?   @db.NVarChar(50)
+  description                 String?   @db.NVarChar(Max)
+  status                      String    @default("Active") @db.NVarChar(50)
+  is_active                   Boolean   @default(true)
+  created_at                  DateTime  @default(now()) @db.DateTime2
+  updated_at                  DateTime  @updatedAt @db.DateTime2
+
+  @@index([corporation_uuid])
+  @@index([project_uuid])
+  @@index([cost_code_configuration_uuid])
+  @@index([item_type_uuid])
+  @@index([is_active])
+  @@map("cost_code_preferred_items")
+}
+
 /// Global terms and conditions templates.
 model TermsAndCondition {
   id         BigInt   @id @default(autoincrement())

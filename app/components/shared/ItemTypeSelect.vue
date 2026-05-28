@@ -47,7 +47,7 @@ const selectedValue = ref<string | undefined>(props.modelValue)
 const selectedOption = ref<any>(undefined)
 
 const options = computed(() =>
-  store.itemTypes.map((t: any) => ({ label: t.name || t.item_type_name, value: t.uuid, type: t }))
+  store.itemTypes.map((t: any) => ({ label: t.item_type, value: t.uuid, type: t }))
 )
 
 const optionsMap = computed(() => new Map(options.value.map(o => [o.value, o])))
