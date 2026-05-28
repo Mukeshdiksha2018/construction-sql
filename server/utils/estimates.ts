@@ -1,6 +1,6 @@
-import { PrismaClient } from '@prisma/client'
+import { getPrisma } from './prisma'
 
-const prisma = new PrismaClient()
+const prisma = getPrisma()
 
 // ─── JSON helpers ─────────────────────────────────────────────────────────────
 function parseJson<T = unknown>(val: string | null | undefined, fallback: T): T {

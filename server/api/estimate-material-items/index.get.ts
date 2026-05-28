@@ -1,6 +1,6 @@
-import { PrismaClient } from '@prisma/client'
+import { getPrisma } from '../../utils/prisma'
 
-const prisma = new PrismaClient()
+const prisma = getPrisma()
 
 function toNum(v: unknown) { const n = parseFloat(String(v ?? 0)); return isNaN(n) ? 0 : n }
 function parseJson<T>(v: string | null | undefined, fb: T): T {

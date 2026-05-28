@@ -1,7 +1,7 @@
-import { PrismaClient } from '@prisma/client'
 import { deleteEstimate } from '../../utils/estimates'
+import { getPrisma } from '../../utils/prisma'
 
-const prisma = new PrismaClient()
+const prisma = getPrisma()
 
 export default defineEventHandler(async (event) => {
   const uuid = getRouterParam(event, 'uuid')
