@@ -1,6 +1,7 @@
 import { computed } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 import { usePrivilegesStore } from '~/stores/privileges'
+import { useAuthStore } from '~/stores/auth'
 
 /**
  * Nimble approval type codes (from /v1/GetUserApprovalDetails → approvalType field)
@@ -35,23 +36,50 @@ export function useEstimateApproval(
 ) {
   const privilegesStore = usePrivilegesStore()
   const corporationStore = useCorporationStore()
+  const authStore = useAuthStore()
 
   /**
-   * The current user's approval type for the selected corporation.
-   * Falls back to ENTRY (1) when:
-   *  - Corporation not selected
-   *  - No approval workflow configured for the corporation
-   *  - Current user not found in the approval chain
+   * Get the current user's approval type (1=Entry, 2=Verify, 3=Approve) for the
+   * selected corporation.
+   *
+   * Matching strategy (in priority order):
+   *  1. `isCurrentUser === true` in the Nimble response (when the API sets it)
+   *  2. `userId` matches the logged-in user's `userID` from the auth session
+   *     (needed because Nimble may return `isCurrentUser: false` for all entries)
+   *
+   * Falls back to ENTRY (1) when the user is not found in the approval chain,
+   * no workflow is configured, or the corporation is unknown.
    */
   const currentUserApprovalType = computed((): number => {
     const corpId = String(corporationStore.selectedCorporationId || '').toLowerCase()
-    if (!corpId) return APPROVAL_TYPE_ENTRY
+    const loaded = privilegesStore.loaded
+
+    console.log('[EstimateApproval] corpId:', corpId, '| loaded:', loaded)
+    console.log('[EstimateApproval] session.userID:', authStore.session?.userID)
+    console.log('[EstimateApproval] all approvals:', JSON.stringify(privilegesStore.approvals))
+
+    if (!corpId) {
+      console.log('[EstimateApproval] No corpId → ENTRY (1)')
+      return APPROVAL_TYPE_ENTRY
+    }
 
     const approvals = privilegesStore.getApprovalsForCorporation(corpId)
-    if (!approvals.length) return APPROVAL_TYPE_ENTRY  // no workflow = entry level
+    console.log('[EstimateApproval] approvals for corp:', JSON.stringify(approvals))
 
-    const me = approvals.find(a => a.isCurrentUser)
-    return me?.approvalType ?? APPROVAL_TYPE_ENTRY
+    if (!approvals.length) {
+      console.log('[EstimateApproval] No approvals for corp → ENTRY (1)')
+      return APPROVAL_TYPE_ENTRY
+    }
+
+    const sessionUserId = String(authStore.session?.userID || '').toLowerCase()
+    const me = approvals.find(a =>
+      a.isCurrentUser
+      || (sessionUserId && a.userId === sessionUserId),
+    )
+
+    const result = me?.approvalType ?? APPROVAL_TYPE_ENTRY
+    console.log('[EstimateApproval] matched:', me ? JSON.stringify(me) : 'none', '→ approvalType:', result)
+    return result
   })
 
   const status = computed(() => estimateStatus.value || 'Draft')
@@ -74,6 +102,7 @@ export function useEstimateApproval(
 
   /**
    * The status that will be written to the estimate when the user submits.
+   * Approve-level users always write 'Approved' (they can skip the Verify step).
    */
   const targetStatus = computed((): 'Draft' | 'Ready' | 'Approved' => {
     switch (actionLabel.value) {
@@ -92,38 +121,65 @@ export function useEstimateApproval(
    * - Approve (type 3): show when status is Ready (verified, awaiting approval)
    */
   const showActionButtons = computed((): boolean => {
-    if (isNewEstimate.value) return true
-
+    const isNew = isNewEstimate.value
     const type = currentUserApprovalType.value
     const s = status.value
+    const loaded = privilegesStore.loaded
 
+    console.log('[EstimateApproval] showActionButtons → isNew:', isNew, '| type:', type, '| status:', s, '| loaded:', loaded)
+
+    // Fail-open: if approvals haven't loaded yet, always show Save buttons so
+    // the user is never accidentally locked out while data is in-flight.
+    if (!loaded) {
+      console.log('[EstimateApproval] approvals not loaded yet → showing Save buttons (fail-open)')
+      return true
+    }
+
+    if (isNew) return true
+
+    let result = false
     switch (type) {
       case APPROVAL_TYPE_ENTRY:
-        return s === 'Draft'
+        // Entry users can only save/act on Draft estimates
+        result = s === 'Draft'
+        break
       case APPROVAL_TYPE_VERIFY:
-        // Verify user can also re-save a Ready estimate they already verified
-        return s === 'Draft' || s === 'Ready'
+        // Verify users can act on Draft (to verify) or re-save Ready estimates
+        result = s === 'Draft' || s === 'Ready'
+        break
       case APPROVAL_TYPE_APPROVE:
-        return s === 'Ready'
+        // Approve users are the highest authority — they can approve at any stage
+        // (Draft or Ready). They cannot re-approve an already-Approved estimate.
+        result = s === 'Draft' || s === 'Ready'
+        break
       default:
-        return s === 'Draft'
+        result = s === 'Draft'
     }
+
+    console.log('[EstimateApproval] showActionButtons →', result)
+    return result
   })
 
   /**
    * Whether the current user can make edits to this estimate.
+   *
+   * Fail-open: if approvals haven't loaded yet, always allow editing so the
+   * user is never locked out while data is in-flight.
    *
    * - Approved  → locked for everyone
    * - Ready     → entry level (type 1) is locked; verify (2) and approve (3) can edit
    * - Draft     → anyone can edit
    */
   const canEdit = computed((): boolean => {
+    // Fail-open while approval data is still loading
+    if (!privilegesStore.loaded) return true
+
     const s = status.value
     const type = currentUserApprovalType.value
 
     if (s === 'Approved') return false
     if (s === 'Ready') return type >= APPROVAL_TYPE_VERIFY
-    return true  // Draft — all levels can edit
+    return true
   })
 
   /**

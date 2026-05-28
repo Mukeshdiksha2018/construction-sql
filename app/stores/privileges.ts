@@ -144,9 +144,14 @@ export const usePrivilegesStore = defineStore('privileges', () => {
 
   /**
    * Whether the current user is in the approval chain for a corporation.
+   * Matches by isCurrentUser flag OR by userId from the auth session
+   * (Nimble may return isCurrentUser=false for all entries).
    */
-  const isApprover = (corporationId: string): boolean => {
-    return getApprovalsForCorporation(corporationId).some((a) => a.isCurrentUser)
+  const isApprover = (corporationId: string, sessionUserId?: string): boolean => {
+    const normUserId = String(sessionUserId || '').toLowerCase()
+    return getApprovalsForCorporation(corporationId).some(
+      (a) => a.isCurrentUser || (normUserId && a.userId === normUserId),
+    )
   }
 
   // ── Actions ────────────────────────────────────────────────────────────────

@@ -230,7 +230,7 @@ describe('usePrivilegesStore', () => {
       expect(result.map((a: any) => a.name)).toEqual(['Alice', 'Carol'])
     })
 
-    it('isApprover returns true when current user is in approval chain', async () => {
+    it('isApprover returns true via isCurrentUser flag', async () => {
       const store = await loadStore()
       store.approvals = [
         { corporationId: 'corp-x', name: 'Me', userName: 'me@test.com', userId: 'u-me', approvalOrder: 1, approvalType: 2, isCurrentUser: true },
@@ -239,7 +239,26 @@ describe('usePrivilegesStore', () => {
       expect(store.isApprover('corp-x')).toBe(true)
     })
 
-    it('isApprover returns false when current user is NOT in chain', async () => {
+    it('isApprover returns true via sessionUserId match (Nimble isCurrentUser=false fallback)', async () => {
+      const store = await loadStore()
+      store.approvals = [
+        { corporationId: 'corp-x', name: 'Me', userName: 'me@test.com', userId: 'user-abc-123', approvalOrder: 1, approvalType: 2, isCurrentUser: false },
+      ] as any
+
+      // Pass the sessionUserId explicitly — matches even when isCurrentUser=false
+      expect(store.isApprover('corp-x', 'USER-ABC-123')).toBe(true)  // case-insensitive
+    })
+
+    it('isApprover returns false when sessionUserId does not match any entry', async () => {
+      const store = await loadStore()
+      store.approvals = [
+        { corporationId: 'corp-x', name: 'Other', userName: 'other@test.com', userId: 'u-other', approvalOrder: 1, approvalType: 2, isCurrentUser: false },
+      ] as any
+
+      expect(store.isApprover('corp-x', 'u-completely-different')).toBe(false)
+    })
+
+    it('isApprover returns false when no sessionUserId and isCurrentUser=false', async () => {
       const store = await loadStore()
       store.approvals = [
         { corporationId: 'corp-x', name: 'Other', userName: 'other@test.com', userId: 'u-other', approvalOrder: 1, approvalType: 2, isCurrentUser: false },

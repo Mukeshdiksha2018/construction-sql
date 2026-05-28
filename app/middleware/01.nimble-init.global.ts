@@ -1,5 +1,6 @@
 import type { NimbleSession } from '~/stores/auth'
 import { fetchServerSession } from '~/utils/auth-session'
+import { usePrivilegesStore } from '~/stores/privileges'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   if (!import.meta.client) return
@@ -56,10 +57,13 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
   }
 
-  // Fetch privileges + approvals after (re-)authentication so the store is
-  // populated for the entire session. Runs in the background — does not block
-  // navigation.
-  if (sessionChanged && authStore.isAuthenticated) {
+  // Fetch privileges + approvals when authenticated and not yet loaded.
+  // This covers both:
+  //  a) Fresh login (sessionChanged=true)
+  //  b) Already authenticated (persisted session, page refresh / direct navigation)
+  // Runs in the background — does not block navigation.
+  const privilegesStore = usePrivilegesStore()
+  if (authStore.isAuthenticated && !privilegesStore.loaded) {
     const { loadPrivileges } = usePrivilegesFetch()
     loadPrivileges().catch((err: unknown) => {
       console.warn('[Privileges] Background load failed:', err)

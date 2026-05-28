@@ -21,20 +21,27 @@ export function usePrivilegesFetch() {
    * @param force - bypass the already-loaded guard and re-fetch
    */
   const loadPrivileges = async (force = false): Promise<void> => {
-    if (!nimbleOn.value) return
+    console.log('[PrivilegesFetch] nimbleOn:', nimbleOn.value, '| already loaded:', privilegesStore.loaded)
+    if (!nimbleOn.value) {
+      console.log('[PrivilegesFetch] Nimble integration is OFF — skipping fetch')
+      return
+    }
 
     // Ensure corporations are loaded so we can pass their IDs to the approvals API
     if (!corporationStore.corporations.length) {
+      console.log('[PrivilegesFetch] No corporations in store — fetching...')
       try {
         await corporationStore.fetchCorporations({ isShowAll: false })
       }
-      catch {
-        // Continue — approvals fetch will just get empty corp list
+      catch (err) {
+        console.warn('[PrivilegesFetch] Failed to fetch corporations:', err)
       }
     }
 
     const corporationIds = corporationStore.corporations.map((c) => c.id)
+    console.log('[PrivilegesFetch] corporationIds:', corporationIds)
     await privilegesStore.fetchAll(corporationIds, force)
+    console.log('[PrivilegesFetch] Done. approvals:', privilegesStore.approvals.length, '| privilegeMap size:', privilegesStore.privilegeMap.size)
   }
 
   return { loadPrivileges, privilegesStore }
