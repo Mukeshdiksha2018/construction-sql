@@ -4,12 +4,17 @@
       <div class="flex items-center gap-2 flex-shrink-0 w-[200px]" />
 
       <div class="flex items-center gap-2 flex-1 justify-center max-w-md mx-4">
-        <SharedCorporationSelect
-          v-model="selectedCorporationId"
-          class="w-full"
-          size="sm"
-          @change="onCorporationChange"
-        />
+        <ClientOnly>
+          <SharedCorporationSelect
+            v-model="selectedCorporationId"
+            class="w-full"
+            size="sm"
+            @change="onCorporationChange"
+          />
+          <template #fallback>
+            <USkeleton class="h-8 w-full rounded-md" />
+          </template>
+        </ClientOnly>
       </div>
 
       <div class="flex items-center gap-2">
