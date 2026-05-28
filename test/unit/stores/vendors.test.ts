@@ -387,6 +387,37 @@ describe('useVendorStore', () => {
     })
   })
 
+  // ── UUID case-normalisation (pre-selection regression) ────────────────────
+
+  describe('UUID case normalisation', () => {
+    it('stores vendorID as lowercase so DB-stored lowercase UUIDs match', async () => {
+      // Nimble returns uppercase vendorIDs; the DB stores them lowercased (via mapRow).
+      // VendorSelect looks up the UUID straight from the DB value, so both sides must
+      // use the same case.
+      mockFetch.mockResolvedValue(makeApiResponse([
+        makeDTO({ vendorID: '67602259C7C97FBE41F1846ACE6C90320000' }),
+      ]))
+      const store = useVendorStore()
+      await store.fetchVendors(CORP_UUID)
+
+      const uuid = store.vendors[0]?.uuid
+      expect(uuid).toBe('67602259c7c97fbe41f1846ace6c90320000')
+      // Must be found by the lowercase value that the DB would return
+      expect(store.getVendorById('67602259c7c97fbe41f1846ace6c90320000')).toBeDefined()
+    })
+
+    it('getVendorById resolves the uppercase Nimble ID when stored lowercase', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'UPPER-ID' })]))
+      const store = useVendorStore()
+      await store.fetchVendors(CORP_UUID)
+
+      // lookup with uppercase should still work (case-insensitive comparison)
+      expect(store.getVendorById('UPPER-ID')).toBeDefined()
+      // lookup with lowercase (what the DB returns) should also work
+      expect(store.getVendorById('upper-id')).toBeDefined()
+    })
+  })
+
   // ── getVendorName ─────────────────────────────────────────────────────────
 
   describe('getVendorName', () => {
