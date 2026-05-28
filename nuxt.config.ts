@@ -28,6 +28,8 @@ export default defineNuxtConfig({
       nimblePayableEnv: '',
       // NUXT_PUBLIC_NIMBLE_INTEGRATIONS — true to enable menuId-driven tab filtering
       nimbleIntegrations: process.env.NUXT_PUBLIC_NIMBLE_INTEGRATIONS || 'false',
+      // NUXT_PUBLIC_NIMBLE_CORE_API_URL — Nimble Core API base (used for chart of accounts etc.)
+      nimbleCoreApiUrl: '',
     },
   },
 })

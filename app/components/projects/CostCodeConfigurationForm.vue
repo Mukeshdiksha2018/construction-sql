@@ -78,12 +78,14 @@
             <!-- GL Account (optional) -->
             <div class="col-span-2">
               <label class="block text-xs font-medium text-default mb-1">GL Account</label>
-              <UInput
-                v-model="internalForm.gl_account_uuid"
-                placeholder="GL Account UUID (optional)"
+              <SharedChartOfAccountsSelect
+                :model-value="internalForm.gl_account_uuid ?? undefined"
+                :corporation-uuid="corporationStore.selectedCorporationId ?? undefined"
+                placeholder="Select GL Account (optional)"
                 size="sm"
-                class="w-full"
-                :readonly="readonly"
+                class-name="w-full"
+                :disabled="readonly"
+                @update:model-value="(v) => internalForm.gl_account_uuid = v ?? null"
               />
             </div>
 
