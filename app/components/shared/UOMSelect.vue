@@ -18,7 +18,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useUOMStore } from '~/stores/uom'
 
 interface Props {
@@ -53,7 +53,7 @@ const loading = ref(false)
 const options = computed(() => {
   const active = uomStore.getActiveUOM(props.corporationUuid)
   return active.map((u: any) => ({
-    label: u.name || u.uom_name,
+    label: `${u.name}${u.short_name && u.short_name !== u.name ? ` (${u.short_name})` : ''}`,
     value: u.uuid,
     uom: u,
   }))
@@ -77,20 +77,32 @@ const handleSelection = (val: any) => {
     selectedValue.value = value
     emit('update:modelValue', value)
     emit('change', optionsMap.value.get(value) || val)
-  } else {
+  }
+  else {
     selectedValue.value = undefined
     selectedOption.value = undefined
     emit('update:modelValue', undefined)
   }
 }
 
+// Trigger initial fetch (uses store cache — only hits the API once per session)
+onMounted(async () => {
+  if (!uomStore.loaded) {
+    loading.value = true
+    try { await uomStore.fetchUOM(props.corporationUuid) }
+    finally { loading.value = false }
+  }
+})
+
 watch(() => props.modelValue, v => { selectedValue.value = v; updateSelectedObject() })
 watch(filteredOptions, () => updateSelectedObject(), { immediate: true })
 
-watch(() => props.corporationUuid, async v => {
-  if (v) {
+// Re-fetch only when the corporation actually changes (rare, but keeps parity with original)
+watch(() => props.corporationUuid, async (v, prev) => {
+  if (v && v !== prev) {
     loading.value = true
-    try { await uomStore.fetchUOM(v) } finally { loading.value = false }
+    try { await uomStore.fetchUOM(v) }
+    finally { loading.value = false }
   }
-}, { immediate: true })
+})
 </script>

@@ -117,7 +117,7 @@
                   <th class="px-3 py-2 text-left w-44">Description</th>
                   <th class="px-3 py-2 text-left w-28">Model #</th>
                   <th class="px-3 py-2 text-left w-28">Unit Cost *</th>
-                  <th class="px-3 py-2 text-left w-28">UOM *</th>
+                  <th class="px-3 py-2 text-left w-36">UOM</th>
                   <th class="px-3 py-2 text-left w-40">Cost Code</th>
                   <th class="px-3 py-2 text-left w-24">Initial QTY</th>
                   <th class="px-3 py-2 text-left w-32">As of Date</th>
@@ -202,7 +202,13 @@
                   </td>
                   <!-- UOM -->
                   <td class="px-2 py-1.5">
-                    <UInput v-model="row.unit" size="xs" placeholder="e.g. sq ft" class="w-full" />
+                    <SharedUOMSelect
+                      :model-value="row.unit"
+                      placeholder="Select UOM"
+                      size="xs"
+                      class-name="w-full"
+                      @update:model-value="(v: string | undefined) => { row.unit = v || '' }"
+                    />
                   </td>
                   <!-- Cost Code -->
                   <td class="px-2 py-1.5">
@@ -516,7 +522,7 @@ function validateRows(): string | null {
     if (!r.item_sequence?.trim()) return 'Each row requires a Spec value.'
     const p = parseFloat(String(r.unit_price))
     if (!Number.isFinite(p) || p < 0) return 'Each row requires a valid Unit Cost (≥ 0).'
-    if (!r.unit?.trim()) return 'Each row requires a UOM.'
+    // UOM is optional – it's selected from the Nimble dropdown and may be left blank
   }
   return null
 }
