@@ -109,7 +109,7 @@
 
           <!-- Scrollable table wrapper -->
           <div class="overflow-auto border border-gray-200 dark:border-gray-700 rounded-lg">
-            <table class="min-w-[1400px] w-full text-xs">
+            <table class="min-w-[1800px] w-full text-xs">
               <thead class="bg-gray-50 dark:bg-gray-800 text-[11px] font-semibold uppercase tracking-wide text-gray-500 sticky top-0 z-10">
                 <tr>
                   <th class="px-3 py-2 text-left w-24">Spec *</th>
@@ -118,6 +118,8 @@
                   <th class="px-3 py-2 text-left w-28">Model #</th>
                   <th class="px-3 py-2 text-left w-28">Unit Cost *</th>
                   <th class="px-3 py-2 text-left w-36">UOM</th>
+                  <th class="px-3 py-2 text-left w-40">Location</th>
+                  <th class="px-3 py-2 text-left w-44">Preferred Vendor</th>
                   <th class="px-3 py-2 text-left w-40">Cost Code</th>
                   <th class="px-3 py-2 text-left w-24">Initial QTY</th>
                   <th class="px-3 py-2 text-left w-32">As of Date</th>
@@ -219,6 +221,27 @@
                       :corporation-uuid="corpId"
                       class="w-full"
                       @change="(v: unknown) => { const uuid = typeof v === 'string' ? v : (v as Record<string, string>)?.value ?? ''; row.cost_code_configuration_uuid = uuid }"
+                    />
+                  </td>
+                  <!-- Preferred Vendor -->
+                  <td class="px-2 py-1.5">
+                    <SharedVendorSelect
+                      :model-value="row.preferred_vendor_uuid"
+                      placeholder="Select vendor"
+                      size="xs"
+                      class-name="w-full"
+                      :corporation-uuid="corpId"
+                      @update:model-value="(v: string | undefined) => { row.preferred_vendor_uuid = v || '' }"
+                    />
+                  </td>
+                  <!-- Location -->
+                  <td class="px-2 py-1.5">
+                    <SharedLocationSelect
+                      :model-value="row.location_uuid"
+                      placeholder="Select location"
+                      size="xs"
+                      class-name="w-full"
+                      @update:model-value="(v: string | undefined) => { row.location_uuid = v || '' }"
                     />
                   </td>
                   <!-- Initial QTY -->
@@ -374,6 +397,8 @@ interface ItemRow {
   unit_price: string | number
   uom_uuid: string
   cost_code_configuration_uuid: string
+  preferred_vendor_uuid: string
+  location_uuid: string
   initial_quantity: string | number
   as_of_date: string
   reorder_point: string | number
@@ -447,6 +472,8 @@ function addEmptyRow() {
     unit_price: '',
     uom_uuid: '',
     cost_code_configuration_uuid: '',
+    preferred_vendor_uuid: '',
+    location_uuid: '',
     initial_quantity: '',
     as_of_date: '',
     reorder_point: '',
@@ -499,6 +526,8 @@ watch(
         unit_price: r.unit_price != null ? r.unit_price : '',
         uom_uuid: String(r.uom_uuid || ''),
         cost_code_configuration_uuid: String(r.cost_code_configuration_uuid || ''),
+        preferred_vendor_uuid: String(r.preferred_vendor_uuid || ''),
+        location_uuid: String(r.location_uuid || ''),
         initial_quantity: r.initial_quantity != null ? r.initial_quantity : '',
         as_of_date: r.as_of_date ? localDate(String(r.as_of_date)) : '',
         reorder_point: r.reorder_point != null ? r.reorder_point : '',
@@ -560,6 +589,8 @@ async function saveItem() {
           unit_price: r.unit_price !== '' && r.unit_price != null ? Number(r.unit_price) : null,
           uom_uuid: r.uom_uuid || null,
           cost_code_configuration_uuid: r.cost_code_configuration_uuid || null,
+          preferred_vendor_uuid: r.preferred_vendor_uuid || null,
+          location_uuid: r.location_uuid || null,
           initial_quantity: r.initial_quantity !== '' && r.initial_quantity != null ? Number(r.initial_quantity) : null,
           as_of_date: r.as_of_date || null,
           reorder_point: r.reorder_point !== '' && r.reorder_point != null ? Number(r.reorder_point) : null,
