@@ -1,16 +1,5 @@
-import { getPathForMenuId } from '~/utils/nimbleMenuIds'
 import type { NimbleSession } from '~/stores/auth'
 import { fetchServerSession } from '~/utils/auth-session'
-
-function parsePathWithQuery(pathWithQuery: string): { path: string, query: Record<string, string> } {
-  const [path, rawQuery = ''] = pathWithQuery.split('?')
-  const query: Record<string, string> = {}
-  const params = new URLSearchParams(rawQuery)
-  params.forEach((value, key) => {
-    query[key] = value
-  })
-  return { path, query }
-}
 
 export default defineNuxtRouteMiddleware(async (to) => {
   if (!import.meta.client) return
@@ -63,24 +52,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
   }
 
-  const mappedPath = getPathForMenuId(menuId)
-  if (mappedPath) {
-    const { path, query } = parsePathWithQuery(mappedPath)
-    const nextQuery: Record<string, string> = { ...query }
-    if (menuId) nextQuery.menuId = menuId
-    if (corporationId) nextQuery.corporationId = corporationId
-
-    const currentPath = to.path
-    const currentTab = String(to.query.tab ?? '')
-    const nextTab = String(nextQuery.tab ?? '')
-    const samePath = currentPath === path
-    const isNestedPath = path !== '/' && currentPath.startsWith(`${path}/`)
-    const sameTab = currentTab === nextTab
-
-    if ((!samePath && !isNestedPath) || (samePath && nextTab && !sameTab)) {
-      return navigateTo({ path, query: nextQuery }, { replace: true })
-    }
-  }
+  // Nimble always sends the correct page URL — each page handles tab routing
+  // internally via syncTabFromMenuId. No global path redirect needed here.
 
   if (authId) {
     const nextQuery = { ...to.query }
