@@ -34,6 +34,13 @@
       </div>
 
       <div class="flex items-center gap-3">
+        <!-- Lock reason banner -->
+        <UTooltip v-if="lockReason" :text="lockReason">
+          <UBadge color="warning" variant="soft" icon="i-heroicons-lock-closed" size="sm">
+            {{ form.status === 'Approved' ? 'Approved' : 'Verified' }}
+          </UBadge>
+        </UTooltip>
+
         <UButton
           v-if="editingEstimate && form.uuid && hasPermission('project_estimates_view')"
           icon="i-heroicons-shield-check-solid"
@@ -45,33 +52,34 @@
           View Audit Log
         </UButton>
 
-        <template v-if="!isViewMode">
+        <!-- Action buttons — label/behaviour driven by approvalType + current status -->
+        <template v-if="!isEffectiveViewMode && showActionButtons">
           <UButton
-            data-testid="btn-save-draft"
+            :data-testid="`btn-${actionLabel.toLowerCase()}-close`"
             color="primary"
             variant="solid"
-            icon="i-heroicons-check"
+            :icon="actionLabel === 'Approve' ? 'i-heroicons-check-badge' : actionLabel === 'Verify' ? 'i-heroicons-shield-check' : 'i-heroicons-check'"
             :disabled="!isFormValid || saving"
             :loading="saving"
-            @click="handleSaveAndClose"
+            @click="handleActionAndClose"
           >
-            Save & Close
+            {{ actionLabel }} & Close
           </UButton>
           <UButton
-            data-testid="btn-save-new"
+            :data-testid="`btn-${actionLabel.toLowerCase()}-new`"
             color="primary"
             variant="outline"
             icon="i-heroicons-document-plus"
             :disabled="!isFormValid || saving"
             :loading="saving"
-            @click="handleSaveAndNew"
+            @click="handleActionAndNew"
           >
-            Save & New
+            {{ actionLabel }} & New
           </UButton>
         </template>
 
         <UButton
-          v-if="isViewMode && hasPermission('project_estimates_edit')"
+          v-if="isEffectiveViewMode && canEdit && hasPermission('project_estimates_edit')"
           color="primary"
           icon="tdesign:edit-filled"
           @click="switchToEditMode"
@@ -90,7 +98,7 @@
       v-else
       :form="form"
       :editing-estimate="editingEstimate"
-      :readonly="isViewMode"
+      :readonly="isEffectiveViewMode"
       :loading="loading"
       @update:form="updateForm"
       @validation-change="onValidationChange"
@@ -122,13 +130,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick, resolveComponent } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useCorporationStore } from '~/stores/corporations'
 import { useEstimatesStore } from '~/stores/estimates'
 import { useEstimateCreationStore } from '~/stores/estimateCreation'
 import { useProjectsStore } from '~/stores/projects'
 import { usePermissions } from '~/composables/usePermissions'
+import { useEstimateApproval } from '~/composables/useEstimateApproval'
 import { useUTCDateFormat } from '~/composables/useUTCDateFormat'
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
 
@@ -138,6 +147,9 @@ definePageMeta({
   layout: 'main-layout',
   middleware: 'auth',
 })
+
+const UTooltip = resolveComponent('UTooltip')
+const UBadge = resolveComponent('UBadge')
 
 const router = useRouter()
 const route = useRoute()
@@ -182,6 +194,26 @@ const form = ref<any>({
 const estimateId = computed(() => route.params.id as string)
 const editingEstimate = computed(() => estimateId.value !== 'new')
 const isViewMode = computed(() => route.query.mode === 'view')
+
+// Approval workflow composable — drives button labels, target status, and edit-lock
+const {
+  actionLabel,
+  targetStatus,
+  showActionButtons,
+  canEdit,
+  lockReason,
+} = useEstimateApproval(
+  computed(() => form.value.status || 'Draft'),
+  computed(() => !editingEstimate.value),
+)
+
+/**
+ * The form is effectively read-only when:
+ *  - The user explicitly navigated in view mode, OR
+ *  - The user's approval level doesn't allow editing this estimate's current status
+ */
+const isEffectiveViewMode = computed(() => isViewMode.value || !canEdit.value)
+
 const projectUuidFromQuery = computed(() => {
   const v = route.query?.projectUuid
   return typeof v === 'string' && v.length > 0 ? v : undefined
@@ -302,7 +334,12 @@ const loadEstimate = async () => {
   }
 }
 
-const saveEstimate = async (afterSave: 'new' | 'close' = 'close') => {
+/**
+ * Core save function.
+ * @param afterSave - navigate to 'new' blank form or 'close' back to list
+ * @param newStatus - the status to persist ('Draft', 'Ready', or 'Approved')
+ */
+const saveEstimate = async (afterSave: 'new' | 'close' = 'close', newStatus: 'Draft' | 'Ready' | 'Approved' = 'Draft') => {
   if (!isFormValid.value) {
     const toast = useToast()
     toast.add({ title: 'Validation Error', description: 'Please fill in all required fields', color: 'error', icon: 'i-heroicons-x-circle' })
@@ -321,7 +358,7 @@ const saveEstimate = async (afterSave: 'new' | 'close' = 'close') => {
       ...form.value,
       corporation_uuid: corpUuid,
       estimate_date: toUTCString(form.value.estimate_date) as any,
-      status: form.value.status as 'Draft' | 'Ready' | 'Approved',
+      status: newStatus,
     }
 
     let success = false
@@ -333,8 +370,9 @@ const saveEstimate = async (afterSave: 'new' | 'close' = 'close') => {
     }
 
     if (success) {
+      const actionName = newStatus === 'Approved' ? 'approved' : newStatus === 'Ready' ? 'verified' : (editingEstimate.value ? 'updated' : 'created')
       const toast = useToast()
-      toast.add({ title: 'Success', description: editingEstimate.value ? 'Estimate updated successfully' : 'Estimate created successfully', color: 'success', icon: 'i-heroicons-check-circle' })
+      toast.add({ title: 'Success', description: `Estimate ${actionName} successfully`, color: 'success', icon: 'i-heroicons-check-circle' })
       await estimatesStore.fetchEstimates(corpUuid)
       if (!editingEstimate.value) estimateCreationStore.clearStore()
 
@@ -377,8 +415,9 @@ const saveEstimate = async (afterSave: 'new' | 'close' = 'close') => {
   }
 }
 
-const handleSaveAndClose = () => saveEstimate('close')
-const handleSaveAndNew = () => saveEstimate('new')
+// Handlers — each passes the correct target status from the approval composable
+const handleActionAndClose = () => saveEstimate('close', targetStatus.value)
+const handleActionAndNew = () => saveEstimate('new', targetStatus.value)
 
 // Sync corporation from TopBar if creating new
 watch(() => corporationStore.selectedCorporationId, (id) => {
@@ -413,12 +452,6 @@ watch(() => form.value.project_uuid, async (uuid) => {
 onMounted(async () => {
   await nextTick()
   if (isReady.value) {
-    if (editingEstimate.value && !hasPermission('project_estimates_edit')) {
-      const toast = useToast()
-      toast.add({ title: 'Access Denied', description: 'You don\'t have permission to edit estimates', color: 'error', icon: 'i-heroicons-x-circle' })
-      navigateToEstimatesList()
-      return
-    }
     if (!editingEstimate.value && !hasPermission('project_estimates_create')) {
       const toast = useToast()
       toast.add({ title: 'Access Denied', description: 'You don\'t have permission to create estimates', color: 'error', icon: 'i-heroicons-x-circle' })

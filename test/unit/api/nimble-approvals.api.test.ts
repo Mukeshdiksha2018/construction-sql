@@ -7,12 +7,10 @@ vi.stubGlobal('createError', createError)
 const mockRequireAuthSession = vi.fn()
 const mockUseRuntimeConfig = vi.fn()
 const mockFetch = vi.fn()
-const mockGetQuery = vi.fn()
 const mockReadBody = vi.fn()
 
 vi.stubGlobal('useRuntimeConfig', mockUseRuntimeConfig)
 vi.stubGlobal('$fetch', mockFetch)
-vi.stubGlobal('getQuery', mockGetQuery)
 vi.stubGlobal('readBody', mockReadBody)
 
 vi.mock('../../../server/utils/auth-session', () => ({
@@ -35,7 +33,7 @@ function makeApprovalEntry(overrides: Record<string, unknown> = {}) {
   }
 }
 
-describe('GET /api/nimble/approvals', () => {
+describe('POST /api/nimble/approvals', () => {
   const mockEvent = { path: '/api/nimble/approvals' }
   const API3_URL = 'https://qa-api3.nimbleproperty.net'
 
@@ -43,18 +41,19 @@ describe('GET /api/nimble/approvals', () => {
     vi.clearAllMocks()
     mockRequireAuthSession.mockReturnValue({ token: 'test-token' })
     mockUseRuntimeConfig.mockReturnValue({ nimbleApi3Url: API3_URL })
-    mockGetQuery.mockReturnValue({ screenType: '21' })
     mockReadBody.mockResolvedValue([CORP_ID_1, CORP_ID_2])
     mockFetch.mockResolvedValue([makeApprovalEntry()])
   })
 
   async function loadHandler() {
     vi.resetModules()
-    const mod = await import('../../../server/api/nimble/approvals.get')
+    const mod = await import('../../../server/api/nimble/approvals.post')
     return (mod as any).default ?? mod
   }
 
-  it('calls Nimble /v1/GetUserApprovalDetails with Bearer token', async () => {
+  // ── Correct Nimble endpoint & method ──────────────────────────────────────
+
+  it('calls Nimble /v1/GetUserApprovalDetails with POST and Bearer token', async () => {
     const handler = await loadHandler()
     await handler(mockEvent)
 
@@ -67,19 +66,7 @@ describe('GET /api/nimble/approvals', () => {
     )
   })
 
-  it('passes screenType as a query param', async () => {
-    mockGetQuery.mockReturnValue({ screenType: '20' })
-    const handler = await loadHandler()
-    await handler(mockEvent)
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ query: { screenType: 20 } }),
-    )
-  })
-
-  it('defaults screenType to 21 when not provided', async () => {
-    mockGetQuery.mockReturnValue({})
+  it('always uses screenType=21 (Bill/PO/Estimate workflow)', async () => {
     const handler = await loadHandler()
     await handler(mockEvent)
 
@@ -89,7 +76,18 @@ describe('GET /api/nimble/approvals', () => {
     )
   })
 
-  it('passes corporation IDs as the request body', async () => {
+  it('never accepts a different screenType — always hardcoded to 21', async () => {
+    // Even if the client sends something in query, the server ignores it
+    const handler = await loadHandler()
+    await handler(mockEvent)
+
+    const call = mockFetch.mock.calls[0]
+    expect(call[1].query.screenType).toBe(21)
+  })
+
+  // ── Corporation IDs ────────────────────────────────────────────────────────
+
+  it('passes corporation IDs as the Nimble request body', async () => {
     const handler = await loadHandler()
     await handler(mockEvent)
 
@@ -99,11 +97,36 @@ describe('GET /api/nimble/approvals', () => {
     )
   })
 
+  it('accepts array body directly', async () => {
+    mockReadBody.mockResolvedValue([CORP_ID_1])
+    const handler = await loadHandler()
+    await handler(mockEvent)
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ body: [CORP_ID_1] }),
+    )
+  })
+
+  it('accepts { corporationIds: [...] } body shape', async () => {
+    mockReadBody.mockResolvedValue({ corporationIds: [CORP_ID_1] })
+    const handler = await loadHandler()
+    await handler(mockEvent)
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ body: [CORP_ID_1] }),
+    )
+  })
+
+  // ── Response mapping ──────────────────────────────────────────────────────
+
   it('maps Nimble response to normalized approval entries', async () => {
     mockFetch.mockResolvedValue([
       makeApprovalEntry({
         corporationID: CORP_ID_1.toUpperCase(),
         userID: '0E557AC7108390BC4599830AA53AF0240000',
+        approvalType: 2,
         isCurrentUser: true,
       }),
     ])
@@ -122,6 +145,19 @@ describe('GET /api/nimble/approvals', () => {
     })
   })
 
+  it('maps approvalType values correctly (1=Entry, 2=Verify, 3=Approve)', async () => {
+    mockFetch.mockResolvedValue([
+      makeApprovalEntry({ approvalType: 1, name: 'Entry User' }),
+      makeApprovalEntry({ approvalType: 2, name: 'Verify User' }),
+      makeApprovalEntry({ approvalType: 3, name: 'Approve User' }),
+    ])
+    const handler = await loadHandler()
+    const result = await handler(mockEvent) as { approvals: any[] }
+
+    const types = result.approvals.map((a: any) => a.approvalType)
+    expect(types).toEqual([1, 2, 3])
+  })
+
   it('lowercases corporationId and userId', async () => {
     mockFetch.mockResolvedValue([
       makeApprovalEntry({ corporationID: 'UPPER-CORP-ID', userID: 'UPPER-USER-ID' }),
@@ -133,6 +169,20 @@ describe('GET /api/nimble/approvals', () => {
     expect(result.approvals[0].userId).toBe('upper-user-id')
   })
 
+  it('isCurrentUser is correctly cast to boolean', async () => {
+    mockFetch.mockResolvedValue([
+      makeApprovalEntry({ isCurrentUser: true }),
+      makeApprovalEntry({ isCurrentUser: false }),
+    ])
+    const handler = await loadHandler()
+    const result = await handler(mockEvent) as { approvals: any[] }
+
+    expect(result.approvals[0].isCurrentUser).toBe(true)
+    expect(result.approvals[1].isCurrentUser).toBe(false)
+  })
+
+  // ── Empty / edge cases ────────────────────────────────────────────────────
+
   it('returns empty approvals when corporation IDs array is empty', async () => {
     mockReadBody.mockResolvedValue([])
     const handler = await loadHandler()
@@ -142,30 +192,35 @@ describe('GET /api/nimble/approvals', () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
-  it('returns empty approvals when body is missing', async () => {
+  it('returns empty approvals when body is null', async () => {
     mockReadBody.mockResolvedValue(null)
     const handler = await loadHandler()
     const result = await handler(mockEvent) as { approvals: any[] }
     expect(result.approvals).toEqual([])
   })
 
-  it('handles { corporationIds: [...] } body shape', async () => {
-    mockReadBody.mockResolvedValue({ corporationIds: [CORP_ID_1] })
-    const handler = await loadHandler()
-    await handler(mockEvent)
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ body: [CORP_ID_1] }),
-    )
-  })
-
-  it('handles Nimble returning empty array', async () => {
+  it('handles Nimble returning an empty array', async () => {
     mockFetch.mockResolvedValue([])
     const handler = await loadHandler()
     const result = await handler(mockEvent) as { approvals: any[] }
     expect(result.approvals).toEqual([])
   })
+
+  it('handles multiple approval entries across different corporations', async () => {
+    mockFetch.mockResolvedValue([
+      makeApprovalEntry({ corporationID: CORP_ID_1, name: 'User One', approvalOrder: 1 }),
+      makeApprovalEntry({ corporationID: CORP_ID_2, name: 'User Two', approvalOrder: 2 }),
+      makeApprovalEntry({ corporationID: CORP_ID_1, name: 'User Three', approvalOrder: 3 }),
+    ])
+    const handler = await loadHandler()
+    const result = await handler(mockEvent) as { approvals: any[] }
+
+    expect(result.approvals).toHaveLength(3)
+    const corp1 = result.approvals.filter((a: any) => a.corporationId === CORP_ID_1.toLowerCase())
+    expect(corp1).toHaveLength(2)
+  })
+
+  // ── Error handling ────────────────────────────────────────────────────────
 
   it('throws 500 when NIMBLE_API3_URL is not configured', async () => {
     mockUseRuntimeConfig.mockReturnValue({ nimbleApi3Url: '' })
@@ -189,19 +244,5 @@ describe('GET /api/nimble/approvals', () => {
     mockFetch.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
     const handler = await loadHandler()
     await expect(handler(mockEvent)).rejects.toMatchObject({ statusCode: 401 })
-  })
-
-  it('handles multiple approval entries across different corporations', async () => {
-    mockFetch.mockResolvedValue([
-      makeApprovalEntry({ corporationID: CORP_ID_1, name: 'User One', approvalOrder: 1 }),
-      makeApprovalEntry({ corporationID: CORP_ID_2, name: 'User Two', approvalOrder: 2 }),
-      makeApprovalEntry({ corporationID: CORP_ID_1, name: 'User Three', approvalOrder: 3 }),
-    ])
-    const handler = await loadHandler()
-    const result = await handler(mockEvent) as { approvals: any[] }
-
-    expect(result.approvals).toHaveLength(3)
-    const corp1Entries = result.approvals.filter((a: any) => a.corporationId === CORP_ID_1.toLowerCase())
-    expect(corp1Entries).toHaveLength(2)
   })
 })

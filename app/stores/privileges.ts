@@ -178,15 +178,15 @@ export const usePrivilegesStore = defineStore('privileges', () => {
   }
 
   /**
-   * Fetch approval policy details for the given corporations (screenType=21 for PO/Bills).
+   * Fetch approval policy details for the given corporations.
+   * Always uses screenType=21 (Bill / Purchase Order / Estimate workflow).
    */
-  const fetchApprovals = async (corporationIds: string[], screenType = 21): Promise<void> => {
+  const fetchApprovals = async (corporationIds: string[]): Promise<void> => {
     if (!corporationIds.length) return
 
     try {
       const response = await $fetch<{ approvals: ApprovalEntry[] }>('/api/nimble/approvals', {
-        method: 'GET',
-        query: { screenType },
+        method: 'POST',
         body: corporationIds,
       })
       approvals.value = response.approvals ?? []

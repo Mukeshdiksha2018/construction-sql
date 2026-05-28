@@ -1,13 +1,16 @@
 import { requireAuthSession } from '../../utils/auth-session'
 
 /**
- * GET /api/nimble/approvals?screenType=21
- * Fetches user approval policy details for the given corporations.
- * Endpoint: {NIMBLE_API3_URL}/v1/GetUserApprovalDetails
+ * POST /api/nimble/approvals
  *
- * Query: screenType (20=Journal, 21=Bill/PO)
- * Body:  corporationIds string[]
- * Response: array of approval entries
+ * Fetches user approval policy details from Nimble for Bill/PO workflow
+ * (screenType=21 — hardcoded; this application only handles construction PO/estimates).
+ *
+ * Endpoint: {NIMBLE_API3_URL}/v1/GetUserApprovalDetails?screenType=21
+ *
+ * Body: string[]  — list of corporation IDs to check
+ *
+ * Response: { approvals: ApprovalEntry[] }
  */
 export default defineEventHandler(async (event) => {
   const session = requireAuthSession(event)
@@ -18,15 +21,19 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: 'NIMBLE_API3_URL is not configured' })
   }
 
-  const query = getQuery(event)
-  const screenType = Number(query.screenType ?? 21)
-
   const body = await readBody(event)
-  const corporationIds: string[] = Array.isArray(body) ? body : (Array.isArray(body?.corporationIds) ? body.corporationIds : [])
+  const corporationIds: string[] = Array.isArray(body)
+    ? body
+    : Array.isArray(body?.corporationIds)
+      ? body.corporationIds
+      : []
 
   if (!corporationIds.length) {
     return { approvals: [] }
   }
+
+  // screenType=21 → Bill / Purchase Order approval workflow
+  const SCREEN_TYPE = 21
 
   try {
     const data = await $fetch<Array<{
@@ -40,7 +47,7 @@ export default defineEventHandler(async (event) => {
     }>>(`${api3Url}/v1/GetUserApprovalDetails`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${session.token}` },
-      query: { screenType },
+      query: { screenType: SCREEN_TYPE },
       body: corporationIds,
     })
 
