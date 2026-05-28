@@ -4,12 +4,17 @@
       <div class="flex items-center gap-2 flex-shrink-0 w-[200px]" />
 
       <div class="flex items-center gap-2 flex-1 justify-center max-w-md mx-4">
-        <SharedCorporationSelect
-          v-model="selectedCorporationId"
-          class="w-full"
-          size="sm"
-          @change="onCorporationChange"
-        />
+        <ClientOnly>
+          <SharedCorporationSelect
+            v-model="selectedCorporationId"
+            class="w-full"
+            size="sm"
+            @change="onCorporationChange"
+          />
+          <template #fallback>
+            <USkeleton class="h-8 w-full rounded-md" />
+          </template>
+        </ClientOnly>
       </div>
 
       <div class="flex items-center gap-2">
@@ -44,35 +49,37 @@
         />
 
         <div class="hidden lg:flex items-center gap-3">
-          <UDropdownMenu :items="userMenuItems" :ui="{ content: 'w-56' }">
-            <UButton
-              variant="soft"
-              color="neutral"
-              class="group flex items-center gap-3 px-3 py-1 rounded-lg transition-colors hover:bg-brand-50 dark:hover:bg-brand-900/20"
-            >
-              <div class="w-8 h-8 rounded-full bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center overflow-hidden ring-2 ring-brand-200 dark:ring-brand-800 group-hover:ring-brand-400 dark:group-hover:ring-brand-600 transition-colors">
-                <UAvatar
-                  :alt="userDisplayName"
-                  size="xs"
-                  :text="userInitials"
+          <ClientOnly>
+            <UDropdownMenu :items="userMenuItems" :ui="{ content: 'w-56' }">
+              <UButton
+                variant="soft"
+                color="neutral"
+                class="group flex items-center gap-3 px-3 py-1 rounded-lg transition-colors hover:bg-brand-50 dark:hover:bg-brand-900/20"
+              >
+                <div class="w-8 h-8 rounded-full bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center overflow-hidden ring-2 ring-brand-200 dark:ring-brand-800 group-hover:ring-brand-400 dark:group-hover:ring-brand-600 transition-colors">
+                  <UAvatar
+                    :alt="userDisplayName"
+                    size="xs"
+                    :text="userInitials"
+                  />
+                </div>
+
+                <div class="text-left min-w-0">
+                  <div class="font-medium text-default text-sm truncate max-w-[140px]">
+                    {{ userDisplayName }}
+                  </div>
+                  <div class="text-xs text-muted truncate max-w-[140px]">
+                    {{ userSubtitle }}
+                  </div>
+                </div>
+
+                <UIcon
+                  name="i-lucide-chevron-down"
+                  class="w-4 h-4 text-muted group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors shrink-0"
                 />
-              </div>
-
-              <div class="text-left min-w-0">
-                <div class="font-medium text-default text-sm truncate max-w-[140px]">
-                  {{ userDisplayName }}
-                </div>
-                <div class="text-xs text-muted truncate max-w-[140px]">
-                  {{ userSubtitle }}
-                </div>
-              </div>
-
-              <UIcon
-                name="i-lucide-chevron-down"
-                class="w-4 h-4 text-muted group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors shrink-0"
-              />
-            </UButton>
-          </UDropdownMenu>
+              </UButton>
+            </UDropdownMenu>
+          </ClientOnly>
         </div>
       </div>
     </nav>

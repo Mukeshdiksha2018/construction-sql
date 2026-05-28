@@ -851,7 +851,7 @@
                             </td>
                             <td v-if="laborEstimateType === 'per-sqft'" class="px-3 py-2 align-top">
                               <UInput
-                                :model-value="row.area_sq_ft ?? ''"
+                                :model-value="row.area_sq_ft != null ? String(row.area_sq_ft) : ''"
                                 type="number"
                                 size="xs"
                                 min="0"
@@ -880,7 +880,7 @@
                             </td>
                             <td v-if="laborEstimateType === 'hourly-wage'" class="px-3 py-2 align-top">
                               <UInput
-                                :model-value="row.num_hours ?? ''"
+                                :model-value="row.num_hours != null ? String(row.num_hours) : ''"
                                 type="number"
                                 size="xs"
                                 min="0"
@@ -896,7 +896,7 @@
                                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ currencySymbol }}</span>
                                 <UInput
                                   v-if="laborEstimateType === 'per-sqft'"
-                                  :model-value="row.amount_per_sqft ?? ''"
+                                  :model-value="row.amount_per_sqft != null ? String(row.amount_per_sqft) : ''"
                                   type="number"
                                   size="xs"
                                   step="0.01"
@@ -908,7 +908,7 @@
                                 />
                                 <UInput
                                   v-else-if="laborEstimateType === 'per-room'"
-                                  :model-value="row.amount_per_room ?? ''"
+                                  :model-value="row.amount_per_room != null ? String(row.amount_per_room) : ''"
                                   type="number"
                                   size="xs"
                                   step="0.01"
@@ -920,7 +920,7 @@
                                 />
                                 <UInput
                                   v-else-if="laborEstimateType === 'hourly-wage'"
-                                  :model-value="row.hourly_wage ?? ''"
+                                  :model-value="row.hourly_wage != null ? String(row.hourly_wage) : ''"
                                   type="number"
                                   size="xs"
                                   step="0.01"
@@ -936,7 +936,7 @@
                               <div v-if="laborEstimateType === 'manual'" class="flex items-center gap-1">
                                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ currencySymbol }}</span>
                                 <UInput
-                                  :model-value="row.manual_amount ?? ''"
+                                  :model-value="row.manual_amount != null ? String(row.manual_amount) : ''"
                                   type="number"
                                   size="xs"
                                   min="0"
@@ -1141,7 +1141,7 @@
                             <div class="flex items-center gap-1">
                               <span class="text-xs text-gray-500 dark:text-gray-400">{{ currencySymbol }}</span>
                               <UInput
-                                :model-value="row.amount ?? ''"
+                                :model-value="row.amount != null ? String(row.amount) : ''"
                                 type="number"
                                 step="0.01"
                                 min="0"
@@ -1280,7 +1280,7 @@
                             <ItemTypeSelect
                               :key="`item-type-${index}-${item.category}`"
                               v-model="item.item_type"
-                              :corporation-uuid="props.editingEstimate ? corpStore.selectedCorporation?.uuid : estimateCreationStore.selectedCorporationUuid"
+                              :corporation-uuid="props.editingEstimate ? corpStore.selectedCorporation?.id : (estimateCreationStore.selectedCorporationUuid ?? undefined)"
                               :project-uuid="props.projectUuid"
                               :category="item.category"
                               placeholder="Select type"
@@ -1295,7 +1295,7 @@
                           <td class="min-w-0 px-3 py-2 align-middle">
                             <ItemSelect
                               v-model="item.item_uuid"
-                              :corporation-uuid="props.editingEstimate ? corpStore.selectedCorporation?.uuid : estimateCreationStore.selectedCorporationUuid"
+                              :corporation-uuid="props.editingEstimate ? corpStore.selectedCorporation?.id : (estimateCreationStore.selectedCorporationUuid ?? undefined)"
                               :project-uuid="props.projectUuid"
                               :cost-code-uuid="selectedCostCode?.uuid"
                               :item-type-uuid="item.item_type"
@@ -1313,7 +1313,7 @@
                           <td class="min-w-0 px-3 py-2 align-middle">
                             <SequenceSelect
                               v-model="item.item_uuid"
-                              :corporation-uuid="props.editingEstimate ? corpStore.selectedCorporation?.uuid : estimateCreationStore.selectedCorporationUuid"
+                              :corporation-uuid="props.editingEstimate ? corpStore.selectedCorporation?.id : (estimateCreationStore.selectedCorporationUuid ?? undefined)"
                               :project-uuid="props.projectUuid"
                               :cost-code-uuid="selectedCostCode?.uuid"
                               :item-type-uuid="item.item_type"
@@ -1330,7 +1330,7 @@
                           <td class="min-w-0 px-3 py-2 align-middle">
                             <VendorSelect
                               v-model="item.preferred_vendor_uuid"
-                              :corporation-uuid="props.editingEstimate ? corpStore.selectedCorporation?.uuid : estimateCreationStore.selectedCorporationUuid"
+                              :corporation-uuid="props.editingEstimate ? corpStore.selectedCorporation?.id : (estimateCreationStore.selectedCorporationUuid ?? undefined)"
                               placeholder="Select vendor"
                               size="xs"
                               className="w-full min-w-0"
@@ -1411,7 +1411,7 @@
                           <td class="min-w-0 px-3 py-2 align-middle">
                           <UOMSelect
                               v-model="item.unit_uuid"
-                              :corporation-uuid="corpStore.selectedCorporation?.uuid"
+                              :corporation-uuid="corpStore.selectedCorporation?.id"
                               placeholder="UOM"
                               size="xs"
                               className="w-full min-w-0"
@@ -1921,11 +1921,11 @@ const activeTab = ref('labor')
 
 // Labor estimation state
 const laborEstimateType = ref('manual')
-const laborManualAmount = ref<number | string>('')
-const laborAmountPerRoom = ref<number | string>('')
-const laborAmountPerSqft = ref<number | string>('')
-const laborNumberOfHours = ref<number | string>('')
-const laborHourlyWage = ref<number | string>('')
+const laborManualAmount = ref<string>('')
+const laborAmountPerRoom = ref<string>('')
+const laborAmountPerSqft = ref<string>('')
+const laborNumberOfHours = ref<string>('')
+const laborHourlyWage = ref<string>('')
 // Location-wise labor rows (when enable_location_wise is true)
 // User enters only ONE base per row: area+amount_per_sqft, rooms+amount_per_room, or hours+hourly_wage
 // Row Amount = product of base × rate; Total Labor Amount = sum of row Amounts
@@ -1944,7 +1944,7 @@ const laborLocationWiseRows = ref<Array<{
 
 // Material estimation state
 const materialEstimateType = ref('item-wise')
-const materialManualAmount = ref<number | string>('')
+const materialManualAmount = ref<string>('')
 const materialItems = ref<any[]>([])
 const materialItemWiseLocations = ref<any[]>([])
 const activeDescriptionIndex = ref<number | null>(null)
@@ -2038,7 +2038,7 @@ const getLocationWiseRowAmount = (row: any) =>
     : getLocationWiseRowAmountUtil(row)
 
 // Total estimation state (for only_total projects)
-const totalManualAmount = ref<number | string>('')
+const totalManualAmount = ref<string>('')
 
 const laborTotalAmount = computed(() => {
   // Use location-wise rows for total when project is location-wise and type matches (even when Contingency tab is active)
@@ -2081,9 +2081,9 @@ const isRefreshingMaterialItems = ref(false)
 
 const currentCorporationUuid = computed(() => {
   if (props.editingEstimate) {
-    return corpStore.selectedCorporation?.uuid || ''
+    return corpStore.selectedCorporation?.id || ''
   }
-  return estimateCreationStore.selectedCorporationUuid || corpStore.selectedCorporation?.uuid || ''
+  return estimateCreationStore.selectedCorporationUuid || corpStore.selectedCorporation?.id || ''
 })
 
 /** Dummy model for hidden VendorSelect used only to open add-vendor (Nimble or legacy). */
@@ -2091,7 +2091,7 @@ const materialVendorQuickAddModel = ref<string | undefined>(undefined)
 const materialVendorQuickAddRef = ref<InstanceType<typeof VendorSelect> | null>(null)
 
 const openMaterialVendorAddModal = () => {
-  materialVendorQuickAddRef.value?.openAddModal()
+  ;(materialVendorQuickAddRef.value as any)?.openAddModal()
 }
 
 /** Keep row dropdowns in sync after Nimble save (VendorSelect also refreshes on close). */
@@ -2999,7 +2999,7 @@ const enrichMaterialItemsWithSequence = (savedItems: any[], costCodeUuid: string
   const preferredItemsMap: Map<string, any> = new Map(
     filteredPreferredItems
       .map((item: any) => [getPreferredItemIdentifier(item), item as any] as const)
-      .filter(([id]) => !!id)
+      .filter(([id]: readonly [string | undefined, any]) => !!id)
   )
 
   // Enrich saved items with current sequence values and updated names
@@ -3181,7 +3181,7 @@ const handlePreferredItemsModalSave = async (payload: {
   let configuration = configurationsStore.getConfigurationById(costCodeUuid)
   if (!configuration && payload.corporationUuid) {
     try {
-      await configurationsStore.fetchConfigurations(payload.corporationUuid, true, false)
+      await configurationsStore.fetchConfigurations(payload.corporationUuid, true)
       configuration = configurationsStore.getConfigurationById(costCodeUuid)
     } catch (err) {
       console.error('[EstimateLineItemsTable] Error refreshing configuration before saving preferred items:', err)
@@ -3281,7 +3281,7 @@ const handlePreferredItemsModalSave = async (payload: {
     // Refresh from API so Item/Spec dropdowns bind to the real persisted identifiers.
     if (payload.corporationUuid) {
       try {
-        await configurationsStore.fetchConfigurations(payload.corporationUuid, true, false)
+        await configurationsStore.fetchConfigurations(payload.corporationUuid, true)
         const refreshedConfiguration = configurationsStore.getConfigurationById(configuration.uuid)
         if (Array.isArray(refreshedConfiguration?.preferred_items)) {
           const refreshedPreferredItems = refreshedConfiguration.preferred_items
@@ -4849,7 +4849,7 @@ const openEstimateModal = async (costCode: any): Promise<void> => {
   selectedCostCode.value = cc
   
   // When editing, ensure we have the configuration with preferred items loaded
-  if (props.editingEstimate && cc.uuid && corpStore.selectedCorporation?.uuid) {
+  if (props.editingEstimate && cc.uuid && corpStore.selectedCorporation?.id) {
     // Check if we have the config in store with preferred_items
     const getById = configurationsStore.getConfigurationById
     const existingConfig = typeof getById === 'function'
@@ -4860,7 +4860,7 @@ const openEstimateModal = async (costCode: any): Promise<void> => {
     if (!existingConfig || !Array.isArray(existingConfig.preferred_items) || existingConfig.preferred_items.length === 0) {
       try {
         const response: any = await $fetch('/api/cost-code-configurations', {
-          query: { corporation_uuid: corpStore.selectedCorporation.uuid },
+          query: { corporation_uuid: corpStore.selectedCorporation.id },
         })
         
         const data = response?.data || response || []
@@ -4871,7 +4871,7 @@ const openEstimateModal = async (costCode: any): Promise<void> => {
         if (config && config.preferred_items) {
           // Update the store with the fetched configuration
           // This ensures ItemSelect and SequenceSelect can find the preferred items
-          await configurationsStore.fetchConfigurations(corpStore.selectedCorporation.uuid, false, false) // Force API fetch
+          await configurationsStore.fetchConfigurations(corpStore.selectedCorporation.id, false) // Force API fetch
         }
       } catch (err: any) {
         console.error('[EstimateLineItemsTable] Error fetching configuration when opening modal:', err)
@@ -5016,7 +5016,7 @@ const openEstimateModal = async (costCode: any): Promise<void> => {
   }
 
   // Ensure item types and vendors are loaded for category / preferred vendor columns
-  const corpUuid = props.editingEstimate ? corpStore.selectedCorporation?.uuid : estimateCreationStore.selectedCorporationUuid
+  const corpUuid = props.editingEstimate ? corpStore.selectedCorporation?.id : estimateCreationStore.selectedCorporationUuid
   if (corpUuid) {
     itemTypesStore.fetchItemTypes(corpUuid).catch(() => {})
     vendorStore.fetchVendors(corpUuid).catch(() => {})
@@ -5065,7 +5065,7 @@ const openEstimateModal = async (costCode: any): Promise<void> => {
       const response = await $fetch('/api/estimate-material-items', {
         query: {
           estimate_line_item_uuid: cc.uuid,
-          corporation_uuid: corpStore.selectedCorporation?.uuid,
+          corporation_uuid: corpStore.selectedCorporation?.id,
           estimate_uuid: props.estimateUuid
         }
       }) as any
@@ -5375,7 +5375,7 @@ const fetchProjectFilteredConfigurations = async (corporationUuid: string, proje
 const fetchData = async () => {
   if (props.editingEstimate) {
     // When editing, use global stores
-    if (!corpStore.selectedCorporation?.uuid) {
+    if (!corpStore.selectedCorporation?.id) {
       divisions.value = []
       configurations.value = []
       return
@@ -5384,12 +5384,12 @@ const fetchData = async () => {
     loading.value = true
     try {
       await Promise.all([
-        divisionsStore.fetchDivisions(corpStore.selectedCorporation.uuid),
+        divisionsStore.fetchDivisions(corpStore.selectedCorporation.id),
         // Fetch configurations with project filtering for better performance using dedicated API
-        fetchProjectFilteredConfigurations(corpStore.selectedCorporation.uuid, props.projectUuid)
+        fetchProjectFilteredConfigurations(corpStore.selectedCorporation.id, props.projectUuid)
       ])
 
-      divisions.value = divisionsStore.getActiveDivisions(corpStore.selectedCorporation.uuid) || []
+      divisions.value = divisionsStore.getActiveDivisions(corpStore.selectedCorporation.id) || []
       // configurations.value is set by fetchProjectFilteredConfigurations
     } catch (error) {
       console.error('Error fetching cost code data (editing mode):', error)
@@ -5430,7 +5430,7 @@ const fetchData = async () => {
 
 // Watch for corporation changes - use appropriate store based on editingEstimate
 watch(() => props.editingEstimate 
-  ? corpStore.selectedCorporation?.uuid 
+  ? corpStore.selectedCorporation?.id 
   : estimateCreationStore.selectedCorporationUuid, async (newUuid, oldUuid) => {
   if (newUuid && newUuid !== oldUuid) {
     // Reset population flag on corp change to allow re-populating for another estimate/corp
@@ -5671,7 +5671,7 @@ watch(() => props.projectUuid, async (newProjectUuid) => {
 
 // Watch for corporation/project changes to load item types
 watch(() => [
-  props.editingEstimate ? corpStore.selectedCorporation?.uuid : estimateCreationStore.selectedCorporationUuid,
+  props.editingEstimate ? corpStore.selectedCorporation?.id : estimateCreationStore.selectedCorporationUuid,
   props.projectUuid
 ] as const, async ([corpUuid, projectUuid]) => {
   if (corpUuid && projectUuid && typeof window !== 'undefined' && !itemTypesStore.loading) {
@@ -5851,16 +5851,16 @@ watch(() => activeTab.value, (newTab) => {
 
 onMounted(async () => {
   // For editing, use global stores
-  if (props.editingEstimate && corpStore.selectedCorporation?.uuid) {
+  if (props.editingEstimate && corpStore.selectedCorporation?.id) {
     await fetchData()
     // ensure UOM list is present
-    if (!uomStore.getActiveUOM(corpStore.selectedCorporation.uuid)?.length) {
-      uomStore.fetchUOM(corpStore.selectedCorporation.uuid).catch(() => {})
+    if (!uomStore.getActiveUOM(corpStore.selectedCorporation.id)?.length) {
+      uomStore.fetchUOM(corpStore.selectedCorporation.id).catch(() => {})
     }
     // ensure item types are loaded (skip in test environments)
     const isTestEnv = typeof global !== 'undefined' && (global as any).vitest
     if (!isTestEnv) {
-      const corpUuid = corpStore.selectedCorporation.uuid
+      const corpUuid = corpStore.selectedCorporation.id
       const projectUuid = props.projectUuid
       if (!itemTypesStore.hasCachedData(corpUuid)) {
         itemTypesStore.fetchItemTypes(corpUuid).catch(() => {})

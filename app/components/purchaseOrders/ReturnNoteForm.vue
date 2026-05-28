@@ -1,0 +1,3211 @@
+﻿<template>
+  <div class="flex flex-col gap-4">
+    <div class="flex flex-col lg:flex-row gap-4">
+      <div class="flex-1">
+        <UCard variant="soft">
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <!-- Corporation -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Corporation <span class="text-red-500">*</span>
+            </label>
+            <CorporationSelect
+              :model-value="form.corporation_uuid"
+              :disabled="props.readonly"
+              placeholder="Select corporation"
+              size="sm"
+              class="w-full"
+              @update:model-value="handleCorporationChange"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Return Number
+            </label>
+            <UInput
+              :model-value="form.return_number"
+              placeholder="Auto-generated"
+              size="sm"
+              class="w-full"
+              icon="i-heroicons-hashtag"
+              disabled
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Return Type <span class="text-red-500">*</span>
+            </label>
+            <URadioGroup
+              v-model="returnType"
+              :items="returnTypeOptions"
+              orientation="horizontal"
+              size="sm"
+              class="w-full"
+              :disabled="props.readonly"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Entry Date <span class="text-red-500">*</span>
+            </label>
+            <UPopover v-model:open="entryDatePopoverOpen" :disabled="props.readonly">
+              <UButton
+                color="neutral"
+                variant="outline"
+                icon="i-heroicons-calendar-days"
+                class="w-full justify-start"
+                size="sm"
+                :disabled="props.readonly"
+              >
+                {{ entryDateDisplayText }}
+              </UButton>
+              <template #content>
+                <UCalendar v-model="entryDateValue" class="p-2" :disabled="props.readonly" @update:model-value="entryDatePopoverOpen = false" />
+              </template>
+            </UPopover>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Project Name <span class="text-red-500">*</span>
+            </label>
+            <ProjectSelect
+              :model-value="form.project_uuid"
+              :corporation-uuid="form.corporation_uuid || corpStore.selectedCorporation?.uuid"
+              :disabled="!form.corporation_uuid && !corpStore.selectedCorporation || props.readonly"
+              placeholder="Select project"
+              size="sm"
+              class="w-full"
+              @update:model-value="handleProjectChange"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Vendor
+            </label>
+            <VendorSelect
+              :model-value="form.vendor_uuid || undefined"
+              :corporation-uuid="form.corporation_uuid || corpStore.selectedCorporation?.uuid"
+              :disabled="!form.corporation_uuid && !corpStore.selectedCorporation || props.readonly"
+              placeholder="Select vendor"
+              size="sm"
+              class="w-full"
+              @update:model-value="handleVendorChange"
+            />
+          </div>
+
+          <div v-if="returnType === 'purchase_order'">
+            <label class="block text-xs font-medium text-default mb-1">
+              Purchase Order <span class="text-red-500">*</span>
+            </label>
+            <USelectMenu
+              v-model="poOption"
+              :items="poOptions"
+              :disabled="!props.form.project_uuid || props.readonly"
+              placeholder="Select PO"
+              size="sm"
+              class="w-full"
+              value-key="value"
+              label-key="label"
+              searchable
+              clearable
+            >
+              <template #item-label="{ item }">
+                <div class="flex items-center justify-between w-full">
+                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <span class="truncate font-medium">{{ item.label }}</span>
+                    <UBadge
+                      :color="item.type_color"
+                      variant="solid"
+                      size="xs"
+                    >
+                      {{ item.type_label }}
+                    </UBadge>
+                  </div>
+                </div>
+              </template>
+            </USelectMenu>
+          </div>
+
+          <div v-if="returnType === 'change_order'">
+            <label class="block text-xs font-medium text-default mb-1">
+              Change Order <span class="text-red-500">*</span>
+            </label>
+            <USelectMenu
+              v-model="coOption"
+              :items="coOptions"
+              :disabled="!props.form.project_uuid || props.readonly"
+              placeholder="Select Change Order"
+              size="sm"
+              class="w-full"
+              value-key="value"
+              label-key="label"
+              searchable
+              clearable
+            >
+              <template #item-label="{ item }">
+                <div class="flex items-center justify-between w-full">
+                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <span class="truncate font-medium">{{ item.label }}</span>
+                    <UBadge
+                      :color="item.type_color"
+                      variant="solid"
+                      size="xs"
+                    >
+                      {{ item.type_label }}
+                    </UBadge>
+                  </div>
+                </div>
+              </template>
+            </USelectMenu>
+          </div>
+
+          <div v-if="returnType === 'from_inventory'">
+            <label class="block text-xs font-medium text-default mb-1">
+              Storage Location <span class="text-red-500">*</span>
+            </label>
+            <StorageLocationSelect
+              :model-value="form.storage_location_uuid || undefined"
+              :corporation-uuid="form.corporation_uuid || corpStore.selectedCorporation?.uuid"
+              :project-uuid="form.project_uuid || undefined"
+              placeholder="Select storage location"
+              size="sm"
+              class="w-full"
+              :disabled="!form.project_uuid || props.readonly"
+              @update:model-value="(value) => updateFormField('storage_location_uuid', value || null)"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Reference Number
+            </label>
+            <UInput
+              :model-value="form.reference_number || ''"
+              placeholder="Reference / Invoice number"
+              size="sm"
+              class="w-full"
+              icon="i-heroicons-document-text"
+              :disabled="props.readonly"
+              @update:model-value="(value) => updateFormField('reference_number', value)"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Returned By
+            </label>
+            <div class="flex items-center gap-2">
+              <UAvatar
+                v-if="returnedByOption?.avatar"
+                v-bind="returnedByOption.avatar"
+                size="xs"
+                class="flex-shrink-0"
+              />
+              <USelectMenu
+                v-model="returnedByOption"
+                :items="returnedByOptions"
+                placeholder="Select team member"
+                size="sm"
+                class="flex-1 min-w-0"
+                value-key="value"
+                searchable
+                clearable
+                :disabled="props.readonly"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Return Location
+            </label>
+            <LocationSelect
+              :model-value="form.location_uuid || null"
+              :corporation-uuid="form.corporation_uuid || corpStore.selectedCorporation?.uuid"
+              size="sm"
+              class="w-full"
+              :disabled="props.readonly"
+              @update:model-value="(value) => updateFormField('location_uuid', value)"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Status
+            </label>
+            <USelectMenu
+              v-model="statusOption"
+              :items="statusOptions"
+              placeholder="Select status"
+              size="sm"
+              class="w-full"
+              value-key="value"
+              :disabled="true"
+            />
+          </div>
+        </div>
+        </UCard>
+      </div>
+    </div>
+
+    <!-- Receipt Notes Validation Error -->
+    <UAlert
+      v-if="receiptNotesValidationError"
+      icon="i-heroicons-exclamation-triangle"
+      color="error"
+      variant="soft"
+      :title="receiptNotesValidationError"
+      class="mb-4"
+    />
+
+    <div v-if="(returnType === 'purchase_order' && form.purchase_order_uuid) || (returnType === 'change_order' && form.change_order_uuid) || (returnType === 'from_inventory' && form.storage_location_uuid)" class="space-y-4">
+      <ReturnNoteItemsTable
+        :items="returnItems"
+        :loading="poItemsLoading || checkingReceiptNotes"
+        :error="poItemsError || receiptNotesValidationError"
+        :corporation-uuid="(form.corporation_uuid || corpStore.selectedCorporation?.uuid) ?? null"
+        :return-type="returnType"
+        :over-return-items="overReturnItems"
+        :readonly="props.readonly || !!receiptNotesValidationError"
+        :show-location-column="showReturnLocationColumn"
+        :removed-return-items="removedReturnItems"
+        :editing-return-note="props.editingReturnNote"
+        @cost-code-change="handleCostCodeChange"
+        @return-quantity-change="handleReturnQuantityChange"
+        @add-row="handleAddReturnItem"
+        @remove-row="handleRemoveReturnItem"
+        @update:removed-return-items="handleRemovedReturnItemsUpdate"
+        @restore-item="handleRestoreItem"
+        @restore-all-items="handleRestoreAllItems"
+      />
+    </div>
+
+    <!-- File Upload, Notes, and Financial Breakdown Section -->
+    <div v-if="(returnType === 'purchase_order' && form.purchase_order_uuid) || (returnType === 'change_order' && form.change_order_uuid) || (returnType === 'from_inventory' && form.storage_location_uuid)" class="mt-6 flex flex-col lg:flex-row gap-6">
+      <!-- File Upload Section (Left) -->
+      <div class="w-full lg:w-auto lg:flex-shrink-0 lg:max-w-md">
+        <!-- Upload Section -->
+        <UCard variant="soft" class="mb-3">
+          <div class="flex justify-between items-center mb-3">
+            <h4 class="text-base font-bold text-default flex items-center gap-2 border-b border-default/60 pb-2">
+              <UIcon name="i-heroicons-cloud-arrow-up-solid" class="w-5 h-5 text-primary-500" />
+              File Upload
+            </h4>
+            <span class="text-xs text-muted bg-elevated px-2 py-1 rounded border border-default/60">
+              {{ attachmentCount }} files
+              <span
+                v-if="uploadedAttachmentCount > 0"
+                class="text-success-600 dark:text-success-400"
+              >
+                ({{ uploadedAttachmentCount }} uploaded)
+              </span>
+            </span>
+          </div>
+
+          <UFileUpload
+            v-slot="{ open }"
+            v-model="uploadedFiles"
+            accept=".pdf,.png,.jpg,.jpeg"
+            multiple
+            :disabled="props.readonly"
+          >
+            <div class="space-y-2">
+              <UButton
+                :label="uploadedFiles.length > 0 ? 'Add more files' : 'Choose files'"
+                color="primary"
+                variant="solid"
+                size="sm"
+                icon="i-heroicons-document-plus"
+                :disabled="props.readonly"
+                @click="open()"
+              />
+
+              <p
+                v-if="fileUploadErrorMessage"
+                class="text-xs text-error-600 flex items-center gap-1 p-2 bg-error-50 rounded border border-error-200 dark:bg-error-500/10 dark:border-error-500/30"
+              >
+                <UIcon name="i-heroicons-exclamation-triangle" class="w-3 h-3 flex-shrink-0" />
+                <span class="truncate">{{ fileUploadErrorMessage }}</span>
+              </p>
+
+              <p class="text-[11px] text-muted text-center">
+                PDF or image files · Maximum size 10MB each
+              </p>
+            </div>
+          </UFileUpload>
+        </UCard>
+
+        <!-- Uploaded Files List -->
+        <UCard variant="soft">
+          <div class="flex justify-between items-center mb-3">
+            <h4 class="text-base font-bold text-default flex items-center gap-2 border-b border-default/60 pb-2">
+              <UIcon name="i-heroicons-document-text-solid" class="w-5 h-5 text-primary-500" />
+              Uploaded Files
+            </h4>
+          </div>
+
+          <div
+            v-if="!form.attachments || form.attachments.length === 0"
+            class="flex flex-col items-center justify-center min-h-[200px] text-muted p-6"
+          >
+            <UIcon name="i-heroicons-document" class="w-12 h-12 mb-3 text-muted" />
+            <p class="text-sm font-medium mb-1">No files uploaded</p>
+            <p class="text-xs text-muted text-center">
+              Use the button above to attach return documents.
+            </p>
+          </div>
+
+          <div v-else class="max-h-[300px] overflow-y-auto">
+            <div class="space-y-2">
+              <div
+                v-for="(attachment, index) in form.attachments"
+                :key="attachment.uuid || attachment.tempId || `attachment-${index}`"
+                class="flex items-center gap-2 p-2 bg-elevated rounded-md border border-default text-xs hover:bg-accented transition-colors"
+              >
+                <UIcon
+                  :name="attachment.uuid || attachment.isUploaded ? 'i-heroicons-check-circle' : 'i-heroicons-arrow-up-tray'"
+                  class="w-3 h-3"
+                  :class="attachment.uuid || attachment.isUploaded ? 'text-success-600' : 'text-warning-500'"
+                />
+                <span class="truncate flex-1 text-default">
+                  {{ attachment.document_name || attachment.name || `File ${Number(index) + 1}` }}
+                </span>
+                <span class="text-[11px] text-muted">
+                  {{ formatFileSize(attachment.size || attachment.file_size) }}
+                </span>
+                <div class="flex items-center gap-1">
+                  <UButton
+                    icon="i-heroicons-eye-solid"
+                    color="neutral"
+                    variant="soft"
+                    size="xs"
+                    class="p-1 h-auto text-xs"
+                    @click.stop="previewFile(attachment)"
+                  />
+                  <UButton
+                    icon="mingcute:delete-fill"
+                    color="error"
+                    variant="soft"
+                    size="xs"
+                    class="p-1 h-auto text-xs"
+                    :disabled="props.readonly"
+                    @click.stop="removeAttachment(Number(index))"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </UCard>
+      </div>
+
+      <!-- Notes Section (Middle) -->
+      <div class="w-full lg:flex-1">
+        <UCard variant="soft">
+          <label class="block text-xs font-medium text-default mb-1">
+            Notes
+          </label>
+          <UTextarea
+            :model-value="form.notes || ''"
+            placeholder="Additional notes about this return"
+            size="sm"
+            :rows="4"
+            class="w-full"
+            autoresize
+            :disabled="props.readonly"
+            @update:model-value="(value) => updateFormField('notes', value)"
+          />
+        </UCard>
+      </div>
+
+      <!-- Financial Breakdown (Right) -->
+      <div class="w-full lg:flex-1 flex justify-start lg:justify-end">
+        <div class="w-full lg:w-auto lg:min-w-[520px]">
+          <!-- Always read-only like ReceiptNoteForm: PO/CO % drive $ when return qty changes; not props.readonly -->
+          <FinancialBreakdown
+            :item-total="returnItemTotal"
+            :form-data="form"
+            :read-only="true"
+            item-total-label="Item Total"
+            total-label="Return Total"
+            total-field-name="return_total_with_charges_taxes"
+            @update="handleFinancialBreakdownUpdate"
+          />
+        </div>
+      </div>
+    </div>
+
+    <UCard v-else variant="soft" class="mt-6">
+      <label class="block text-xs font-medium text-default mb-1">
+        Notes
+      </label>
+      <UTextarea
+        :model-value="form.notes || ''"
+        placeholder="Additional notes about this return"
+        size="sm"
+        :rows="4"
+        class="w-full"
+        autoresize
+        @update:model-value="(value) => updateFormField('notes', value)"
+      />
+    </UCard>
+
+    <!-- File Preview Modal -->
+    <UModal 
+      v-model:open="showFilePreviewModal"
+      :ui="{ 
+        body: 'p-0 overflow-hidden',
+        width: 'w-[95vw] max-w-[95vw]',
+        height: 'h-[100vh] max-h-[100vh]'
+      }"
+    >
+      <template #header>
+        <div class="flex items-center justify-between w-full">
+          <h3 class="text-base font-semibold">File Preview</h3>
+          <UButton icon="i-heroicons-x-mark" size="xs" variant="solid" color="neutral" @click="closeFilePreview" />
+        </div>
+      </template>
+      <template #body>
+        <div class="h-[calc(100vh-8rem)] overflow-hidden">
+          <FilePreview :attachment="selectedFileForPreview" />
+        </div>
+      </template>
+    </UModal>
+
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref, watch, onMounted, nextTick } from "vue";
+import { storeToRefs } from "pinia";
+import { CalendarDate, DateFormatter, getLocalTimeZone } from "@internationalized/date";
+import { useCorporationStore } from "~/stores/corporations";
+import { usePurchaseOrdersStore } from "~/stores/purchaseOrders";
+import { usePurchaseOrderResourcesStore } from "~/stores/purchaseOrderResources";
+import { useChangeOrdersStore } from "~/stores/changeOrders";
+import { useProjectsStore } from "~/stores/projects";
+import { useVendorStore } from "~/stores/vendors";
+import { useUTCDateFormat } from "~/composables/useUTCDateFormat";
+import { useCurrencyFormat } from "~/composables/useCurrencyFormat";
+import { useLocalPOCOData } from "~/composables/useLocalPOCOData";
+import ProjectSelect from "~/components/shared/ProjectSelect.vue";
+import VendorSelect from "~/components/shared/VendorSelect.vue";
+import LocationSelect from "~/components/shared/LocationSelect.vue";
+import CorporationSelect from "~/components/shared/CorporationSelect.vue";
+import StorageLocationSelect from "~/components/shared/StorageLocationSelect.vue";
+import ReturnNoteItemsTable from "~/components/purchaseOrders/ReturnNoteItemsTable.vue";
+// userProfiles store not available - simplified
+import { useNimbleSessionStore } from "~/stores/nimbleSession";
+import { useItemTypesStore } from "~/stores/itemTypes";
+import { useStockReceiptNotesStore } from "~/stores/stockReceiptNotes";
+import { useStockReturnNotesStore } from "~/stores/stockReturnNotes";
+import FinancialBreakdown from "~/components/purchaseOrders/FinancialBreakdown.vue";
+import FilePreview from "~/components/shared/FilePreview.vue";
+import {
+  pickFirstSequence,
+  buildItemDivisionConfigMap,
+  buildItemTypeConfigMap,
+  buildPreferredItemTypeMetaLookup,
+  mergeItemTypeFromPreferredCatalog,
+  resolveItemHierarchyFields,
+  type ItemDivisionConfigRow,
+  type ItemTypeConfigRow,
+} from "~/utils/itemHierarchyResolution";
+
+interface Props {
+  form: any;
+  editingReturnNote: boolean;
+  readonly?: boolean;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  readonly: false
+});
+
+const emit = defineEmits<{
+  "update:form": [value: any];
+}>();
+
+const corpStore = useCorporationStore();
+const purchaseOrdersStore = usePurchaseOrdersStore();
+const purchaseOrderResourcesStore = usePurchaseOrderResourcesStore();
+const changeOrdersStore = useChangeOrdersStore();
+const projectsStore = useProjectsStore();
+const vendorStore = useVendorStore();
+const nimbleSession = useNimbleSessionStore();
+const itemTypesStore = useItemTypesStore();
+const stockReceiptNotesStore = useStockReceiptNotesStore();
+const stockReturnNotesStore = useStockReturnNotesStore();
+const runtimeConfig = useRuntimeConfig();
+const nimbleIntegrationsEnabled = computed(() =>
+  Boolean(runtimeConfig.public.nimbleIntegrations)
+);
+const { users: allUsers, hasData: hasUsersData } = storeToRefs(userProfilesStore);
+const { toUTCString, fromUTCString } = useUTCDateFormat();
+const { formatCurrency } = useCurrencyFormat();
+
+// Item category / item division from API (parity with ReceiptNoteForm)
+const returnItemHierarchyDivisionByUuid = ref(new Map<string, ItemDivisionConfigRow>());
+const returnItemHierarchyItemTypeByUuid = ref(new Map<string, ItemTypeConfigRow>());
+const returnItemHierarchyPreferredMeta = ref(buildPreferredItemTypeMetaLookup([]));
+
+const selectedReturnHierarchyCorp = computed(() =>
+  String(props.form.corporation_uuid || corpStore.selectedCorporation?.uuid || "")
+);
+const selectedReturnHierarchyProject = computed(() =>
+  String(props.form.project_uuid || "").trim()
+);
+
+const showReturnLocationColumn = computed(() => {
+  const projUuid = String(props.form.project_uuid || "").trim();
+  if (!projUuid) return false;
+  const project = (projectsStore as any).projects?.find(
+    (p: any) => String(p?.uuid || "").trim() === projUuid
+  );
+  return Boolean(project?.enable_location_wise);
+});
+
+const refreshReturnItemHierarchyFromApi = async () => {
+  const corp = selectedReturnHierarchyCorp.value;
+  const proj = selectedReturnHierarchyProject.value;
+  if (!corp || !proj) {
+    returnItemHierarchyDivisionByUuid.value = new Map();
+    returnItemHierarchyItemTypeByUuid.value = new Map();
+    returnItemHierarchyPreferredMeta.value = buildPreferredItemTypeMetaLookup([]);
+    return;
+  }
+
+  const [prefSettled, divSettled, typeSettled] = await Promise.allSettled([
+    $fetch("/api/cost-code-preferred-items", {
+      method: "GET",
+      params: { corporation_uuid: corp, project_uuid: proj },
+    }),
+    $fetch("/api/item-divisions", {
+      method: "GET",
+      params: { corporation_uuid: corp },
+    }),
+    $fetch("/api/item-types", {
+      method: "GET",
+      params: { corporation_uuid: corp },
+    }),
+  ]);
+
+  let preferredMeta = buildPreferredItemTypeMetaLookup([]);
+  if (prefSettled.status === "fulfilled") {
+    preferredMeta = buildPreferredItemTypeMetaLookup((prefSettled.value as any)?.data || []);
+  }
+  returnItemHierarchyPreferredMeta.value = preferredMeta;
+
+  let divMap = new Map<string, ItemDivisionConfigRow>();
+  if (divSettled.status === "fulfilled") {
+    divMap = buildItemDivisionConfigMap((divSettled.value as any)?.data || []);
+  }
+  returnItemHierarchyDivisionByUuid.value = divMap;
+
+  let typeMap = new Map<string, ItemTypeConfigRow>();
+  if (typeSettled.status === "fulfilled") {
+    typeMap = buildItemTypeConfigMap((typeSettled.value as any)?.data || []);
+  }
+  returnItemHierarchyItemTypeByUuid.value = typeMap;
+};
+
+/** Map PO/CO line -> item category + item_divisions (not cost-code division). */
+const applyReturnItemHierarchyToLine = (line: Record<string, any>) => {
+  const mergedPref = mergeItemTypeFromPreferredCatalog(
+    line,
+    returnItemHierarchyPreferredMeta.value
+  );
+  const hasType = Boolean(mergedPref.item_type_uuid);
+  const source = hasType
+    ? { ...mergedPref, division_name: "", division_label: "", item_division_uuid: null }
+    : { ...mergedPref };
+  const hier = resolveItemHierarchyFields(
+    source,
+    returnItemHierarchyDivisionByUuid.value,
+    returnItemHierarchyItemTypeByUuid.value
+  );
+  const divName = hier._division_name === "-" ? "" : hier._division_name;
+  const resolvedTypeLabel = pickFirstSequence(
+    line.item_type_label,
+    mergedPref.item_type_label,
+    hier._item_type_label !== "-" ? hier._item_type_label : ""
+  );
+  const itemTypeLabelFinal =
+    resolvedTypeLabel && String(resolvedTypeLabel).trim()
+      ? resolvedTypeLabel
+      : line.item_type_label ?? null;
+
+  return {
+    ...line,
+    item_type_uuid: mergedPref.item_type_uuid ?? line.item_type_uuid,
+    item_type_label: itemTypeLabelFinal,
+    category: hier._category_value || line.category || "",
+    division_name: divName,
+    item_division_uuid:
+      hier._resolved_item_division_uuid ?? line.item_division_uuid ?? null,
+  };
+};
+
+watch(
+  () => [selectedReturnHierarchyCorp.value, selectedReturnHierarchyProject.value] as const,
+  () => {
+    refreshReturnItemHierarchyFromApi();
+  },
+  { immediate: true }
+);
+
+// PO Items state
+const poItems = ref<any[]>([]);
+const poItemsLoading = ref(false);
+const entryDatePopoverOpen = ref(false);
+const poItemsError = ref<string | null>(null);
+const returnItems = ref<any[]>([]);
+
+// Local purchase orders and change orders (independent from global store)
+const { localPurchaseOrders, localChangeOrders, fetchLocalPurchaseOrders, fetchLocalChangeOrders } = useLocalPOCOData();
+
+// Validation state for receipt notes check
+const receiptNotesValidationError = ref<string | null>(null);
+const checkingReceiptNotes = ref(false);
+
+// Return type state - sync with form
+const returnType = computed({
+  get: () => {
+    // If form has return_type, use it; otherwise default to purchase_order
+    return props.form.return_type || 'purchase_order';
+  },
+  set: (value: 'purchase_order' | 'change_order' | 'from_inventory') => {
+    const currentType = props.form.return_type || 'purchase_order';
+    
+    // Only clear fields if actually switching types
+    if (currentType !== value) {
+      if (value === 'purchase_order') {
+        updateFormField("change_order_uuid", null);
+        updateFormField("storage_location_uuid", null);
+        if (currentType === 'change_order' && props.form.purchase_order_uuid) {
+          updateFormField("purchase_order_uuid", null);
+        }
+      } else if (value === 'change_order') {
+        updateFormField("purchase_order_uuid", null);
+        updateFormField("storage_location_uuid", null);
+        if (currentType === 'purchase_order' && props.form.change_order_uuid) {
+          updateFormField("change_order_uuid", null);
+        }
+      } else if (value === 'from_inventory') {
+        updateFormField("purchase_order_uuid", null);
+        updateFormField("change_order_uuid", null);
+      }
+    }
+    
+    // Always update return_type
+    updateFormField("return_type", value);
+  },
+});
+
+const returnTypeOptions = [
+  { label: 'Purchase Order', value: 'purchase_order' },
+  { label: 'Change Order', value: 'change_order' },
+  { label: 'From Inventory', value: 'from_inventory' },
+];
+
+// Reset internal state when form changes (for new return notes)
+watch(
+  () => props.form,
+  (newForm) => {
+    // Reset internal state when creating a new return note (no UUID)
+    if (!newForm?.uuid) {
+      poItems.value = [];
+      poItemsLoading.value = false;
+      poItemsError.value = null;
+    }
+  },
+  { immediate: true }
+);
+
+// Financial calculation helpers
+const parseNumericInput = (value: any): number => {
+  if (value === null || value === undefined || value === '') return 0
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0
+  }
+  const normalized = String(value).replace(/,/g, '').trim()
+  if (!normalized) return 0
+  const numeric = Number(normalized)
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
+const roundCurrencyValue = (value: number): number => {
+  if (!Number.isFinite(value)) return 0
+  return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
+// Calculate Return Item Total from return items
+const returnItemTotal = computed(() => {
+  const items = returnItems.value || []
+  const total = items.reduce((sum: number, item: any) => {
+    const returnTotal = parseNumericInput(item.return_total)
+    return sum + returnTotal
+  }, 0)
+  return roundCurrencyValue(total)
+})
+
+// Charge and tax rows for financial breakdown
+const chargeRows = [
+  { key: 'freight', label: 'Freight Charges' },
+  { key: 'packing', label: 'Packing Charges' },
+  { key: 'custom_duties', label: 'Custom & Duties' },
+  { key: 'other', label: 'Other Charges' },
+] as const
+
+const salesTaxRows = [
+  { key: 'sales_tax_1', label: 'Sales Tax 1' },
+  { key: 'sales_tax_2', label: 'Sales Tax 2' },
+] as const
+
+// Handler for financial breakdown component updates
+const handleFinancialBreakdownUpdate = (updates: Record<string, any>) => {
+  // Update total_return_amount with Return Total from financial breakdown
+  // This should always match return_total_with_charges_taxes
+  if (updates.return_total_with_charges_taxes !== undefined) {
+    updates.total_return_amount = updates.return_total_with_charges_taxes;
+  } else {
+    // Try to get it from financial_breakdown.totals
+    if (updates.financial_breakdown?.totals?.return_total_with_charges_taxes !== undefined) {
+      updates.return_total_with_charges_taxes = updates.financial_breakdown.totals.return_total_with_charges_taxes;
+      updates.total_return_amount = updates.return_total_with_charges_taxes;
+    }
+  }
+
+  // Update all form fields at once
+  const source = props.form;
+  const next = { ...source };
+  Object.keys(updates).forEach((key) => {
+    next[key] = updates[key];
+  });
+
+  // Emit all updates at once
+  emit("update:form", next);
+}
+
+// Watch form data for charges/taxes to ensure FinancialBreakdown recalculates
+watch(
+  () => [
+    props.form.freight_charges_percentage,
+    props.form.packing_charges_percentage,
+    props.form.custom_duties_charges_percentage,
+    props.form.other_charges_percentage,
+    props.form.sales_tax_1_percentage,
+    props.form.sales_tax_2_percentage,
+  ],
+  () => {
+    // FinancialBreakdown should automatically recalculate when formData changes
+  },
+  { deep: false }
+);
+
+// --- Financial breakdown from PO/CO (parity with ReceiptNoteForm / loadFinancialDataFromSource) ---
+
+const loadFinancialDataFromSource = async (sourceUuid: string, sourceType: string) => {
+  try {
+    const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+
+    if (sourceType === 'purchase_order') {
+      if (corpUuid && localPurchaseOrders.value.length === 0) {
+        await fetchLocalPurchaseOrders(corpUuid);
+      }
+
+      const po = localPurchaseOrders.value.find((p: any) => p.uuid === sourceUuid);
+      if (!po) {
+        try {
+          const response: any = await $fetch(`/api/purchase-order-forms`, {
+            method: 'GET',
+            query: { uuid: sourceUuid },
+          });
+          if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
+            const fetchedPO = response.data[0];
+            await applyChargeTaxPercentages(fetchedPO);
+            return;
+          }
+        } catch (fetchError) {
+          console.error('[ReturnNoteForm] Failed to fetch PO:', fetchError);
+        }
+        return;
+      }
+
+      await applyChargeTaxPercentages(po);
+    } else if (sourceType === 'change_order') {
+      if (corpUuid && localChangeOrders.value.length === 0) {
+        await fetchLocalChangeOrders(corpUuid);
+      }
+
+      const co = localChangeOrders.value.find((c: any) => c.uuid === sourceUuid);
+
+      if (!co) {
+        try {
+          const response: any = await $fetch(`/api/change-orders`, {
+            method: 'GET',
+            query: { uuid: sourceUuid },
+          });
+          if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
+            const fetchedCO = response.data[0];
+            await applyChargeTaxPercentages(fetchedCO);
+            return;
+          }
+        } catch (fetchError) {
+          console.error('[ReturnNoteForm] Failed to fetch CO:', fetchError);
+        }
+        return;
+      }
+
+      await applyChargeTaxPercentages(co);
+    }
+  } catch (error) {
+    console.error('[ReturnNoteForm] Failed to load financial data:', error);
+  }
+};
+
+/** Copy charge/tax percentages and taxable flags from PO/CO — amounts come from FinancialBreakdown + return line totals */
+const applyChargeTaxPercentages = async (po: any) => {
+  const updates: Record<string, any> = {};
+
+  chargeRows.forEach((row) => {
+    const percentageKey = `${row.key}_charges_percentage`;
+    const taxableKey = `${row.key}_charges_taxable`;
+
+    if (po[percentageKey] !== undefined) {
+      updates[percentageKey] = po[percentageKey];
+    }
+    if (po[taxableKey] !== undefined) {
+      updates[taxableKey] = po[taxableKey];
+    }
+  });
+
+  salesTaxRows.forEach((row) => {
+    const percentageKey = `${row.key}_percentage`;
+
+    if (po[percentageKey] !== undefined) {
+      updates[percentageKey] = po[percentageKey];
+    }
+  });
+
+  if (Object.keys(updates).length > 0) {
+    const source = props.form;
+    const next = { ...source, ...updates };
+    emit('update:form', next);
+    await nextTick();
+  }
+};
+
+const statusOptions = [
+  { label: "Returned", value: "Returned" },
+];
+
+const uploadedFiles = ref<File[]>([]);
+const fileUploadError = ref<string | null>(null);
+
+// File preview functionality
+const showFilePreviewModal = ref(false);
+const selectedFileForPreview = ref<any>(null);
+
+// Helper function to get PO type color and label
+const getPOTypeInfo = (poType: string) => {
+  const typeInfo: Record<string, { color: "error" | "warning" | "info" | "success" | "primary" | "secondary" | "neutral", label: string }> = {
+    'LABOR': { color: 'primary', label: 'Labor' },
+    'MATERIAL': { color: 'success', label: 'Material' }
+  }
+  return typeInfo[poType] || { color: 'neutral' as const, label: 'Unknown' }
+}
+
+// Helper function to get CO type color and label (same as PO types)
+const getCOTypeInfo = (coType: string) => {
+  const typeInfo: Record<string, { color: "error" | "warning" | "info" | "success" | "primary" | "secondary" | "neutral", label: string }> = {
+    'LABOR': { color: 'primary', label: 'Labor' },
+    'MATERIAL': { color: 'success', label: 'Material' }
+  }
+  return typeInfo[coType] || { color: 'neutral' as const, label: 'Unknown' }
+}
+
+const poOptions = computed(() => {
+  const list = localPurchaseOrders.value ?? [];
+  if (!Array.isArray(list)) return [];
+
+  const corporationUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  const projectUuid = props.form.project_uuid
+    ? String(props.form.project_uuid)
+    : null;
+  const selectedVendorUuid = props.form.vendor_uuid
+    ? String(props.form.vendor_uuid)
+    : null;
+
+  // Determine allowed statuses based on whether we're editing an existing return note
+  const isEditing = props.editingReturnNote || !!props.form.uuid;
+  const allowedStatuses = isEditing
+    ? ['Approved', 'Partially_Received', 'Completed']
+    : ['Approved', 'Partially_Received'];
+
+  return list
+    .filter((po) => {
+      if (!po?.uuid) return false;
+      // Filter by corporation UUID
+      if (corporationUuid && po.corporation_uuid !== corporationUuid) return false;
+      // Exclude labor purchase orders
+      const poType = String(po.po_type || '').trim().toUpperCase();
+      if (poType === 'LABOR') return false;
+      // Show purchase orders with allowed statuses (case-insensitive)
+      const poStatus = String(po.status || '').trim();
+      const isAllowedStatus = allowedStatuses.some(
+        (status) => poStatus.toLowerCase() === status.toLowerCase()
+      );
+      if (!isAllowedStatus) return false;
+      if (!projectUuid) return true;
+      if (po.project_uuid !== projectUuid) return false;
+      if (selectedVendorUuid && String(po.vendor_uuid || "") !== selectedVendorUuid) return false;
+      return true;
+    })
+    .map((po) => {
+      const vendor = vendorStore.vendors.find(v => v.uuid === po.vendor_uuid)
+      const vendorName = vendor?.vendor_name || 'N/A'
+      const poNum = po?.po_number || 'Unnamed PO'
+      const typeInfo = getPOTypeInfo(String(po.po_type || '').toUpperCase())
+
+      return {
+        label: `${poNum} — ${vendorName}`,
+        value: po.uuid,
+        project_uuid: po.project_uuid,
+        vendor_uuid: po.vendor_uuid,
+        total: po.total_po_amount ?? 0,
+        type_color: typeInfo.color,
+        type_label: typeInfo.label,
+        po: po
+      };
+    });
+});
+
+const poOption = computed({
+  get: () => {
+    if (!props.form.purchase_order_uuid) return null;
+    return (
+      poOptions.value.find(
+        (opt) => opt.value === props.form.purchase_order_uuid
+      ) ?? null
+    );
+  },
+  set: (option) => {
+    const value =
+      typeof option === "string"
+        ? option
+        : option?.value
+        ? String(option.value)
+        : null;
+    const selected = value
+      ? poOptions.value.find((opt) => opt.value === value)
+      : null;
+    const nextForm = {
+      ...props.form,
+      purchase_order_uuid: value ?? null,
+      vendor_uuid: selected?.vendor_uuid ?? props.form.vendor_uuid ?? null,
+    };
+    emit("update:form", nextForm);
+  },
+});
+
+const coOptions = computed(() => {
+  const list = localChangeOrders.value ?? [];
+  if (!Array.isArray(list)) return [];
+
+  const corporationUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  const projectUuid = props.form.project_uuid
+    ? String(props.form.project_uuid)
+    : null;
+  const selectedVendorUuid = props.form.vendor_uuid
+    ? String(props.form.vendor_uuid)
+    : null;
+
+  // Determine allowed statuses based on whether we're editing an existing return note
+  const isEditing = props.editingReturnNote || !!props.form.uuid;
+  const allowedStatuses = isEditing
+    ? ['Approved', 'Partially_Received', 'Completed']
+    : ['Approved', 'Partially_Received'];
+
+  return list
+    .filter((co) => {
+      if (!co?.uuid) return false;
+      // Filter by corporation UUID
+      if (corporationUuid && co.corporation_uuid !== corporationUuid) return false;
+      // Exclude labor change orders
+      const coType = String(co.co_type || '').trim().toUpperCase();
+      if (coType === 'LABOR') return false;
+      // Show change orders with allowed statuses (case-insensitive)
+      const coStatus = String(co.status || '').trim();
+      const isAllowedStatus = allowedStatuses.some(
+        (status) => coStatus.toLowerCase() === status.toLowerCase()
+      );
+      if (!isAllowedStatus) return false;
+      if (!projectUuid) return true;
+      if (co.project_uuid !== projectUuid) return false;
+      if (selectedVendorUuid && String(co.vendor_uuid || "") !== selectedVendorUuid) return false;
+      return true;
+    })
+    .map((co) => {
+      const vendor = vendorStore.vendors.find(v => v.uuid === co.vendor_uuid)
+      const vendorName = vendor?.vendor_name || co.vendor_name || 'N/A'
+      const coNum = co?.co_number || 'Unnamed CO'
+      const typeInfo = getCOTypeInfo(String(co.co_type || '').toUpperCase())
+
+      return {
+        label: `${coNum} — ${vendorName}`,
+        value: co.uuid,
+        project_uuid: co.project_uuid,
+        vendor_uuid: co.vendor_uuid,
+        total: co.total_co_amount ?? 0,
+        type_color: typeInfo.color,
+        type_label: typeInfo.label,
+        co: co
+      };
+    });
+});
+
+const coOption = computed({
+  get: () => {
+    if (!props.form.change_order_uuid) return null;
+    return (
+      coOptions.value.find(
+        (opt) => opt.value === props.form.change_order_uuid
+      ) ?? null
+    );
+  },
+  set: (option) => {
+    const value =
+      typeof option === "string"
+        ? option
+        : option?.value
+        ? String(option.value)
+        : null;
+    const selected = value
+      ? coOptions.value.find((opt) => opt.value === value)
+      : null;
+    const nextForm = {
+      ...props.form,
+      change_order_uuid: value ?? null,
+      vendor_uuid: selected?.vendor_uuid ?? props.form.vendor_uuid ?? null,
+    };
+    emit("update:form", nextForm);
+  },
+});
+
+const statusOption = computed<any>({
+  get: () => {
+    const value = String(props.form.status || "Returned");
+    return (
+      statusOptions.find(
+        (option) => option.value.toLowerCase() === value.toLowerCase()
+      ) ?? statusOptions[0]
+    );
+  },
+  set: (option) => {
+    const value =
+      typeof option === "string"
+        ? option
+        : option?.value
+        ? String(option.value)
+        : "Returned";
+    updateFormField("status", value);
+  },
+});
+
+const computeInitials = (user: any) => {
+  const segments = [user.firstName, user.lastName]
+    .filter((value: any) => typeof value === "string" && value.trim().length > 0)
+    .map((value: string) => value.trim()[0]?.toUpperCase())
+    .join("");
+  if (segments.length) return segments;
+  const emailFirst = typeof user.email === "string" ? user.email.trim()[0] : "";
+  return emailFirst ? emailFirst.toUpperCase() : "U";
+};
+
+const selectedCorporationUuid = computed(
+  () => corpStore.selectedCorporation?.uuid ?? corpStore.selectedCorporationId ?? null
+);
+
+type NimbleReturnedByUser = {
+  userId: string;
+  userName: string;
+  firstName: string;
+  lastName: string;
+  middleName: string;
+};
+
+const nimbleReturnedByUsers = ref<NimbleReturnedByUser[]>([]);
+
+const fetchNimbleReturnedByUsers = async () => {
+  const token = String(nimbleSession.token || "").trim();
+  if (!token) {
+    nimbleReturnedByUsers.value = [];
+    return;
+  }
+
+  try {
+    const response = await $fetch<{ clientSubUsers?: any[] }>(
+      "/api/nimble/client-sub-users",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    const list = Array.isArray(response?.clientSubUsers)
+      ? response.clientSubUsers
+      : [];
+    nimbleReturnedByUsers.value = list
+      .map((row: any) => {
+        const userId = String(
+          row?.UserID ?? row?.userID ?? row?.userId ?? ""
+        ).trim();
+        if (!userId) return null;
+        return {
+          userId,
+          userName: String(row?.UserName ?? row?.userName ?? "").trim(),
+          firstName: String(row?.FirstName ?? row?.firstName ?? "").trim(),
+          lastName: String(row?.LastName ?? row?.lastName ?? "").trim(),
+          middleName: String(row?.MiddleName ?? row?.middleName ?? "").trim(),
+        } as NimbleReturnedByUser;
+      })
+      .filter(
+        (item: NimbleReturnedByUser | null): item is NimbleReturnedByUser =>
+          item !== null
+      );
+  } catch (_error) {
+    nimbleReturnedByUsers.value = [];
+  }
+};
+
+const corporationUsers = computed(() => {
+  const corpUuid = selectedCorporationUuid.value;
+  const list = Array.isArray(allUsers.value) ? allUsers.value : [];
+  return list.filter((user: any) => {
+    if (user.status !== "active") return false;
+    if (!corpUuid) return true;
+    if (!Array.isArray(user.corporationAccess)) return false;
+    return user.corporationAccess.includes(corpUuid);
+  });
+});
+
+const returnedByOptions = computed(() =>
+  nimbleIntegrationsEnabled.value
+    ? nimbleReturnedByUsers.value.map((user) => {
+        const fullName = [user.firstName, user.middleName, user.lastName]
+          .filter((value) => typeof value === "string" && value.trim().length > 0)
+          .join(" ");
+        const label = fullName || user.userName || "Team Member";
+        const alt = label;
+        return {
+          label,
+          value: user.userId,
+          description: user.userName || "",
+          avatar: {
+            alt,
+            text: computeInitials({
+              firstName: user.firstName,
+              lastName: user.lastName,
+              email: user.userName,
+            }),
+            size: "xs" as const,
+          },
+          user,
+        };
+      })
+    : corporationUsers.value.map((user) => {
+        const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ");
+        const label = fullName || user.email || "Team Member";
+        const alt = label;
+        const avatar = user.imageUrl
+          ? {
+              src: user.imageUrl,
+              alt,
+              size: "xs" as const,
+            }
+          : {
+              alt,
+              text: computeInitials(user),
+              size: "xs" as const,
+            };
+        return {
+          label,
+          value: String(user.id ?? user.email ?? ""),
+          description: user.email,
+          avatar,
+          user,
+        };
+      })
+);
+
+const returnedByOption = computed<any>({
+  get: () => {
+    const selectedValue = nimbleIntegrationsEnabled.value
+      ? props.form.nimble_returned_by_user_id || props.form.returned_by
+      : props.form.returned_by;
+    if (!selectedValue) return null;
+    return (
+      returnedByOptions.value.find(
+        (option) => option.value === selectedValue
+      ) ?? null
+    );
+  },
+  set: (option) => {
+    const value =
+      typeof option === "string"
+        ? option
+        : option?.value
+        ? String(option.value)
+        : null;
+    updateFormField("returned_by", value ?? null);
+  },
+});
+
+const ensureUsersLoaded = async () => {
+  if (nimbleIntegrationsEnabled.value) {
+    await fetchNimbleReturnedByUsers();
+    return;
+  }
+  try {
+    await Promise.resolve();
+  } catch (error) {
+    console.error("[ReturnNoteForm] Failed to load users:", error);
+  }
+};
+
+const shouldFetchUsers = computed(
+  () => !hasUsersData.value || !(Array.isArray(allUsers.value) && allUsers.value.length > 0)
+);
+
+watch(
+  [
+    selectedCorporationUuid,
+    shouldFetchUsers,
+    nimbleIntegrationsEnabled,
+    () => nimbleSession.token,
+  ],
+  ([, needsData, nimbleEnabled, token]) => {
+    if (nimbleEnabled && token) {
+      ensureUsersLoaded();
+      return;
+    }
+    if (nimbleEnabled && !token) {
+      nimbleReturnedByUsers.value = [];
+      return;
+    }
+    if (!nimbleEnabled && needsData) {
+      ensureUsersLoaded();
+    }
+  },
+  { immediate: true }
+);
+
+// Ensure vendors are loaded
+const ensureVendorsLoaded = async () => {
+  // Use form's corporation_uuid, fallback to store's selectedCorporation
+  const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  if (corpUuid) {
+    try {
+      await vendorStore.fetchVendors(corpUuid);
+    } catch (error) {
+      console.error("[ReturnNoteForm] Failed to load vendors:", error);
+    }
+  }
+};
+
+
+watch(
+  [() => props.form.corporation_uuid, selectedCorporationUuid],
+  async ([formCorpUuid]) => {
+    // Prioritize form's corporation_uuid
+    const corpUuid = formCorpUuid || selectedCorporationUuid.value;
+    if (corpUuid) {
+      await Promise.allSettled([
+        ensureVendorsLoaded(),
+        fetchLocalPurchaseOrders(String(corpUuid)),
+        fetchLocalChangeOrders(String(corpUuid)),
+      ]);
+    }
+  },
+  { immediate: true }
+);
+
+onMounted(async () => {
+  // Initialize corporation_uuid in form if not set
+  if (!props.form.corporation_uuid && corpStore.selectedCorporation?.uuid) {
+    updateFormField('corporation_uuid', corpStore.selectedCorporation.uuid);
+  }
+  
+  // NOTE: We do NOT update corpStore.selectedCorporation here to avoid affecting other components
+  // The form operates independently with its own corporation selection (props.form.corporation_uuid)
+  
+  // Use the form's corporation_uuid for fetching data (independent from TopBar)
+  const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  
+  if (shouldFetchUsers.value) {
+    ensureUsersLoaded();
+  }
+  
+  if (corpUuid) {
+    await Promise.allSettled([
+      ensureVendorsLoaded(),
+      fetchLocalPurchaseOrders(String(corpUuid)),
+      fetchLocalChangeOrders(String(corpUuid)),
+    ]);
+  } else {
+    ensureVendorsLoaded();
+  }
+});
+
+const df = new DateFormatter("en-US", {
+  dateStyle: "medium",
+});
+
+const entryDateValue = computed<CalendarDate | null>({
+  get: () => {
+    if (!props.form.entry_date) return null;
+    const src = String(props.form.entry_date);
+    const localYmd = src.includes("T") ? fromUTCString(src) : src;
+    const parts = localYmd.split("-");
+    if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      const day = parseInt(parts[2], 10);
+      if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+        return new CalendarDate(year, month, day);
+      }
+    }
+    return null;
+  },
+  set: (value) => {
+    if (value) {
+      const dateString = `${value.year}-${String(value.month).padStart(
+        2,
+        "0"
+      )}-${String(value.day).padStart(2, "0")}`;
+      updateFormField("entry_date", toUTCString(dateString));
+    } else {
+      updateFormField("entry_date", null);
+    }
+  },
+});
+
+const entryDateDisplayText = computed(() => {
+  if (!entryDateValue.value) return "Select entry date";
+  return df.format(entryDateValue.value.toDate(getLocalTimeZone()));
+});
+
+const updateAttachments = (attachments: any[]) => {
+  updateFormField("attachments", attachments);
+};
+
+const updateFormField = (field: string, value: any, base?: Record<string, any>) => {
+  const source = base ?? props.form;
+  const next = { ...source, [field]: value };
+  emit("update:form", next);
+  return next;
+};
+
+const handleCorporationChange = async (corporationUuid?: string | null) => {
+  const normalizedCorporationUuid = corporationUuid || '';
+  updateFormField('corporation_uuid', normalizedCorporationUuid);
+  
+  // Fetch data for the selected corporation
+  // NOTE: We do NOT update corpStore.selectedCorporation here to avoid affecting other components
+  // The form operates independently with its own corporation selection
+  if (normalizedCorporationUuid) {
+    await Promise.allSettled([
+      vendorStore.fetchVendors(normalizedCorporationUuid),
+      fetchLocalPurchaseOrders(normalizedCorporationUuid),
+      fetchLocalChangeOrders(normalizedCorporationUuid),
+      ensureUsersLoaded(),
+    ]);
+    
+    // Clear project selection when corporation changes (projects are corporation-specific)
+    if (props.form.project_uuid) {
+      updateFormField("project_uuid", null);
+    }
+  }
+};
+
+const handleProjectChange = (projectUuid?: string | null) => {
+  const nextForm = updateFormField("project_uuid", projectUuid || null);
+
+  const currentPurchaseOrderUuid = nextForm.purchase_order_uuid;
+  const currentChangeOrderUuid = nextForm.change_order_uuid;
+
+  if (projectUuid) {
+    // Clear PO if it doesn't match the selected project
+    const matchingPOOption = poOptions.value.find(
+      (option) => option.value === currentPurchaseOrderUuid
+    );
+    if (!matchingPOOption && currentPurchaseOrderUuid) {
+      updateFormField("purchase_order_uuid", null, nextForm);
+    }
+
+    // Clear CO if it doesn't match the selected project
+    const matchingCOOption = coOptions.value.find(
+      (option) => option.value === currentChangeOrderUuid
+    );
+    if (!matchingCOOption && currentChangeOrderUuid) {
+      updateFormField("change_order_uuid", null, nextForm);
+    }
+  } else {
+    // Clear both PO and CO when no project is selected
+    if (currentPurchaseOrderUuid) {
+      updateFormField("purchase_order_uuid", null, nextForm);
+    }
+    if (currentChangeOrderUuid) {
+      updateFormField("change_order_uuid", null, nextForm);
+    }
+  }
+};
+
+const handleVendorChange = (vendorUuid?: string | null) => {
+  const normalizedVendorUuid = vendorUuid ? String(vendorUuid) : null;
+  const nextForm = updateFormField("vendor_uuid", normalizedVendorUuid);
+
+  if (nextForm.purchase_order_uuid) {
+    const matchingPOOption = poOptions.value.find(
+      (option) => option.value === nextForm.purchase_order_uuid
+    );
+    if (!matchingPOOption) {
+      updateFormField("purchase_order_uuid", null, nextForm);
+    }
+  }
+
+  if (nextForm.change_order_uuid) {
+    const matchingCOOption = coOptions.value.find(
+      (option) => option.value === nextForm.change_order_uuid
+    );
+    if (!matchingCOOption) {
+      updateFormField("change_order_uuid", null, nextForm);
+    }
+  }
+};
+
+const formatFileSize = (size?: number | null) => {
+  if (!size || size <= 0) return "0 KB";
+  const kb = size / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+};
+
+const attachmentCount = computed(
+  () => (props.form.attachments ? props.form.attachments.length : 0)
+);
+
+const uploadedAttachmentCount = computed(() =>
+  Array.isArray(props.form.attachments)
+    ? props.form.attachments.filter((att: any) => att?.uuid || att?.isUploaded).length
+    : 0
+);
+
+const fileUploadErrorMessage = computed(() => fileUploadError.value);
+
+const removeAttachment = (index: number) => {
+  const attachments = Array.isArray(props.form.attachments)
+    ? [...props.form.attachments]
+    : [];
+  attachments.splice(index, 1);
+  updateAttachments(attachments);
+};
+
+const previewFile = (attachment: any) => {
+  // Map the attachment to the format expected by FilePreview component
+  selectedFileForPreview.value = {
+    id: attachment.uuid || attachment.tempId,
+    // Handle both database format (document_name) and temporary format (name)
+    file_name: attachment.document_name || attachment.name,
+    name: attachment.document_name || attachment.name,
+    // Handle both database format (mime_type) and temporary format (type)
+    file_type: attachment.mime_type || attachment.type,
+    type: attachment.mime_type || attachment.type,
+    // Handle both database format (file_size) and temporary format (size)
+    file_size: attachment.file_size || attachment.size,
+    size: attachment.file_size || attachment.size,
+    // For database files, use file_url; for temporary files, use base64 data
+    file_url: attachment.file_url || attachment.url || attachment.fileData,
+    url: attachment.file_url || attachment.url || attachment.fileData
+  };
+  showFilePreviewModal.value = true;
+};
+
+const closeFilePreview = () => {
+  showFilePreviewModal.value = false;
+  selectedFileForPreview.value = null;
+};
+
+const handleFileUpload = async () => {
+  fileUploadError.value = null;
+
+  if (!uploadedFiles.value.length) {
+    return;
+  }
+
+  const allowedTypes = [
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+  ];
+  const maxSize = 10 * 1024 * 1024;
+
+  for (const file of uploadedFiles.value) {
+    if (!allowedTypes.includes(file.type)) {
+      fileUploadError.value =
+        "Invalid file type. Only PDF or image files are allowed.";
+      uploadedFiles.value = [];
+      return;
+    }
+
+    if (file.size > maxSize) {
+      fileUploadError.value = "File size too large. Maximum size is 10MB.";
+      uploadedFiles.value = [];
+      return;
+    }
+  }
+
+  try {
+    const processed = await Promise.all(
+      uploadedFiles.value.map(
+        (file) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const fileData = e.target?.result;
+              if (typeof fileData !== "string") {
+                reject(new Error("Failed to read file"));
+                return;
+              }
+
+              resolve({
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                fileData,
+                tempId:
+                  Date.now().toString(36) +
+                  Math.random().toString(36).slice(2),
+                isUploaded: false,
+              });
+            };
+            reader.onerror = () => reject(new Error("Failed to read file"));
+            reader.readAsDataURL(file);
+          })
+      )
+    );
+
+    const current = Array.isArray(props.form.attachments)
+      ? [...props.form.attachments]
+      : [];
+    updateAttachments(current.concat(processed));
+    uploadedFiles.value = [];
+  } catch (error) {
+    console.error("[ReturnNoteForm] file processing error:", error);
+    fileUploadError.value = "Failed to process files. Please try again.";
+  }
+};
+
+watch(uploadedFiles, handleFileUpload, { deep: true });
+
+watch(
+  () => props.form.project_uuid,
+  (projectUuid) => {
+    if (!projectUuid && props.form.purchase_order_uuid) {
+      updateFormField("purchase_order_uuid", null);
+    }
+  }
+);
+
+// Check receipt notes and calculate shortfall quantities
+const checkReceiptNotesAndCalculateShortfall = async (
+  sourceUuid: string,
+  sourceType: 'purchase_order' | 'change_order',
+  transformedItems: any[]
+) => {
+  checkingReceiptNotes.value = true;
+  receiptNotesValidationError.value = null;
+
+  try {
+    const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+    const projectUuid = props.form.project_uuid;
+
+    if (!corpUuid || !projectUuid) {
+      // If no corp or project, allow manual entry
+      returnItems.value = transformedItems.map((item) => ({
+        ...item,
+        return_quantity: null,
+        return_total: null,
+      }));
+      updateFormField("return_items", returnItems.value);
+      return;
+    }
+
+    // Fetch all receipt notes for this PO/CO
+    await stockReceiptNotesStore.fetchStockReceiptNotes(corpUuid, { force: false });
+    const allReceiptNotes = stockReceiptNotesStore.stockReceiptNotes.filter(
+      (note: any) => note.corporation_uuid === corpUuid
+    );
+
+    // Filter receipt notes that match the source (PO/CO) and receipt type
+    const matchingReceiptNotes = allReceiptNotes.filter((note: any) => {
+      if (note.is_active === false) return false;
+      const receiptType = note.receipt_type || 'purchase_order';
+      
+      if (sourceType === 'purchase_order') {
+        return note.purchase_order_uuid === sourceUuid && receiptType === 'purchase_order';
+      } else {
+        return note.change_order_uuid === sourceUuid && receiptType === 'change_order';
+      }
+    });
+
+    if (matchingReceiptNotes.length === 0) {
+      // No receipt notes found - max return quantity should be the ordered quantity (PO qty or CO qty)
+      // Also account for existing return notes
+      // Fetch existing return notes for the same PO/CO (excluding the current one if editing)
+      await stockReturnNotesStore.fetchStockReturnNotes(corpUuid, false, 1, 100);
+      const allReturnNotes = stockReturnNotesStore.stockReturnNotes.filter(
+        (note: any) => note.corporation_uuid === corpUuid
+      );
+
+      // Filter return notes that match the source (PO/CO) and return type, excluding current return note if editing
+      const matchingReturnNotes = allReturnNotes.filter((note: any) => {
+        if (note.is_active === false) return false;
+        // Exclude current return note if editing
+        if (props.editingReturnNote && props.form.uuid && note.uuid === props.form.uuid) {
+          return false;
+        }
+        
+        const normalizedStatus = String(note.status || '').trim().toLowerCase();
+        // Only consider active return notes (Returned status)
+        if (normalizedStatus !== 'returned') {
+          return false;
+        }
+
+        const noteReturnType = note.return_type || 'purchase_order';
+        
+        if (sourceType === 'purchase_order') {
+          return note.purchase_order_uuid === sourceUuid && noteReturnType === 'purchase_order';
+        } else {
+          return note.change_order_uuid === sourceUuid && noteReturnType === 'change_order';
+        }
+      });
+
+      // Fetch return note items for all matching return notes
+      const allReturnNoteItems: any[] = [];
+      for (const returnNote of matchingReturnNotes) {
+        try {
+          const response: any = await $fetch("/api/return-note-items", {
+            method: "GET",
+            query: {
+              corporation_uuid: corpUuid,
+              project_uuid: projectUuid,
+              return_note_uuid: returnNote.uuid,
+              item_type: sourceType,
+            },
+          });
+          
+          const items = Array.isArray(response?.data) ? response.data : [];
+          allReturnNoteItems.push(...items);
+        } catch (error) {
+          console.error(`[ReturnNoteForm] Failed to fetch return note items for ${returnNote.uuid}:`, error);
+        }
+      }
+
+      // Create a map of already returned quantities by item_uuid
+      const returnedQuantitiesMap = new Map<string, number>();
+      allReturnNoteItems.forEach((rni: any) => {
+        if (rni.is_active === false) return;
+        
+        const itemUuid = rni.item_uuid || rni.base_item_uuid;
+        if (itemUuid) {
+          const key = String(itemUuid).trim().toLowerCase();
+          const existingQty = returnedQuantitiesMap.get(key) || 0;
+          const returnQty = parseFloat(String(rni.return_quantity || 0)) || 0;
+          returnedQuantitiesMap.set(key, existingQty + returnQty);
+        }
+      });
+
+      // Set max_return_quantity to ordered quantity minus already returned quantity
+      // Filter out items with zero remaining quantity when creating a new return note
+      const mappedItems = transformedItems.map((item) => {
+        const itemUuid = item.uuid || item.base_item_uuid || item.item_uuid;
+        const orderedQty = parseFloat(String(item.ordered_quantity || item.po_quantity || item.co_quantity || 0)) || 0;
+        
+        if (!itemUuid || orderedQty === 0) {
+          // Item without UUID or zero quantity - allow manual entry (no max limit)
+          return {
+            ...item,
+            return_quantity: null,
+            return_total: null,
+            max_return_quantity: null,
+          };
+        }
+
+        const key = String(itemUuid).trim().toLowerCase();
+        const alreadyReturnedQty = returnedQuantitiesMap.get(key) || 0;
+        
+        // Max return quantity = ordered quantity - already returned quantity
+        const maxReturnQty = Math.max(0, orderedQty - alreadyReturnedQty);
+        
+        return {
+          ...item,
+          return_quantity: null,
+          return_total: null,
+          max_return_quantity: maxReturnQty,
+        };
+      });
+      
+      // When creating a new return note, filter out items with zero remaining quantity
+      if (!props.editingReturnNote) {
+        returnItems.value = mappedItems.filter((item) => {
+          // Keep items with null max_return_quantity (manual entry allowed) or max_return_quantity > 0
+          return item.max_return_quantity === null || item.max_return_quantity > 0;
+        });
+      } else {
+        // When editing, show all items
+        returnItems.value = mappedItems;
+      }
+      updateFormField("return_items", returnItems.value);
+      return;
+    }
+
+    // Fetch receipt note items for all matching receipt notes
+    const allReceiptNoteItems: any[] = [];
+    for (const receiptNote of matchingReceiptNotes) {
+      try {
+        const response: any = await $fetch("/api/receipt-note-items", {
+          method: "GET",
+          query: {
+            corporation_uuid: corpUuid,
+            receipt_note_uuid: receiptNote.uuid,
+            item_type: sourceType,
+          },
+        });
+
+        const items = Array.isArray(response?.data) ? response.data : [];
+        allReceiptNoteItems.push(...items);
+      } catch (error) {
+        console.error(`[ReturnNoteForm] Failed to fetch receipt note items for ${receiptNote.uuid}:`, error);
+      }
+    }
+
+    // Create a map of received quantities by item_uuid
+    const receivedQuantitiesMap = new Map<string, number>();
+    allReceiptNoteItems.forEach((rni: any) => {
+      if (rni.is_active === false) return;
+      
+      const itemUuid = rni.item_uuid || rni.base_item_uuid;
+      if (itemUuid) {
+        const key = String(itemUuid).trim().toLowerCase();
+        const existingQty = receivedQuantitiesMap.get(key) || 0;
+        const receivedQty = parseFloat(String(rni.received_quantity || 0)) || 0;
+        receivedQuantitiesMap.set(key, existingQty + receivedQty);
+      }
+    });
+
+    // Fetch existing return notes for the same PO/CO (excluding the current one if editing)
+    await stockReturnNotesStore.fetchStockReturnNotes(corpUuid, false, 1, 100);
+    const allReturnNotes = stockReturnNotesStore.stockReturnNotes.filter(
+      (note: any) => note.corporation_uuid === corpUuid
+    );
+
+    // Filter return notes that match the source (PO/CO) and return type, excluding current return note if editing
+    const matchingReturnNotes = allReturnNotes.filter((note: any) => {
+      if (note.is_active === false) return false;
+      // Exclude current return note if editing
+      if (props.editingReturnNote && props.form.uuid && note.uuid === props.form.uuid) {
+        return false;
+      }
+      
+      const normalizedStatus = String(note.status || '').trim().toLowerCase();
+      // Only consider active return notes (Returned status)
+      if (normalizedStatus !== 'returned') {
+        return false;
+      }
+
+      const noteReturnType = note.return_type || 'purchase_order';
+      
+      if (sourceType === 'purchase_order') {
+        return note.purchase_order_uuid === sourceUuid && noteReturnType === 'purchase_order';
+      } else {
+        return note.change_order_uuid === sourceUuid && noteReturnType === 'change_order';
+      }
+    });
+
+    // Fetch return note items for all matching return notes
+    const allReturnNoteItems: any[] = [];
+    for (const returnNote of matchingReturnNotes) {
+      try {
+        const response: any = await $fetch("/api/return-note-items", {
+          method: "GET",
+          query: {
+            corporation_uuid: corpUuid,
+            project_uuid: projectUuid,
+            return_note_uuid: returnNote.uuid,
+            item_type: sourceType,
+          },
+        });
+        
+        const items = Array.isArray(response?.data) ? response.data : [];
+        allReturnNoteItems.push(...items);
+      } catch (error) {
+        console.error(`[ReturnNoteForm] Failed to fetch return note items for ${returnNote.uuid}:`, error);
+      }
+    }
+
+    // Create a map of already returned quantities by item_uuid
+    const returnedQuantitiesMap = new Map<string, number>();
+    allReturnNoteItems.forEach((rni: any) => {
+      if (rni.is_active === false) return;
+      
+      const itemUuid = rni.item_uuid || rni.base_item_uuid;
+      if (itemUuid) {
+        const key = String(itemUuid).trim().toLowerCase();
+        const existingQty = returnedQuantitiesMap.get(key) || 0;
+        const returnQty = parseFloat(String(rni.return_quantity || 0)) || 0;
+        returnedQuantitiesMap.set(key, existingQty + returnQty);
+      }
+    });
+
+    // Calculate shortfall for each item, accounting for existing return notes
+    const itemsWithShortfall: any[] = [];
+    let hasAnyRemainingShortfall = false;
+    let itemsWithOrderedQty = 0; // Count items that have ordered quantity > 0
+    let itemsFullyReceivedCount = 0; // Count items that are fully received
+    let itemsWithRemainingReturnQty = 0; // Count items with remaining return quantity > 0
+
+    for (const item of transformedItems) {
+      const itemUuid = item.uuid || item.base_item_uuid || item.item_uuid;
+      const orderedQty = parseFloat(String(item.ordered_quantity || item.po_quantity || item.co_quantity || 0)) || 0;
+      
+      if (!itemUuid || orderedQty === 0) {
+        // Item without UUID or zero quantity - allow manual entry (no max limit)
+        itemsWithShortfall.push({
+          ...item,
+          return_quantity: null,
+          return_total: null,
+          max_return_quantity: null, // No limit for items without UUID or zero quantity
+        });
+        continue;
+      }
+
+      itemsWithOrderedQty++; // Count items with ordered quantity
+
+      const key = String(itemUuid).trim().toLowerCase();
+      const receivedQty = receivedQuantitiesMap.get(key) || 0;
+      const alreadyReturnedQty = returnedQuantitiesMap.get(key) || 0;
+      
+      // Calculate shortfall: ordered - received
+      const shortfallQty = orderedQty - receivedQty;
+      
+      // Calculate remaining return quantity: shortfall - already returned
+      const remainingReturnQty = shortfallQty - alreadyReturnedQty;
+
+      if (shortfallQty <= 0) {
+        // Fully received - no shortfall (receivedQty >= orderedQty)
+        itemsFullyReceivedCount++;
+        itemsWithShortfall.push({
+          ...item,
+          return_quantity: null,
+          return_total: null,
+          max_return_quantity: 0, // No shortfall, so max return is 0
+        });
+      } else if (remainingReturnQty > 0) {
+        // There is remaining shortfall after accounting for existing return notes
+        hasAnyRemainingShortfall = true;
+        itemsWithRemainingReturnQty++;
+        itemsWithShortfall.push({
+          ...item,
+          return_quantity: remainingReturnQty,
+          return_total: remainingReturnQty * (parseFloat(String(item.unit_price || 0)) || 0),
+          max_return_quantity: remainingReturnQty, // Store max allowed return quantity
+        });
+      } else {
+        // Shortfall exists but has already been fully covered by existing return notes
+        itemsWithShortfall.push({
+          ...item,
+          return_quantity: null,
+          return_total: null,
+          max_return_quantity: 0, // Already covered, so max return is 0
+        });
+      }
+    }
+
+    // If all items are fully received OR all shortfall has been covered by existing return notes, show error
+    if (!hasAnyRemainingShortfall && itemsWithOrderedQty > 0) {
+      if (itemsFullyReceivedCount === itemsWithOrderedQty) {
+        receiptNotesValidationError.value = 
+          `Cannot create return note: All quantities for this ${sourceType === 'purchase_order' ? 'purchase order' : 'change order'} have already been received across existing receipt notes. There is no shortfall quantity to return.`;
+      } else {
+        receiptNotesValidationError.value = 
+          `Cannot create return note: All shortfall quantities for this ${sourceType === 'purchase_order' ? 'purchase order' : 'change order'} have already been covered by existing return notes. There is no remaining quantity to return.`;
+      }
+      returnItems.value = [];
+      updateFormField("return_items", []);
+      return;
+    }
+
+    // If there's remaining shortfall, pre-populate return quantities
+    // When creating a new return note, filter out items with zero remaining quantity
+    if (hasAnyRemainingShortfall) {
+      if (!props.editingReturnNote) {
+        // Filter out items with max_return_quantity === 0 when creating
+        returnItems.value = itemsWithShortfall.filter((item) => {
+          // Keep items with null max_return_quantity (manual entry allowed) or max_return_quantity > 0
+          return item.max_return_quantity === null || item.max_return_quantity > 0;
+        });
+      } else {
+        // When editing, show all items
+        returnItems.value = itemsWithShortfall;
+      }
+      updateFormField("return_items", returnItems.value);
+    } else {
+      // No remaining shortfall - allow manual entry (shouldn't reach here due to error above, but just in case)
+      if (!props.editingReturnNote) {
+        // Filter out items with max_return_quantity === 0 when creating
+        returnItems.value = itemsWithShortfall.filter((item) => {
+          // Keep items with null max_return_quantity (manual entry allowed) or max_return_quantity > 0
+          return item.max_return_quantity === null || item.max_return_quantity > 0;
+        });
+      } else {
+        // When editing, show all items
+        returnItems.value = itemsWithShortfall;
+      }
+      updateFormField("return_items", returnItems.value);
+    }
+  } catch (error) {
+    console.error("[ReturnNoteForm] Error checking receipt notes:", error);
+    // On error, allow manual entry
+    returnItems.value = transformedItems.map((item) => ({
+      ...item,
+      return_quantity: null,
+      return_total: null,
+    }));
+    updateFormField("return_items", returnItems.value);
+  } finally {
+    checkingReceiptNotes.value = false;
+  }
+};
+
+// Recalculate max_return_quantity for items when editing
+// This is needed because when editing, we load items from return_note_items table
+// which doesn't have max_return_quantity, so we need to recalculate it
+const recalculateMaxReturnQuantities = async (items: any[], sourceUuid: string, sourceType: 'purchase_order' | 'change_order') => {
+  try {
+    const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+    const projectUuid = props.form.project_uuid;
+
+    if (!corpUuid || !projectUuid) {
+      // Can't calculate without corp/project, return items as-is
+      return items;
+    }
+
+    // Fetch all receipt notes for this PO/CO
+    await stockReceiptNotesStore.fetchStockReceiptNotes(corpUuid, { force: false });
+    const allReceiptNotes = stockReceiptNotesStore.stockReceiptNotes.filter(
+      (note: any) => note.corporation_uuid === corpUuid
+    );
+
+    // Filter receipt notes that match the source (PO/CO) and receipt type
+    const matchingReceiptNotes = allReceiptNotes.filter((note: any) => {
+      if (note.is_active === false) return false;
+      const receiptType = note.receipt_type || 'purchase_order';
+      
+      if (sourceType === 'purchase_order') {
+        return note.purchase_order_uuid === sourceUuid && receiptType === 'purchase_order';
+      } else {
+        return note.change_order_uuid === sourceUuid && receiptType === 'change_order';
+      }
+    });
+
+    if (matchingReceiptNotes.length === 0) {
+      // No receipt notes - max return should be ordered quantity minus already returned
+      // Fetch existing return notes for the same PO/CO (excluding the current one if editing)
+      await stockReturnNotesStore.fetchStockReturnNotes(corpUuid, false, 1, 100);
+      const allReturnNotes = stockReturnNotesStore.stockReturnNotes.filter(
+        (note: any) => note.corporation_uuid === corpUuid
+      );
+
+      // Filter return notes that match the source (PO/CO) and return type, excluding current return note if editing
+      const matchingReturnNotes = allReturnNotes.filter((note: any) => {
+        if (note.is_active === false) return false;
+        // Exclude current return note if editing
+        if (props.editingReturnNote && props.form.uuid && note.uuid === props.form.uuid) {
+          return false;
+        }
+        
+        const normalizedStatus = String(note.status || '').trim().toLowerCase();
+        // Only consider active return notes (Returned status)
+        if (normalizedStatus !== 'returned') {
+          return false;
+        }
+
+        const noteReturnType = note.return_type || 'purchase_order';
+        
+        if (sourceType === 'purchase_order') {
+          return note.purchase_order_uuid === sourceUuid && noteReturnType === 'purchase_order';
+        } else {
+          return note.change_order_uuid === sourceUuid && noteReturnType === 'change_order';
+        }
+      });
+
+      // Fetch return note items for all matching return notes
+      const allReturnNoteItems: any[] = [];
+      for (const returnNote of matchingReturnNotes) {
+        try {
+          const response: any = await $fetch("/api/return-note-items", {
+            method: "GET",
+            query: {
+              corporation_uuid: corpUuid,
+              project_uuid: projectUuid,
+              return_note_uuid: returnNote.uuid,
+              item_type: sourceType,
+            },
+          });
+          
+          const returnItems = Array.isArray(response?.data) ? response.data : [];
+          allReturnNoteItems.push(...returnItems);
+        } catch (error) {
+          console.error(`[ReturnNoteForm] Failed to fetch return note items for ${returnNote.uuid}:`, error);
+        }
+      }
+
+      // Create a map of already returned quantities by item_uuid
+      const returnedQuantitiesMap = new Map<string, number>();
+      allReturnNoteItems.forEach((rni: any) => {
+        if (rni.is_active === false) return;
+        
+        const itemUuid = rni.item_uuid || rni.base_item_uuid;
+        if (itemUuid) {
+          const key = String(itemUuid).trim().toLowerCase();
+          const existingQty = returnedQuantitiesMap.get(key) || 0;
+          const returnQty = parseFloat(String(rni.return_quantity || 0)) || 0;
+          returnedQuantitiesMap.set(key, existingQty + returnQty);
+        }
+      });
+
+      // Calculate max_return_quantity for each item
+      return items.map((item) => {
+        const itemUuid = item.uuid || item.base_item_uuid || item.item_uuid;
+        const orderedQty = parseNumericInput(item.ordered_quantity ?? item.po_quantity ?? item.co_quantity ?? 0);
+        
+        if (!itemUuid || orderedQty === 0) {
+          // Item without UUID or zero quantity - no max limit
+          return {
+            ...item,
+            max_return_quantity: item.max_return_quantity ?? null,
+          };
+        }
+
+        const key = String(itemUuid).trim().toLowerCase();
+        const alreadyReturnedQty = returnedQuantitiesMap.get(key) || 0;
+        
+        // Max return quantity = ordered quantity - already returned quantity
+        const maxReturnQty = Math.max(0, orderedQty - alreadyReturnedQty);
+        
+        return {
+          ...item,
+          max_return_quantity: item.max_return_quantity ?? maxReturnQty,
+        };
+      });
+    }
+
+    // Fetch receipt note items for all matching receipt notes
+    const allReceiptNoteItems: any[] = [];
+    for (const receiptNote of matchingReceiptNotes) {
+      try {
+        const response: any = await $fetch("/api/receipt-note-items", {
+          method: "GET",
+          query: {
+            corporation_uuid: corpUuid,
+            receipt_note_uuid: receiptNote.uuid,
+            item_type: sourceType,
+          },
+        });
+
+        const receiptItems = Array.isArray(response?.data) ? response.data : [];
+        allReceiptNoteItems.push(...receiptItems);
+      } catch (error) {
+        console.error(`[ReturnNoteForm] Failed to fetch receipt note items for ${receiptNote.uuid}:`, error);
+      }
+    }
+
+    // Create a map of received quantities by item_uuid
+    const receivedQuantitiesMap = new Map<string, number>();
+    allReceiptNoteItems.forEach((rni: any) => {
+      if (rni.is_active === false) return;
+      
+      const itemUuid = rni.item_uuid || rni.base_item_uuid;
+      if (itemUuid) {
+        const key = String(itemUuid).trim().toLowerCase();
+        const existingQty = receivedQuantitiesMap.get(key) || 0;
+        const receivedQty = parseFloat(String(rni.received_quantity || 0)) || 0;
+        receivedQuantitiesMap.set(key, existingQty + receivedQty);
+      }
+    });
+
+    // Fetch existing return notes for the same PO/CO (excluding the current one if editing)
+    await stockReturnNotesStore.fetchStockReturnNotes(corpUuid, false, 1, 100);
+    const allReturnNotes = stockReturnNotesStore.stockReturnNotes.filter(
+      (note: any) => note.corporation_uuid === corpUuid
+    );
+
+    // Filter return notes that match the source (PO/CO) and return type, excluding current return note if editing
+    const matchingReturnNotes = allReturnNotes.filter((note: any) => {
+      if (note.is_active === false) return false;
+      // Exclude current return note if editing
+      if (props.editingReturnNote && props.form.uuid && note.uuid === props.form.uuid) {
+        return false;
+      }
+      
+      const normalizedStatus = String(note.status || '').trim().toLowerCase();
+      if (normalizedStatus !== 'returned') {
+        return false;
+      }
+
+      const noteReturnType = note.return_type || 'purchase_order';
+      
+      if (sourceType === 'purchase_order') {
+        return note.purchase_order_uuid === sourceUuid && noteReturnType === 'purchase_order';
+      } else {
+        return note.change_order_uuid === sourceUuid && noteReturnType === 'change_order';
+      }
+    });
+
+    // Fetch return note items for all matching return notes
+    const allReturnNoteItems: any[] = [];
+    for (const returnNote of matchingReturnNotes) {
+      try {
+        const response: any = await $fetch("/api/return-note-items", {
+          method: "GET",
+          query: {
+            corporation_uuid: corpUuid,
+            project_uuid: projectUuid,
+            return_note_uuid: returnNote.uuid,
+            item_type: sourceType,
+          },
+        });
+        
+        const returnItems = Array.isArray(response?.data) ? response.data : [];
+        allReturnNoteItems.push(...returnItems);
+      } catch (error) {
+        console.error(`[ReturnNoteForm] Failed to fetch return note items for ${returnNote.uuid}:`, error);
+      }
+    }
+
+    // Create a map of already returned quantities by item_uuid
+    const returnedQuantitiesMap = new Map<string, number>();
+    allReturnNoteItems.forEach((rni: any) => {
+      if (rni.is_active === false) return;
+      
+      const itemUuid = rni.item_uuid || rni.base_item_uuid;
+      if (itemUuid) {
+        const key = String(itemUuid).trim().toLowerCase();
+        const existingQty = returnedQuantitiesMap.get(key) || 0;
+        const returnQty = parseFloat(String(rni.return_quantity || 0)) || 0;
+        returnedQuantitiesMap.set(key, existingQty + returnQty);
+      }
+    });
+
+    // Calculate max_return_quantity for each item
+    return items.map((item) => {
+      const itemUuid = item.uuid || item.base_item_uuid || item.item_uuid;
+      const orderedQty = parseNumericInput(item.ordered_quantity ?? item.po_quantity ?? item.co_quantity ?? 0);
+      
+      if (!itemUuid || orderedQty === 0) {
+        // Item without UUID or zero quantity - no max limit
+        return {
+          ...item,
+          max_return_quantity: item.max_return_quantity ?? null,
+        };
+      }
+
+      const key = String(itemUuid).trim().toLowerCase();
+      const receivedQty = receivedQuantitiesMap.get(key) || 0;
+      const alreadyReturnedQty = returnedQuantitiesMap.get(key) || 0;
+      
+      // Calculate shortfall: ordered - received
+      const shortfallQty = orderedQty - receivedQty;
+      
+      // Calculate remaining return quantity: shortfall - already returned
+      const remainingReturnQty = Math.max(0, shortfallQty - alreadyReturnedQty);
+
+      return {
+        ...item,
+        max_return_quantity: item.max_return_quantity ?? remainingReturnQty,
+      };
+    });
+  } catch (error) {
+    console.error("[ReturnNoteForm] Error recalculating max return quantities:", error);
+    // On error, return items as-is (preserve existing max_return_quantity if any)
+    return items;
+  }
+};
+
+// Transform PO/CO items to return items format
+const transformItemsToReturnItems = (items: any[]) => {
+  // Get preferred items for lookup (for sequence and UOM)
+  const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  const projectUuid = props.form.project_uuid;
+  const preferredItemsGetter = purchaseOrderResourcesStore.getPreferredItems;
+  const preferredItems = (typeof preferredItemsGetter === 'function' && corpUuid && projectUuid)
+    ? preferredItemsGetter(corpUuid, projectUuid) || []
+    : [];
+  
+  // Create a map for quick lookup by item_uuid
+  const preferredItemsMap = new Map<string, any>();
+  preferredItems.forEach((prefItem: any) => {
+    const itemUuid = prefItem.item_uuid || prefItem.uuid;
+    if (itemUuid) {
+      preferredItemsMap.set(String(itemUuid), prefItem);
+    }
+  });
+  
+  return items.map((item) => {
+    const metadata = item.display_metadata || item.metadata || {};
+    const itemTypeUuid = item.item_type_uuid || metadata.item_type_uuid || null;
+    
+    // Look up item type from store if available
+    let itemTypeCode = item.item_type_code || metadata.item_type_code || item.short_name || metadata.short_name || null;
+    let itemTypeLabel = item.item_type_label || metadata.item_type_label || null;
+    
+    if (itemTypeUuid && itemTypesStore.itemTypes.length > 0) {
+      const itemType = itemTypesStore.itemTypes.find((it: any) => it.uuid === itemTypeUuid);
+      if (itemType) {
+        // Use store values if not already set
+        if (!itemTypeCode) {
+          itemTypeCode = itemType.short_name || null;
+        }
+        if (!itemTypeLabel) {
+          itemTypeLabel = itemType.item_type || null;
+        }
+      }
+    }
+    
+    // Look up preferred item by item_uuid for sequence and UOM
+    const itemUuid = item.item_uuid || null;
+    const preferredItem = itemUuid ? preferredItemsMap.get(String(itemUuid)) : null;
+    
+    // Get sequence from preferred item if not in item
+    let sequenceLabel = item.sequence_label || item.sequence || metadata.sequence || null;
+    if (!sequenceLabel && preferredItem) {
+      sequenceLabel = preferredItem.item_sequence || null;
+    }
+    
+    // Get unit_label from preferred item if not in item
+    let unitLabel = item.unit_label || item.uom_label || item.unit || metadata.unit_label || metadata.unit || null;
+    if (!unitLabel && preferredItem) {
+      unitLabel = preferredItem.unit || preferredItem.unit_label || preferredItem.uom || preferredItem.uom_label || null;
+    }
+    
+    const line = {
+      id: item.uuid || item.id,
+      base_item_uuid: item.uuid,
+      uuid: item.uuid,
+      cost_code_uuid: item.cost_code_uuid || metadata.cost_code_uuid || null,
+      cost_code_label: item.cost_code_label || metadata.cost_code_label || 
+        (item.cost_code_number && item.cost_code_name 
+          ? `${item.cost_code_number} ${item.cost_code_name}`.trim()
+          : (metadata.cost_code_number && metadata.cost_code_name
+            ? `${metadata.cost_code_number} ${metadata.cost_code_name}`.trim()
+            : null)),
+      cost_code_number: item.cost_code_number || metadata.cost_code_number || null,
+      cost_code_name: item.cost_code_name || metadata.cost_code_name || null,
+      // Category / division from PO/CO items
+      category: item.category ?? metadata.category ?? null,
+      division_name: item.division_name ?? metadata.division_name ?? null,
+      item_division_uuid: item.item_division_uuid ?? metadata.item_division_uuid ?? null,
+      item_type_uuid: itemTypeUuid,
+      item_type_code: itemTypeCode,
+      item_type_label: itemTypeLabel,
+      sequence_label: sequenceLabel,
+      item_uuid: itemUuid,
+      // Get item name - prioritize preferred item's item_name by item_uuid
+      item_name: (() => {
+        let resolvedName = '';
+        
+        // Strategy 1: Look up from preferred items by item_uuid
+        if (preferredItem?.item_name) {
+          resolvedName = preferredItem.item_name;
+        } else if (preferredItem?.name) { // Fallback to 'name' field on preferred item
+          resolvedName = preferredItem.name;
+        }
+        
+        // Strategy 2: Fallback to item.item_name (direct database field) if not found from preferred item
+        if (!resolvedName && item.item_name) {
+          resolvedName = item.item_name;
+        }
+        
+        // Strategy 3: Fallback to metadata.item_name (JSONB field) if not found
+        if (!resolvedName) {
+          resolvedName = metadata.item_name || item.display_metadata?.item_name || '';
+        }
+        
+        // Strategy 4: Fallback to item.name (if sequence exists, for preferred items that might use 'name')
+        if (!resolvedName && sequenceLabel && sequenceLabel !== '—' && sequenceLabel.trim() !== '') {
+          resolvedName = item.name || '';
+        }
+        
+        return resolvedName || null;
+      })(),
+      description: item.description || metadata.description || null,
+      model_number: item.model_number || metadata.model_number || null,
+      unit_uuid: item.unit_uuid || item.uom_uuid || metadata.unit_uuid || null,
+      unit_label: unitLabel,
+      // For change orders, use co_unit_price; for purchase orders, use po_unit_price
+      unit_price: item.unit_price || item.co_unit_price || item.po_unit_price || 0,
+      ordered_quantity: item.po_quantity || item.co_quantity || item.quantity || 0,
+      po_quantity: item.po_quantity || item.co_quantity || item.quantity || 0,
+      co_quantity: item.co_quantity || item.po_quantity || item.quantity || 0,
+      return_quantity: item.return_quantity || null,
+      return_total: item.return_total || null,
+      location_uuid: item.location_uuid || metadata.location_uuid || null,
+      location_label: item.location_label || item.location || metadata.location_display || metadata.location_label || null,
+      max_return_quantity: item.max_return_quantity !== undefined ? item.max_return_quantity : null, // Preserve max_return_quantity if it exists
+    };
+    return applyReturnItemHierarchyToLine(line);
+  });
+};
+
+// Fetch items when purchase order or change order changes
+const fetchItems = async (sourceUuid: string | null, sourceType: string | null) => {
+  
+  if (!sourceUuid || !sourceType) {
+    poItems.value = [];
+    returnItems.value = [];
+    return;
+  }
+
+  poItemsLoading.value = true;
+  poItemsError.value = null;
+
+  try {
+    // Ensure item types and preferred items are loaded for lookup
+    const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+    const projectUuid = props.form.project_uuid;
+    if (corpUuid && projectUuid) {
+      await refreshReturnItemHierarchyFromApi();
+
+      // Fetch item types if needed
+      if (itemTypesStore.itemTypes.length === 0) {
+        try {
+          await itemTypesStore.fetchItemTypes(corpUuid, projectUuid);
+        } catch (error) {
+          // Continue even if item types fetch fails
+        }
+      }
+      
+      // Ensure preferred items are loaded (for sequence and UOM lookup)
+      try {
+        await purchaseOrderResourcesStore.ensurePreferredItems({
+          corporationUuid: corpUuid,
+          projectUuid: projectUuid,
+          force: false,
+        });
+      } catch (error) {
+        // Continue even if preferred items fetch fails
+      }
+    }
+
+    let items: any[] = [];
+
+    if (sourceType === 'purchase_order') {
+      // Try to use the store function, fallback to direct API call
+      if (typeof purchaseOrderResourcesStore.fetchPurchaseOrderItems === 'function') {
+        items = await purchaseOrderResourcesStore.fetchPurchaseOrderItems(sourceUuid);
+      } else {
+        // Fallback: call API directly
+        const response: any = await $fetch("/api/purchase-order-items", {
+          method: "GET",
+          query: {
+            purchase_order_uuid: sourceUuid,
+          },
+        });
+        items = Array.isArray(response?.data) ? response.data : [];
+      }
+    } else if (sourceType === 'change_order') {
+      // Fetch change order items
+      const response: any = await $fetch("/api/change-order-items", {
+        method: "GET",
+        query: {
+          change_order_uuid: sourceUuid,
+        },
+      });
+      items = Array.isArray(response?.data) ? response.data : [];
+    }
+    
+    poItems.value = items;
+    const transformed = transformItemsToReturnItems(items);
+
+    // For new return notes, check if return_items are already provided (e.g., from shortfall)
+    if (!props.editingReturnNote) {
+      // If return_items are already in the form (e.g., from shortfall items), use them
+      if (props.form.return_items && Array.isArray(props.form.return_items) && props.form.return_items.length > 0) {
+        // Use the provided return_items (they already have return_quantity set)
+        // Filter out items with zero remaining quantity when creating a new return note
+        const mappedItems = props.form.return_items.map((item: any) => ({
+          ...item,
+          // Ensure all required fields are present
+          base_item_uuid: item.base_item_uuid || item.uuid || null,
+          cost_code_uuid: item.cost_code_uuid || null,
+          cost_code_number: item.cost_code_number || '',
+          cost_code_name: item.cost_code_name || '',
+          item_type_uuid: item.item_type_uuid || null,
+          item_uuid: item.item_uuid || null,
+          item_name: item.item_name || '',
+          description: item.description || '',
+          model_number: item.model_number || '',
+          unit_uuid: item.unit_uuid || null,
+          unit_label: item.unit_label || '',
+          unit_price: item.unit_price || 0,
+          return_quantity: item.return_quantity || null,
+          return_total: item.return_total || (item.return_quantity && item.unit_price ? item.return_quantity * item.unit_price : null),
+          location_uuid: item.location_uuid || null,
+          max_return_quantity: item.max_return_quantity !== undefined ? item.max_return_quantity : null,
+        }));
+        
+        // Filter out items with zero remaining quantity when creating
+        returnItems.value = mappedItems.filter((item: any) => {
+          // Keep items with null max_return_quantity (manual entry allowed) or max_return_quantity > 0
+          return item.max_return_quantity === null || item.max_return_quantity > 0;
+        });
+        
+        // Update form with return items
+        updateFormField("return_items", returnItems.value);
+        // Clear validation error since items are pre-populated
+        receiptNotesValidationError.value = null;
+      } else {
+        // No return_items provided, check receipt notes to calculate shortfall
+        await checkReceiptNotesAndCalculateShortfall(
+          sourceUuid,
+          sourceType as 'purchase_order' | 'change_order',
+          transformed
+        );
+      }
+    } else {
+      // When editing, fetch return note items from the return_note_items table
+      let returnNoteItemsMap = new Map<string, any>();
+      let returnNoteItems: any[] = [];
+      let currentReturnType: string = returnType.value;
+      let currentPoUuid: string | null = null;
+      let currentCoUuid: string | null = null;
+      
+      if (props.form.uuid) {
+        try {
+          const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+          const projectUuid = props.form.project_uuid;
+          
+          if (!corpUuid) {
+          } else {
+            
+            const returnNoteItemsResponse: any = await $fetch("/api/return-note-items", {
+              method: "GET",
+              query: {
+                corporation_uuid: corpUuid,
+                project_uuid: projectUuid || undefined,
+                return_note_uuid: props.form.uuid,
+                item_type: returnType.value, // Filter by return type for better performance and correctness
+              },
+            });
+            
+            
+            returnNoteItems = Array.isArray(returnNoteItemsResponse?.data) 
+              ? returnNoteItemsResponse.data 
+              : [];
+            
+            // Set return type and UUIDs early so they can be used in the query below
+            currentReturnType = returnType.value;
+            currentPoUuid = currentReturnType === 'purchase_order' 
+              ? (props.form.purchase_order_uuid || sourceUuid)
+              : null;
+            currentCoUuid = currentReturnType === 'change_order'
+              ? (props.form.change_order_uuid || sourceUuid)
+              : null;
+            
+            
+            let skippedCount = 0;
+            returnNoteItems.forEach((rni: any) => {
+              // Only process return note items that match the current return type
+              const rniItemType = rni.item_type || rni.return_type || currentReturnType;
+              if (rniItemType !== currentReturnType) {
+                skippedCount++;
+                return;
+              }
+              
+              // For purchase orders, ensure the return note item belongs to the current purchase order
+              if (currentReturnType === 'purchase_order' && currentPoUuid) {
+                if (rni.purchase_order_uuid !== currentPoUuid) {
+                  skippedCount++;
+                  return;
+                }
+              }
+              
+              // For change orders, ensure the return note item belongs to the current change order
+              if (currentReturnType === 'change_order' && currentCoUuid) {
+                if (rni.change_order_uuid !== currentCoUuid) {
+                  skippedCount++;
+                  return;
+                }
+              }
+              
+              // Map by item_uuid (the primary matching field)
+              if (rni.item_uuid) {
+                const itemUuidKey = String(rni.item_uuid).trim().toLowerCase();
+                returnNoteItemsMap.set(itemUuidKey, rni);
+              }
+              // Also map by base_item_uuid if it exists and is different
+              if (rni.base_item_uuid && rni.base_item_uuid !== rni.item_uuid) {
+                const baseItemUuidKey = String(rni.base_item_uuid).trim().toLowerCase();
+                // Only set if not already in map (item_uuid takes precedence)
+                if (!returnNoteItemsMap.has(baseItemUuidKey)) {
+                  returnNoteItemsMap.set(baseItemUuidKey, rni);
+                }
+              }
+            });
+            
+          }
+        } catch (error: any) {
+          console.error("[ReturnNoteForm] Failed to fetch return note items:", error);
+          // Continue with fallback to props.form.return_items if available
+        }
+      }
+      
+      // Create an array of return note items in order for position-based matching fallback
+      const returnNoteItemsArray: any[] = [];
+      returnNoteItems.forEach((rni: any) => {
+        // Only include items that passed all filters (are in the map)
+        const rniItemType = rni.item_type || rni.return_type || currentReturnType;
+        if (rniItemType === currentReturnType) {
+          if (currentReturnType === 'purchase_order' && currentPoUuid) {
+            if (rni.purchase_order_uuid === currentPoUuid && returnNoteItemsMap.has(String(rni.item_uuid).trim().toLowerCase())) {
+              returnNoteItemsArray.push(rni);
+            }
+          } else if (currentReturnType === 'change_order' && currentCoUuid) {
+            if (rni.change_order_uuid === currentCoUuid && returnNoteItemsMap.has(String(rni.item_uuid).trim().toLowerCase())) {
+              returnNoteItemsArray.push(rni);
+            }
+          }
+        }
+      });
+      
+      
+      // When editing, only show items that are in the return note (from return_note_items table or props.form.return_items)
+      // Build a set of item UUIDs that should be included
+      const includedItemUuids = new Set<string>();
+      
+      // Add UUIDs from return note items map
+      returnNoteItemsMap.forEach((rni) => {
+        if (rni.item_uuid) {
+          includedItemUuids.add(String(rni.item_uuid).trim().toLowerCase());
+        }
+        if (rni.base_item_uuid) {
+          includedItemUuids.add(String(rni.base_item_uuid).trim().toLowerCase());
+        }
+      });
+      
+      // Also check props.form.return_items for backward compatibility
+      if (props.form.return_items && Array.isArray(props.form.return_items)) {
+        props.form.return_items.forEach((ri: any) => {
+          if (ri.item_uuid) {
+            includedItemUuids.add(String(ri.item_uuid).trim().toLowerCase());
+          }
+          if (ri.base_item_uuid) {
+            includedItemUuids.add(String(ri.base_item_uuid).trim().toLowerCase());
+          }
+          if (ri.uuid) {
+            includedItemUuids.add(String(ri.uuid).trim().toLowerCase());
+          }
+        });
+      }
+      
+      // Filter transformed items to only include those that are in the return note
+      // Check multiple UUID fields to match against includedItemUuids
+      const filteredTransformed = transformed.filter((item) => {
+        // Try multiple UUID fields in order of preference
+        const itemUuid = item.item_uuid || item.base_item_uuid || item.uuid;
+        if (!itemUuid) return false;
+        const itemUuidKey = String(itemUuid).trim().toLowerCase();
+        if (includedItemUuids.has(itemUuidKey)) {
+          return true;
+        }
+        // Also check base_item_uuid if it's different
+        if (item.base_item_uuid && item.base_item_uuid !== itemUuid) {
+          const baseItemUuidKey = String(item.base_item_uuid).trim().toLowerCase();
+          if (includedItemUuids.has(baseItemUuidKey)) {
+            return true;
+          }
+        }
+        // Also check uuid if it's different (for PO/CO item UUIDs)
+        if (item.uuid && item.uuid !== itemUuid) {
+          const uuidKey = String(item.uuid).trim().toLowerCase();
+          if (includedItemUuids.has(uuidKey)) {
+            return true;
+          }
+        }
+        return false;
+      });
+      
+      // Merge return note items with filtered transformed PO/CO items
+      returnItems.value = filteredTransformed.map((item, index) => {
+        const itemUuid = item.uuid || item.base_item_uuid || item.id;
+        const currentReturnType = returnType.value;
+        
+        
+        // Try multiple matching strategies
+        let returnNoteItem = null;
+        let matchedBy = null;
+        
+        // Strategy 1: Try matching by item.uuid (primary key)
+        if (item.uuid) {
+          const itemUuidKey = String(item.uuid).trim().toLowerCase();
+          returnNoteItem = returnNoteItemsMap.get(itemUuidKey);
+          if (returnNoteItem) {
+            matchedBy = 'item.uuid';
+          }
+        }
+        
+        // Strategy 2: If no match, try matching by base_item_uuid
+        if (!returnNoteItem && item.base_item_uuid && item.base_item_uuid !== item.uuid) {
+          const baseItemUuidKey = String(item.base_item_uuid).trim().toLowerCase();
+          returnNoteItem = returnNoteItemsMap.get(baseItemUuidKey);
+          if (returnNoteItem) {
+            matchedBy = 'base_item_uuid';
+          }
+        }
+        
+        // Strategy 3: Fallback - try matching by item.item_uuid
+        if (!returnNoteItem && item.item_uuid) {
+          const itemRefUuidKey = String(item.item_uuid).trim().toLowerCase();
+          returnNoteItem = returnNoteItemsMap.get(itemRefUuidKey);
+          if (returnNoteItem) {
+            matchedBy = 'item.item_uuid';
+          }
+        }
+        
+        // Strategy 4: Fallback to position-based matching when UUIDs don't match
+        if (!returnNoteItem && returnNoteItemsArray.length > 0) {
+          // If we have the same number of return note items as filtered items, match by position
+          if (returnNoteItemsArray.length === filteredTransformed.length && index < returnNoteItemsArray.length) {
+            returnNoteItem = returnNoteItemsArray[index];
+            matchedBy = 'position (same count)';
+          } 
+          // If we have more return note items, still try position-based matching
+          else if (returnNoteItemsArray.length > filteredTransformed.length && index < returnNoteItemsArray.length) {
+            returnNoteItem = returnNoteItemsArray[index];
+            matchedBy = 'position (more return items)';
+          }
+          // If we have fewer return note items, only match if within bounds
+          else if (index < returnNoteItemsArray.length) {
+            returnNoteItem = returnNoteItemsArray[index];
+            matchedBy = 'position (fewer return items)';
+          }
+        }
+        
+        if (returnNoteItem) {
+          // Use data from return_note_items table
+          const returnQty = returnNoteItem.return_quantity !== null && returnNoteItem.return_quantity !== undefined 
+            ? returnNoteItem.return_quantity 
+            : null;
+          
+          
+          return {
+            ...item,
+            cost_code_uuid: returnNoteItem.cost_code_uuid ?? item.cost_code_uuid,
+            cost_code_label: returnNoteItem.cost_code_label ?? item.cost_code_label,
+            cost_code_number: returnNoteItem.cost_code_number ?? item.cost_code_number,
+            cost_code_name: returnNoteItem.cost_code_name ?? item.cost_code_name,
+            return_quantity: returnQty,
+            return_total: returnNoteItem.return_total ?? null,
+            max_return_quantity: item.max_return_quantity, // Preserve max_return_quantity from original item
+          };
+        }
+        
+        // Fallback: If no return note item found, check props.form.return_items (for backward compatibility)
+        if (props.form.return_items && Array.isArray(props.form.return_items)) {
+          const existing = props.form.return_items.find(
+            (ri: any) => {
+              const riUuid = ri.uuid || ri.base_item_uuid || ri.item_uuid;
+              return riUuid && String(riUuid).trim().toLowerCase() === String(itemUuid).trim().toLowerCase();
+            }
+          );
+          if (existing) {
+            return {
+              ...item,
+              cost_code_uuid: existing.cost_code_uuid ?? item.cost_code_uuid,
+              cost_code_label: existing.cost_code_label ?? item.cost_code_label,
+              cost_code_number: existing.cost_code_number ?? item.cost_code_number,
+              cost_code_name: existing.cost_code_name ?? item.cost_code_name,
+              return_quantity: existing.return_quantity ?? item.return_quantity,
+              return_total: existing.return_total ?? item.return_total,
+              max_return_quantity: existing.max_return_quantity ?? item.max_return_quantity, // Preserve max_return_quantity
+            };
+          }
+        }
+        
+        // If we reach here, the item should still be included (it passed the filter)
+        // but we don't have return note data for it - use the item as-is
+        return item;
+      });
+      
+      // Recalculate max_return_quantity for items when editing
+      // This ensures validation works correctly even when editing
+      if (sourceType && sourceUuid) {
+        const itemsWithMaxReturn = await recalculateMaxReturnQuantities(
+          returnItems.value,
+          sourceUuid,
+          sourceType as 'purchase_order' | 'change_order'
+        );
+        returnItems.value = itemsWithMaxReturn;
+        
+        // Force validation recalculation after setting max_return_quantity
+        void overReturnItems.value;
+        void hasValidationError.value;
+      }
+      
+      // Update form with return items after merging (for editing mode)
+      updateFormField("return_items", returnItems.value);
+    }
+
+    // Match ReceiptNoteForm: load charge/tax % from PO/CO so FinancialBreakdown matches receipt-note behavior (incl. shortfall flow)
+    if (sourceType === 'purchase_order' || sourceType === 'change_order') {
+      await loadFinancialDataFromSource(sourceUuid, sourceType);
+    }
+  } catch (error: any) {
+    console.error("[ReturnNoteForm] Failed to fetch PO/CO items:", error);
+    poItemsError.value = error?.message || "Failed to load purchase order items";
+    poItems.value = [];
+    returnItems.value = [];
+  } finally {
+    poItemsLoading.value = false;
+  }
+};
+
+// Handle cost code change
+const handleCostCodeChange = (payload: { index: number; value: string | null; option?: any }) => {
+  const { index, value, option } = payload;
+  const item = returnItems.value[index];
+  if (!item) return;
+
+  // Update the item
+  returnItems.value[index] = {
+    ...item,
+    cost_code_uuid: value,
+    cost_code_label: option?.label || 
+      (option?.cost_code_number && option?.cost_code_name
+        ? `${option.cost_code_number} ${option.cost_code_name}`.trim()
+        : null),
+    cost_code_number: option?.cost_code_number || null,
+    cost_code_name: option?.cost_code_name || null,
+  };
+
+  // Update form with return items for saving
+  updateFormField("return_items", returnItems.value);
+};
+
+// Handle return quantity change
+const handleReturnQuantityChange = (payload: {
+  index: number;
+  value: string | number | null | undefined;
+  numericValue: number;
+  computedTotal: number;
+}) => {
+  const { index, numericValue, computedTotal } = payload;
+  const item = returnItems.value[index];
+  if (!item) {
+    return;
+  }
+
+  // Update the item - IMPORTANT: preserve uuid, base_item_uuid, and max_return_quantity
+  // Create a new array to ensure Vue detects the change
+  const updatedItems = [...returnItems.value];
+  updatedItems[index] = {
+    ...item,
+    return_quantity: numericValue,
+    return_total: computedTotal,
+    // Explicitly preserve UUID fields and max_return_quantity to ensure they're not lost
+    uuid: item.uuid,
+    base_item_uuid: item.base_item_uuid,
+    max_return_quantity: item.max_return_quantity,
+  };
+  returnItems.value = updatedItems;
+
+  // Update form with return items for saving
+  updateFormField("return_items", returnItems.value);
+  
+  // Update total return amount
+  const totalReturnAmount = returnItems.value.reduce((sum, item) => {
+    return sum + (parseNumericInput(item.return_total) || 0);
+  }, 0);
+  updateFormField("total_return_amount", roundCurrencyValue(totalReturnAmount));
+
+  // Force validation recalculation by accessing the computed values
+  // This ensures the parent component sees the updated validation state
+  void overReturnItems.value;
+  void hasValidationError.value;
+};
+
+// Helper function to clone return item
+const cloneReturnItem = (item: any): any => {
+  return JSON.parse(JSON.stringify(item));
+};
+
+// Helper function to build match key for return items
+const buildReturnItemMatchKey = (item: any): string | null => {
+  if (!item) return null;
+  const parts = [
+    item.base_item_uuid || item.uuid || item.item_uuid,
+    item.cost_code_uuid,
+    item.item_type_uuid,
+    item.item_uuid,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.map(String).join('|').toLowerCase() : null;
+};
+
+// Helper function to normalize match value
+const normalizeMatchValue = (value: any): string | null => {
+  if (!value) return null;
+  return String(value).trim().toLowerCase();
+};
+
+// Removed return items functionality
+// Use a ref that we manage directly - don't sync with form to avoid race conditions
+const removedReturnItemsRef = ref<any[]>([])
+let isUpdatingRemovedItems = false // Flag to prevent watcher from overwriting our updates
+
+// Initialize from form on mount
+onMounted(() => {
+  const formRemoved = (props.form as any)?.removed_return_items
+  if (Array.isArray(formRemoved) && formRemoved.length > 0) {
+    removedReturnItemsRef.value = [...formRemoved]
+  }
+})
+
+// Watch form changes only when we're not updating ourselves (e.g., when loading existing data)
+watch(
+  () => (props.form as any)?.removed_return_items,
+  (newRemovedItems) => {
+    // Skip if we're in the middle of updating
+    if (isUpdatingRemovedItems) {
+      return
+    }
+    const newArray = Array.isArray(newRemovedItems) ? newRemovedItems : []
+    removedReturnItemsRef.value = [...newArray]
+  },
+  { deep: true }
+)
+
+const removedReturnItems = computed(() => removedReturnItemsRef.value)
+const hasRemovedReturnItems = computed(() => removedReturnItems.value.length > 0)
+
+// Handle removed return items update from child
+const handleRemovedReturnItemsUpdate = (value: any[]) => {
+  updateFormField("removed_return_items", value);
+};
+
+// Handle restore item from child
+const handleRestoreItem = (item: any) => {
+  // Sanitize the restored item (remove removed_at)
+  const sanitized = cloneReturnItem(item);
+  delete sanitized.removed_at;
+  
+  // Add back to returnItems
+  const currentItems = Array.isArray(returnItems.value)
+    ? [...returnItems.value]
+    : [];
+  currentItems.push(sanitized);
+  returnItems.value = currentItems;
+  
+  // Remove from removed items ref
+  const updatedRemoved = removedReturnItemsRef.value.filter(
+    (removedItem) => removedItem.base_item_uuid !== item.base_item_uuid
+  );
+  removedReturnItemsRef.value = [...updatedRemoved];
+  
+  // Update form with return items and removed items
+  updateFormField("return_items", currentItems);
+  updateFormField("removed_return_items", updatedRemoved);
+  
+  // Recalculate total return amount
+  const totalReturnAmount = currentItems.reduce((sum, item) => {
+    return sum + (parseNumericInput(item.return_total) || 0);
+  }, 0);
+  updateFormField("total_return_amount", roundCurrencyValue(totalReturnAmount));
+};
+
+// Handle restore all items from child
+const handleRestoreAllItems = () => {
+  const currentRemoved = [...removedReturnItemsRef.value];
+  if (!currentRemoved.length) return;
+  
+  // Sanitize all restored items
+  const sanitized = currentRemoved.map((item: any) => {
+    const cloned = cloneReturnItem(item);
+    delete cloned.removed_at;
+    return cloned;
+  });
+  
+  // Add all back to returnItems
+  const currentItems = Array.isArray(returnItems.value)
+    ? [...returnItems.value]
+    : [];
+  currentItems.push(...sanitized);
+  returnItems.value = currentItems;
+  
+  // Clear removed items ref
+  removedReturnItemsRef.value = [];
+  
+  // Update both removed_return_items and return_items
+  updateFormField("removed_return_items", []);
+  updateFormField("return_items", currentItems);
+  
+  // Recalculate total return amount
+  const totalReturnAmount = currentItems.reduce((sum, item) => {
+    return sum + (parseNumericInput(item.return_total) || 0);
+  }, 0);
+  updateFormField("total_return_amount", roundCurrencyValue(totalReturnAmount));
+};
+
+// Handle removing a return item
+const handleRemoveReturnItem = (index: number) => {
+  if (index < 0 || index >= returnItems.value.length) return;
+  
+  const itemToRemove = returnItems.value[index];
+  if (!itemToRemove) return;
+  
+  // Clone the item and add removed_at timestamp
+  const cloned = cloneReturnItem(itemToRemove);
+  cloned.removed_at = new Date().toISOString();
+  
+  // Get current removed items from the ref
+  const currentRemoved = [...removedReturnItemsRef.value];
+  currentRemoved.push(cloned);
+  
+  // Set flag to prevent watcher from overwriting
+  isUpdatingRemovedItems = true
+  
+  // Update the ref immediately for reactivity
+  removedReturnItemsRef.value = [...currentRemoved];
+  
+  // Remove from returnItems
+  const updatedItems = returnItems.value.filter((_, i) => i !== index);
+  returnItems.value = updatedItems;
+  
+  // Update form with both return_items and removed_return_items
+  updateFormField("return_items", updatedItems);
+  updateFormField("removed_return_items", currentRemoved);
+  
+  // Reset flag after a tick to allow external updates
+  nextTick(() => {
+    isUpdatingRemovedItems = false
+  })
+  
+  // Recalculate total return amount
+  const totalReturnAmount = updatedItems.reduce((sum, item) => {
+    return sum + (parseNumericInput(item.return_total) || 0);
+  }, 0);
+  updateFormField("total_return_amount", roundCurrencyValue(totalReturnAmount));
+};
+
+// Handle adding a return item (no-op for now, but keeping for consistency)
+const handleAddReturnItem = (index: number) => {
+  // This is intentionally empty - we don't allow adding new items
+  // Only removal and restoration are supported
+};
+
+
+// Check for items with return quantity exceeding max allowed
+const overReturnItems = computed(() => {
+  if (!Array.isArray(returnItems.value) || returnItems.value.length === 0) {
+    return [];
+  }
+
+  return returnItems.value
+    .map((item, index) => {
+      const returnQty = parseNumericInput(item.return_quantity ?? 0);
+      const maxReturnQty = item.max_return_quantity !== null && item.max_return_quantity !== undefined
+        ? parseNumericInput(item.max_return_quantity)
+        : null;
+      
+      // Only validate if max_return_quantity is set (not null/undefined)
+      // Items without max_return_quantity (null) are allowed to have any return quantity
+      if (maxReturnQty !== null && returnQty > maxReturnQty) {
+        return {
+          ...item,
+          index,
+          return_quantity: returnQty,
+          max_return_quantity: maxReturnQty,
+          exceeded_quantity: returnQty - maxReturnQty,
+        };
+      }
+      return null;
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+});
+
+const hasOverReturnItems = computed(() => overReturnItems.value.length > 0);
+
+const overReturnValidationError = computed(() => {
+  if (!hasOverReturnItems.value) return null;
+  
+  const itemCount = overReturnItems.value.length;
+  const itemsList = overReturnItems.value
+    .map((item, idx) => {
+      const itemName = item.item_name || item.description || `Item ${idx + 1}`;
+      const returnQty = item.return_quantity ?? 0;
+      const maxQty = item.max_return_quantity ?? 0;
+      return `"${itemName}" (Return: ${returnQty}, Max: ${maxQty})`;
+    })
+    .join('; ');
+  
+  return `Cannot save return note: ${itemCount} item(s) have return quantity greater than the maximum allowed (remaining shortfall). ${itemsList}`;
+});
+
+// Combined validation error (includes both receipt notes validation and over-return validation)
+const combinedValidationError = computed(() => {
+  return receiptNotesValidationError.value || overReturnValidationError.value;
+});
+
+// Create a computed for hasValidationError
+const hasValidationError = computed(() => !!combinedValidationError.value);
+
+// Watch returnItems to ensure validation is recalculated when items change
+watch(
+  () => returnItems.value,
+  () => {
+    // Force reactivity by accessing the computed values
+    // This ensures the validation state is recalculated when returnItems changes
+    void overReturnItems.value;
+    void hasOverReturnItems.value;
+    void overReturnValidationError.value;
+    void combinedValidationError.value;
+    void hasValidationError.value;
+  },
+  { deep: true, immediate: true }
+);
+
+// Expose validation state and current return items to parent
+defineExpose({
+  receiptNotesValidationError,
+  overReturnValidationError,
+  combinedValidationError,
+  hasValidationError,
+  overReturnItems,
+  hasOverReturnItems,
+  // Expose the live returnItems array so parent can read the most up-to-date values
+  returnItems,
+});
+
+// Watch for purchase order or change order changes
+watch(
+  [() => props.form.purchase_order_uuid, () => props.form.change_order_uuid, () => returnType.value],
+  async ([poUuid, coUuid, currentReturnType], [oldPoUuid, oldCoUuid, oldReturnType]) => {
+    // If return_items are already provided (e.g., from shortfall), don't fetch from PO/CO
+    // This prevents overwriting pre-populated return_items
+    if (!props.editingReturnNote && props.form.return_items && Array.isArray(props.form.return_items) && props.form.return_items.length > 0) {
+      // Use the provided return_items
+      // Filter out items with zero remaining quantity when creating a new return note
+      const mappedItems = props.form.return_items.map((item: any) => ({
+        ...item,
+        // Ensure all required fields are present
+        base_item_uuid: item.base_item_uuid || item.uuid || null,
+        cost_code_uuid: item.cost_code_uuid || null,
+        cost_code_number: item.cost_code_number || '',
+        cost_code_name: item.cost_code_name || '',
+        item_type_uuid: item.item_type_uuid || null,
+        item_uuid: item.item_uuid || null,
+        item_name: item.item_name || '',
+        description: item.description || '',
+        model_number: item.model_number || '',
+        unit_uuid: item.unit_uuid || null,
+        unit_label: item.unit_label || '',
+        unit_price: item.unit_price || 0,
+        return_quantity: item.return_quantity || null,
+        return_total: item.return_total || (item.return_quantity && item.unit_price ? item.return_quantity * item.unit_price : null),
+        location_uuid: item.location_uuid || null,
+        max_return_quantity: item.max_return_quantity !== undefined ? item.max_return_quantity : null,
+      }));
+      
+      // Filter out items with zero remaining quantity when creating
+      returnItems.value = mappedItems.filter((item: any) => {
+        // Keep items with null max_return_quantity (manual entry allowed) or max_return_quantity > 0
+        return item.max_return_quantity === null || item.max_return_quantity > 0;
+      });
+      
+      updateFormField("return_items", returnItems.value);
+
+      const srcUuid =
+        currentReturnType === 'purchase_order' ? poUuid : currentReturnType === 'change_order' ? coUuid : null;
+      if (
+        srcUuid &&
+        (currentReturnType === 'purchase_order' || currentReturnType === 'change_order')
+      ) {
+        await loadFinancialDataFromSource(srcUuid, currentReturnType);
+      }
+      return;
+    }
+
+    // Determine which one changed and handle accordingly
+    const isPoChange = poUuid !== oldPoUuid;
+    const isCoChange = coUuid !== oldCoUuid;
+    const isReturnTypeChange = currentReturnType !== oldReturnType;
+
+    // If return type changed, clear items first
+    if (isReturnTypeChange) {
+      await fetchItems(null, null);
+      // If we have a UUID for the new type, fetch items for it (from_inventory has no PO/CO source)
+      if (currentReturnType === 'purchase_order' && poUuid) {
+        await fetchItems(poUuid, 'purchase_order');
+      } else if (currentReturnType === 'change_order' && coUuid) {
+        await fetchItems(coUuid, 'change_order');
+      }
+      // from_inventory: items stay empty or are managed separately
+      return;
+    }
+
+    // If both changed, prioritize the current return type
+    let sourceUuid = null;
+    let sourceType = null;
+
+    if (currentReturnType === 'purchase_order' && isPoChange) {
+      sourceUuid = poUuid;
+      sourceType = 'purchase_order';
+    } else if (currentReturnType === 'change_order' && isCoChange) {
+      sourceUuid = coUuid;
+      sourceType = 'change_order';
+    }
+
+    // If clearing (setting to null/undefined), clear items and return early
+    if (!sourceUuid || !sourceType) {
+      // Only clear if we had a previous value
+      if ((oldPoUuid !== undefined && oldPoUuid !== null) || (oldCoUuid !== undefined && oldCoUuid !== null)) {
+        await fetchItems(null, null);
+      }
+      return;
+    }
+
+    // Fetch items for the selected source
+    await fetchItems(sourceUuid, sourceType);
+  },
+  { immediate: true }
+);
+</script>
+
+<style scoped>
+/* Force FinancialBreakdown UCard to take full width of its column */
+.flex-shrink-0 > div :deep(.w-full),
+.flex-shrink-0 > div :deep([class*="w-1/2"]),
+.flex-shrink-0 > div :deep([class*="w-5/12"]),
+.flex-shrink-0 > div :deep([class*="w-1/3"]) {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+</style>
+

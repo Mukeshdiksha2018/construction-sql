@@ -1,16 +1,6 @@
-import { getPathForMenuId } from '~/utils/nimbleMenuIds'
 import type { NimbleSession } from '~/stores/auth'
 import { fetchServerSession } from '~/utils/auth-session'
-
-function parsePathWithQuery(pathWithQuery: string): { path: string, query: Record<string, string> } {
-  const [path, rawQuery = ''] = pathWithQuery.split('?')
-  const query: Record<string, string> = {}
-  const params = new URLSearchParams(rawQuery)
-  params.forEach((value, key) => {
-    query[key] = value
-  })
-  return { path, query }
-}
+import { usePrivilegesStore } from '~/stores/privileges'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   if (!import.meta.client) return
@@ -26,9 +16,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const corporationStore = useCorporationStore()
   const serverSession = await fetchServerSession()
 
+  let sessionChanged = false
+
   if (serverSession?.token) {
     if (!authStore.isAuthenticated || authStore.token !== serverSession.token) {
       authStore.setSession(serverSession)
+      sessionChanged = true
     }
   }
 
@@ -42,6 +35,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
       if (result?.session) {
         authStore.setSession(result.session)
+        sessionChanged = true
       }
     }
     catch {
@@ -63,24 +57,21 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
   }
 
-  const mappedPath = getPathForMenuId(menuId)
-  if (mappedPath) {
-    const { path, query } = parsePathWithQuery(mappedPath)
-    const nextQuery: Record<string, string> = { ...query }
-    if (menuId) nextQuery.menuId = menuId
-    if (corporationId) nextQuery.corporationId = corporationId
-
-    const currentPath = to.path
-    const currentTab = String(to.query.tab ?? '')
-    const nextTab = String(nextQuery.tab ?? '')
-    const samePath = currentPath === path
-    const isNestedPath = path !== '/' && currentPath.startsWith(`${path}/`)
-    const sameTab = currentTab === nextTab
-
-    if ((!samePath && !isNestedPath) || (samePath && nextTab && !sameTab)) {
-      return navigateTo({ path, query: nextQuery }, { replace: true })
-    }
+  // Fetch privileges + approvals when authenticated and not yet loaded.
+  // This covers both:
+  //  a) Fresh login (sessionChanged=true)
+  //  b) Already authenticated (persisted session, page refresh / direct navigation)
+  // Runs in the background — does not block navigation.
+  const privilegesStore = usePrivilegesStore()
+  if (authStore.isAuthenticated && !privilegesStore.loaded) {
+    const { loadPrivileges } = usePrivilegesFetch()
+    loadPrivileges().catch((err: unknown) => {
+      console.warn('[Privileges] Background load failed:', err)
+    })
   }
+
+  // Nimble always sends the correct page URL — each page handles tab routing
+  // internally via syncTabFromMenuId. No global path redirect needed here.
 
   if (authId) {
     const nextQuery = { ...to.query }

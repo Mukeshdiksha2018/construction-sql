@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import type { NimbleSession } from '~/stores/auth'
 import { useAuthStore } from '~/stores/auth'
 import { getSafeRedirect } from '~/utils/safe-redirect'
+import { usePrivilegesFetch } from '~/composables/usePrivilegesFetch'
 
 export function useLoginForm() {
   const router = useRouter()
@@ -32,6 +33,13 @@ export function useLoginForm() {
       })
 
       authStore.setSession(data.session)
+
+      // Kick off privileges + approvals fetch in the background so the store
+      // is ready by the time the user reaches their first page.
+      const { loadPrivileges } = usePrivilegesFetch()
+      loadPrivileges().catch((err: unknown) => {
+        console.warn('[Privileges] Background load failed after password login:', err)
+      })
 
       const redirectTo = getSafeRedirect(route.query.redirect)
       await router.push(redirectTo)

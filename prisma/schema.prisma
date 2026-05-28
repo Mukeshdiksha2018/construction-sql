@@ -513,6 +513,326 @@ model EstimateLocationWiseMaterial {
   @@map("estimate_location_wise_material")
 }
 
+/// Purchase order form (header record).
+model PurchaseOrderForm {
+  id                                BigInt    @id @default(autoincrement())
+  uuid                              String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid                  String    @db.NVarChar(36)
+  project_uuid                      String?   @db.NVarChar(36)
+  po_number                         String?   @db.NVarChar(100)
+  entry_date                        DateTime? @db.DateTime2
+  po_type                           String?   @db.NVarChar(20)
+  credit_days                       String?   @db.NVarChar(100)
+  credit_days_id                    String?   @db.NVarChar(100)
+  ship_via                          String?   @db.NVarChar(255)
+  freight                           String?   @db.NVarChar(255)
+  shipping_instructions             String?   @db.NVarChar(Max)
+  estimated_delivery_date           DateTime? @db.DateTime2
+  include_items                     String?   @db.NVarChar(Max)
+  quote_reference                   String?   @db.NVarChar(255)
+  terms_and_conditions              String?   @db.NVarChar(Max)
+  item_total                        Decimal?  @db.Decimal(18, 2)
+  charges_total                     Decimal?  @db.Decimal(18, 2)
+  tax_total                         Decimal?  @db.Decimal(18, 2)
+  total_po_amount                   Decimal?  @db.Decimal(18, 2)
+  vendor_uuid                       String?   @db.NVarChar(36)
+  billing_address_uuid              String?   @db.NVarChar(36)
+  shipping_address_uuid             String?   @db.NVarChar(36)
+  status                            String    @default("Draft") @db.NVarChar(50)
+  financial_breakdown               String?   @db.NVarChar(Max)
+  attachments                       String?   @db.NVarChar(Max)
+  removed_po_items                  String?   @db.NVarChar(Max)
+  audit_log                         String?   @db.NVarChar(Max)
+  prepared_by                       String?   @db.NVarChar(255)
+  approved_by                       String?   @db.NVarChar(255)
+  approved_at                       DateTime? @db.DateTime2
+  print_include_approved_by_vendor  Boolean?
+  print_use_entity_name             Boolean?
+  special_instruction_uuid          String?   @db.NVarChar(36)
+  is_active                         Boolean   @default(true)
+  created_at                        DateTime  @default(now()) @db.DateTime2
+  updated_at                        DateTime  @updatedAt @db.DateTime2
+
+  materialItems        PurchaseOrderItem[]
+  laborItems           LaborPurchaseOrderItem[]
+  locationWiseMaterial POLocationWiseMaterialItem[]
+  receiptNotes         StockReceiptNote[]
+  returnNotes          StockReturnNote[]
+
+  @@index([corporation_uuid])
+  @@index([project_uuid])
+  @@index([vendor_uuid])
+  @@index([status])
+  @@index([is_active])
+  @@index([entry_date(sort: Desc)])
+  @@map("purchase_order_forms")
+}
+
+/// Material line items for a purchase order.
+model PurchaseOrderItem {
+  id                    BigInt   @id @default(autoincrement())
+  uuid                  String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid      String?  @db.NVarChar(36)
+  project_uuid          String?  @db.NVarChar(36)
+  purchase_order_uuid   String   @db.NVarChar(36)
+  order_index           Int      @default(0)
+  source                String?  @db.NVarChar(100)
+  cost_code_uuid        String?  @db.NVarChar(36)
+  cost_code_label       String?  @db.NVarChar(255)
+  cost_code_number      String?  @db.NVarChar(100)
+  cost_code_name        String?  @db.NVarChar(255)
+  division_name         String?  @db.NVarChar(255)
+  category              String?  @db.NVarChar(100)
+  item_division_uuid    String?  @db.NVarChar(36)
+  item_type_uuid        String?  @db.NVarChar(36)
+  item_type_label       String?  @db.NVarChar(255)
+  item_uuid             String?  @db.NVarChar(36)
+  item_name             String?  @db.NVarChar(500)
+  description           String?  @db.NVarChar(Max)
+  model_number          String?  @db.NVarChar(255)
+  location_uuid         String?  @db.NVarChar(36)
+  location_label        String?  @db.NVarChar(255)
+  unit_uuid             String?  @db.NVarChar(36)
+  unit_label            String?  @db.NVarChar(100)
+  quantity              Decimal? @db.Decimal(18, 4)
+  unit_price            Decimal? @db.Decimal(18, 4)
+  po_quantity           Decimal? @db.Decimal(18, 4)
+  po_unit_price         Decimal? @db.Decimal(18, 4)
+  po_total              Decimal? @db.Decimal(18, 2)
+  total                 Decimal? @db.Decimal(18, 2)
+  approval_checks_uuids String?  @db.NVarChar(Max)
+  configuration_name    String?  @db.NVarChar(255)
+  metadata              String?  @db.NVarChar(Max)
+  is_active             Boolean  @default(true)
+  created_at            DateTime @default(now()) @db.DateTime2
+  updated_at            DateTime @updatedAt @db.DateTime2
+
+  purchaseOrder PurchaseOrderForm @relation(fields: [purchase_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([purchase_order_uuid])
+  @@index([corporation_uuid])
+  @@index([project_uuid])
+  @@map("purchase_order_items_list")
+}
+
+/// Labor line items for a labor purchase order.
+model LaborPurchaseOrderItem {
+  id                      BigInt   @id @default(autoincrement())
+  uuid                    String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid        String?  @db.NVarChar(36)
+  project_uuid            String?  @db.NVarChar(36)
+  purchase_order_uuid     String   @db.NVarChar(36)
+  order_index             Int      @default(0)
+  cost_code_uuid          String?  @db.NVarChar(36)
+  cost_code_label         String?  @db.NVarChar(255)
+  cost_code_number        String?  @db.NVarChar(100)
+  cost_code_name          String?  @db.NVarChar(255)
+  division_name           String?  @db.NVarChar(255)
+  location_uuid           String?  @db.NVarChar(36)
+  location_label          String?  @db.NVarChar(255)
+  labor_budgeted_amount   Decimal? @db.Decimal(18, 2)
+  po_amount               Decimal  @default(0) @db.Decimal(18, 2)
+  description             String?  @db.NVarChar(Max)
+  metadata                String?  @db.NVarChar(Max)
+  is_active               Boolean  @default(true)
+  created_at              DateTime @default(now()) @db.DateTime2
+  updated_at              DateTime @updatedAt @db.DateTime2
+
+  purchaseOrder PurchaseOrderForm @relation(fields: [purchase_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([purchase_order_uuid])
+  @@index([corporation_uuid])
+  @@map("labor_purchase_order_items_list")
+}
+
+/// Location-wise material breakdowns for a purchase order.
+model POLocationWiseMaterialItem {
+  id                        BigInt   @id @default(autoincrement())
+  uuid                      String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid          String?  @db.NVarChar(36)
+  project_uuid              String?  @db.NVarChar(36)
+  purchase_order_uuid       String   @db.NVarChar(36)
+  order_index               Int      @default(0)
+  cost_code_uuid            String?  @db.NVarChar(36)
+  cost_code_label           String?  @db.NVarChar(255)
+  cost_code_number          String?  @db.NVarChar(100)
+  cost_code_name            String?  @db.NVarChar(255)
+  division_name             String?  @db.NVarChar(255)
+  location_uuid             String?  @db.NVarChar(36)
+  location_label            String?  @db.NVarChar(255)
+  material_budgeted_amount  Decimal? @db.Decimal(18, 2)
+  po_amount                 Decimal  @default(0) @db.Decimal(18, 2)
+  description               String?  @db.NVarChar(Max)
+  metadata                  String?  @db.NVarChar(Max)
+  is_active                 Boolean  @default(true)
+  created_at                DateTime @default(now()) @db.DateTime2
+  updated_at                DateTime @updatedAt @db.DateTime2
+
+  purchaseOrder PurchaseOrderForm @relation(fields: [purchase_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([purchase_order_uuid])
+  @@index([corporation_uuid])
+  @@map("po_location_wise_material")
+}
+
+/// Goods receipt note (GRN / stock receipt note) header.
+model StockReceiptNote {
+  id                        BigInt    @id @default(autoincrement())
+  uuid                      String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid          String    @db.NVarChar(36)
+  project_uuid              String?   @db.NVarChar(36)
+  purchase_order_uuid       String?   @db.NVarChar(36)
+  receipt_type              String?   @db.NVarChar(50)
+  vendor_uuid               String?   @db.NVarChar(36)
+  entry_date                DateTime? @db.DateTime2
+  received_date             DateTime? @db.DateTime2
+  shipment_date             DateTime? @db.DateTime2
+  grn_number                String    @db.NVarChar(100)
+  reference_number          String?   @db.NVarChar(100)
+  received_by               String?   @db.NVarChar(255)
+  nimble_received_by_user_id String?  @db.NVarChar(128)
+  location_uuid             String?   @db.NVarChar(36)
+  notes                     String?   @db.NVarChar(Max)
+  status                    String    @default("Shipment") @db.NVarChar(50)
+  total_received_amount     Decimal?  @db.Decimal(18, 2)
+  attachments               String?   @db.NVarChar(Max)
+  metadata                  String?   @db.NVarChar(Max)
+  audit_log                 String?   @db.NVarChar(Max)
+  is_active                 Boolean   @default(true)
+  created_at                DateTime  @default(now()) @db.DateTime2
+  updated_at                DateTime  @updatedAt @db.DateTime2
+
+  purchaseOrder PurchaseOrderForm? @relation(fields: [purchase_order_uuid], references: [uuid])
+  items         ReceiptNoteItem[]
+
+  @@index([corporation_uuid])
+  @@index([project_uuid])
+  @@index([purchase_order_uuid])
+  @@index([vendor_uuid])
+  @@index([status])
+  @@index([is_active])
+  @@index([entry_date(sort: Desc)])
+  @@map("stock_receipt_notes")
+}
+
+/// Line items received against a purchase order in a GRN.
+model ReceiptNoteItem {
+  id                    BigInt   @id @default(autoincrement())
+  uuid                  String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid      String?  @db.NVarChar(36)
+  project_uuid          String?  @db.NVarChar(36)
+  receipt_note_uuid     String   @db.NVarChar(36)
+  item_type             String?  @db.NVarChar(50)
+  purchase_order_uuid   String?  @db.NVarChar(36)
+  change_order_uuid     String?  @db.NVarChar(36)
+  cost_code_uuid        String?  @db.NVarChar(36)
+  cost_code_label       String?  @db.NVarChar(255)
+  cost_code_number      String?  @db.NVarChar(100)
+  cost_code_name        String?  @db.NVarChar(255)
+  division_name         String?  @db.NVarChar(255)
+  item_uuid             String?  @db.NVarChar(36)
+  item_name             String?  @db.NVarChar(500)
+  description           String?  @db.NVarChar(Max)
+  model_number          String?  @db.NVarChar(255)
+  location_uuid         String?  @db.NVarChar(36)
+  unit_uuid             String?  @db.NVarChar(36)
+  unit_label            String?  @db.NVarChar(100)
+  category              String?  @db.NVarChar(100)
+  po_quantity           Decimal? @db.Decimal(18, 4)
+  received_quantity     Decimal? @db.Decimal(18, 4)
+  unit_price            Decimal? @db.Decimal(18, 4)
+  total                 Decimal? @db.Decimal(18, 2)
+  po_item_uuid          String?  @db.NVarChar(36)
+  metadata              String?  @db.NVarChar(Max)
+  is_active             Boolean  @default(true)
+  created_at            DateTime @default(now()) @db.DateTime2
+  updated_at            DateTime @updatedAt @db.DateTime2
+
+  receiptNote StockReceiptNote @relation(fields: [receipt_note_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([receipt_note_uuid])
+  @@index([purchase_order_uuid])
+  @@index([corporation_uuid])
+  @@map("receipt_note_items")
+}
+
+/// Stock return note header.
+model StockReturnNote {
+  id                    BigInt    @id @default(autoincrement())
+  uuid                  String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid      String    @db.NVarChar(36)
+  project_uuid          String?   @db.NVarChar(36)
+  purchase_order_uuid   String?   @db.NVarChar(36)
+  return_type           String?   @db.NVarChar(50)
+  vendor_uuid           String?   @db.NVarChar(36)
+  entry_date            DateTime? @db.DateTime2
+  return_note_number    String    @db.NVarChar(100)
+  reference_number      String?   @db.NVarChar(100)
+  location_uuid         String?   @db.NVarChar(36)
+  notes                 String?   @db.NVarChar(Max)
+  status                String    @default("Draft") @db.NVarChar(50)
+  total_return_amount   Decimal?  @db.Decimal(18, 2)
+  attachments           String?   @db.NVarChar(Max)
+  metadata              String?   @db.NVarChar(Max)
+  audit_log             String?   @db.NVarChar(Max)
+  is_active             Boolean   @default(true)
+  created_at            DateTime  @default(now()) @db.DateTime2
+  updated_at            DateTime  @updatedAt @db.DateTime2
+
+  purchaseOrder PurchaseOrderForm? @relation(fields: [purchase_order_uuid], references: [uuid])
+  items         ReturnNoteItem[]
+
+  @@index([corporation_uuid])
+  @@index([project_uuid])
+  @@index([purchase_order_uuid])
+  @@index([vendor_uuid])
+  @@index([is_active])
+  @@index([entry_date(sort: Desc)])
+  @@map("stock_return_notes")
+}
+
+/// Line items being returned in a stock return note.
+model ReturnNoteItem {
+  id                    BigInt   @id @default(autoincrement())
+  uuid                  String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid      String?  @db.NVarChar(36)
+  project_uuid          String?  @db.NVarChar(36)
+  return_note_uuid      String   @db.NVarChar(36)
+  item_type             String?  @db.NVarChar(50)
+  purchase_order_uuid   String?  @db.NVarChar(36)
+  change_order_uuid     String?  @db.NVarChar(36)
+  cost_code_uuid        String?  @db.NVarChar(36)
+  cost_code_label       String?  @db.NVarChar(255)
+  cost_code_number      String?  @db.NVarChar(100)
+  cost_code_name        String?  @db.NVarChar(255)
+  division_name         String?  @db.NVarChar(255)
+  item_uuid             String?  @db.NVarChar(36)
+  item_name             String?  @db.NVarChar(500)
+  description           String?  @db.NVarChar(Max)
+  model_number          String?  @db.NVarChar(255)
+  location_uuid         String?  @db.NVarChar(36)
+  unit_uuid             String?  @db.NVarChar(36)
+  unit_label            String?  @db.NVarChar(100)
+  category              String?  @db.NVarChar(100)
+  po_quantity           Decimal? @db.Decimal(18, 4)
+  return_quantity       Decimal? @db.Decimal(18, 4)
+  unit_price            Decimal? @db.Decimal(18, 4)
+  total                 Decimal? @db.Decimal(18, 2)
+  po_item_uuid          String?  @db.NVarChar(36)
+  receipt_note_uuid     String?  @db.NVarChar(36)
+  metadata              String?  @db.NVarChar(Max)
+  is_active             Boolean  @default(true)
+  created_at            DateTime @default(now()) @db.DateTime2
+  updated_at            DateTime @updatedAt @db.DateTime2
+
+  returnNote StockReturnNote @relation(fields: [return_note_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([return_note_uuid])
+  @@index([purchase_order_uuid])
+  @@index([corporation_uuid])
+  @@map("return_note_items")
+}
+
 /// Global terms and conditions templates.
 model TermsAndCondition {
   id         BigInt   @id @default(autoincrement())
