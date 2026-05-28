@@ -12,7 +12,7 @@ const makeItem = (overrides = {}) => ({
   category: 'construction',
   item_name: 'Steel Beam 10ft',
   unit_price: 49.99,
-  unit: 'ea',
+  uom_uuid: 'uom-uuid-kg',
   description: null,
   status: 'Active',
   is_active: true,

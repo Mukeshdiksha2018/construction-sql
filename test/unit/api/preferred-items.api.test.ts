@@ -41,7 +41,7 @@ const makeItem = (overrides = {}) => ({
   item_sequence: 'SB-001',
   model_number: null,
   unit_price: 49.99,
-  unit: 'ea',
+  uom_uuid: 'uom-uuid-kg',
   location_uuid: null,
   preferred_vendor_uuid: null,
   initial_quantity: null,
@@ -127,7 +127,7 @@ describe('preferred-items API handlers', () => {
         item_type_uuid: 'it-1',
         item_name: 'Steel Beam 10ft',
         unit_price: 49.99,
-        unit: 'ea',
+        uom_uuid: 'uom-uuid-kg',
         status: 'Active',
       })
       mockCreatePreferredItem.mockResolvedValue(makeItem())
@@ -171,7 +171,7 @@ describe('preferred-items API handlers', () => {
         item_sequence: 'B-001',
         model_number: 'M12-001',
         unit_price: 0.5,
-        unit: 'box',
+        uom_uuid: 'uom-uuid-box',
         initial_quantity: 100,
         reorder_point: 20,
         maximum_limit: 500,
