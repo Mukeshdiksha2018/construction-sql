@@ -1,0 +1,3679 @@
+﻿<template>
+  <div class="flex flex-col gap-4">
+    <div class="flex flex-col lg:flex-row gap-4">
+      <div class="flex-1">
+        <UCard variant="soft">
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <!-- 1. Corporation -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Corporation <span class="text-red-500">*</span>
+            </label>
+            <CorporationSelect
+              :model-value="form.corporation_uuid"
+              :disabled="props.readonly"
+              placeholder="Select corporation"
+              size="sm"
+              class="w-full"
+              @update:model-value="handleCorporationChange"
+            />
+          </div>
+
+          <!-- 2. Project Name -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Project Name <span class="text-red-500">*</span>
+            </label>
+            <ProjectSelect
+              :model-value="form.project_uuid"
+              :corporation-uuid="form.corporation_uuid || corpStore.selectedCorporation?.uuid"
+              :disabled="!form.corporation_uuid && !corpStore.selectedCorporation || props.readonly"
+              placeholder="Select project"
+              size="sm"
+              class="w-full"
+              @update:model-value="handleProjectChange"
+            />
+          </div>
+
+          <!-- 3. Vendor -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Vendor
+            </label>
+            <VendorSelect
+              :model-value="form.vendor_uuid"
+              :corporation-uuid="form.corporation_uuid || corpStore.selectedCorporation?.uuid"
+              :local-vendors="localVendors"
+              placeholder="Select vendor"
+              size="sm"
+              class="w-full"
+              :disabled="!form.corporation_uuid && !corpStore.selectedCorporation || props.readonly"
+              @update:model-value="handleVendorChange"
+              @change="handleVendorChange"
+            />
+          </div>
+
+          <!-- 4. Vendor Address -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Vendor Address
+            </label>
+            <div class="relative p-2 bg-gray-50 dark:bg-gray-800 rounded-md text-xs text-muted min-h-[50px] border border-default group hover:border-primary-400 dark:hover:border-primary-600 transition-colors cursor-pointer">
+              <div :class="form.vendor_uuid && !props.readonly ? 'pr-8' : ''">
+                {{ vendorAddressText || 'No vendor selected' }}
+              </div>
+              <UButton
+                v-if="form.vendor_uuid && !props.readonly"
+                icon="tdesign:edit-filled"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                @click="openVendorEditModal"
+                title="Edit vendor address"
+                class="absolute top-2 right-2 transition-all group-hover:!bg-primary-100 group-hover:!text-primary-600 group-hover:scale-110 dark:group-hover:!bg-primary-900 dark:group-hover:!text-primary-400"
+              />
+            </div>
+          </div>
+
+          <!-- 5. GRN Number -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              GRN Number
+            </label>
+            <UInput
+              :model-value="form.grn_number"
+              placeholder="Auto-generated"
+              size="sm"
+              class="w-full"
+              icon="i-heroicons-hashtag"
+              disabled
+            />
+          </div>
+
+          <!-- 6. Receipt Type -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Receipt Type <span class="text-red-500">*</span>
+            </label>
+            <URadioGroup
+              v-model="receiptType"
+              :items="receiptTypeOptions"
+              orientation="horizontal"
+              size="sm"
+              class="w-full"
+              :disabled="props.readonly"
+            />
+          </div>
+
+          <!-- 7. Purchase Order or Change Order -->
+          <div v-if="receiptType === 'purchase_order'">
+            <label class="block text-xs font-medium text-default mb-1">
+              Purchase Order <span class="text-red-500">*</span>
+            </label>
+            <USelectMenu
+              v-model="poOption"
+              :items="poOptions"
+              :disabled="isPODropdownDisabled"
+              placeholder="Select PO"
+              size="sm"
+              class="w-full"
+              value-key="value"
+              label-key="label"
+              searchable
+              clearable
+            >
+              <template #item-label="{ item }">
+                <div class="flex items-center justify-between w-full">
+                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <span class="truncate font-medium">{{ item.label }}</span>
+                    <UBadge
+                      :color="item.type_color"
+                      variant="solid"
+                      size="xs"
+                    >
+                      {{ item.type_label }}
+                    </UBadge>
+                  </div>
+                </div>
+              </template>
+            </USelectMenu>
+          </div>
+
+          <div v-if="receiptType === 'change_order'">
+            <label class="block text-xs font-medium text-default mb-1">
+              Change Order <span class="text-red-500">*</span>
+            </label>
+            <USelectMenu
+              v-model="coOption"
+              :items="coOptions"
+              :disabled="isCODropdownDisabled"
+              placeholder="Select Change Order"
+              size="sm"
+              class="w-full"
+              value-key="value"
+              label-key="label"
+              searchable
+              clearable
+            >
+              <template #item-label="{ item }">
+                <div class="flex items-center justify-between w-full">
+                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <span class="truncate font-medium">{{ item.label }}</span>
+                    <UBadge
+                      :color="item.type_color"
+                      variant="solid"
+                      size="xs"
+                    >
+                      {{ item.type_label }}
+                    </UBadge>
+                  </div>
+                </div>
+              </template>
+            </USelectMenu>
+          </div>
+
+          <!-- 8. Entry Date -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Entry Date <span class="text-red-500">*</span>
+            </label>
+            <UPopover v-model:open="entryDatePopoverOpen" :disabled="props.readonly">
+              <UButton
+                color="neutral"
+                variant="outline"
+                icon="i-heroicons-calendar-days"
+                class="w-full justify-start"
+                size="sm"
+                :disabled="props.readonly"
+              >
+                {{ entryDateDisplayText }}
+              </UButton>
+              <template #content>
+                <UCalendar v-model="entryDateValue" class="p-2" :disabled="props.readonly" @update:model-value="(value) => { entryDateValue = value; entryDatePopoverOpen = false }" />
+              </template>
+            </UPopover>
+          </div>
+
+          <!-- 9. Shipment Date -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Shipment Date
+            </label>
+            <UPopover v-model:open="shipmentDatePopoverOpen" :disabled="props.readonly">
+              <UButton
+                color="neutral"
+                variant="outline"
+                icon="i-heroicons-calendar-days"
+                class="w-full justify-start"
+                size="sm"
+                :disabled="props.readonly"
+              >
+                {{ shipmentDateDisplayText }}
+              </UButton>
+              <template #content>
+                <UCalendar v-model="shipmentDateValue" class="p-2" :disabled="props.readonly" :min-value="entryDateValue" @update:model-value="(value) => { shipmentDateValue = value; shipmentDatePopoverOpen = false }" />
+              </template>
+            </UPopover>
+          </div>
+
+          <!-- 10. Received Date -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Received Date
+            </label>
+            <UPopover v-model:open="receivedDatePopoverOpen" :disabled="props.readonly">
+              <UButton
+                color="neutral"
+                variant="outline"
+                icon="i-heroicons-calendar-days"
+                class="w-full justify-start"
+                size="sm"
+                :disabled="props.readonly"
+              >
+                {{ receivedDateDisplayText }}
+              </UButton>
+              <template #content>
+                <UCalendar v-model="receivedDateValue" class="p-2" :disabled="props.readonly" :min-value="entryDateValue" @update:model-value="(value) => { receivedDateValue = value; receivedDatePopoverOpen = false }" />
+              </template>
+            </UPopover>
+          </div>
+
+          <!-- 11. Received By -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Received By
+            </label>
+            <div class="flex items-center gap-2">
+              <UAvatar
+                v-if="receivedByOption?.avatar"
+                v-bind="receivedByOption.avatar"
+                size="xs"
+                class="flex-shrink-0"
+              />
+              <USelectMenu
+                v-model="receivedByOption"
+                :items="receivedByOptions"
+                placeholder="Select team member"
+                size="sm"
+                class="flex-1 min-w-0"
+                value-key="value"
+                searchable
+                clearable
+                :disabled="props.readonly"
+              />
+            </div>
+          </div>
+
+          <!-- 12. Reference Number -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Reference Number
+            </label>
+            <UInput
+              :model-value="form.reference_number || ''"
+              placeholder="Reference / Invoice number"
+              size="sm"
+              class="w-full"
+              icon="i-heroicons-document-text"
+              :disabled="props.readonly"
+              @update:model-value="(value) => updateFormField('reference_number', value)"
+            />
+          </div>
+
+          <!-- 13. Status -->
+          <div>
+            <label class="block text-xs font-medium text-default mb-1">
+              Status
+            </label>
+            <USelectMenu
+              v-model="statusOption"
+              :items="statusOptions"
+              placeholder="Select status"
+              size="sm"
+              class="w-full"
+              value-key="value"
+              :disabled="props.readonly"
+            />
+          </div>
+        </div>
+        </UCard>
+      </div>
+    </div>
+
+    <ReceiptNoteItemsTable
+      v-if="(receiptType === 'purchase_order' && form.purchase_order_uuid) || (receiptType === 'change_order' && form.change_order_uuid)"
+      :items="receiptItems"
+      :loading="poItemsLoading"
+      :error="poItemsError"
+      :corporation-uuid="(form.corporation_uuid || corpStore.selectedCorporation?.uuid) ?? null"
+      :receipt-type="receiptType"
+      :purchase-order-uuid="receiptType === 'purchase_order' ? form.purchase_order_uuid : null"
+      :change-order-uuid="receiptType === 'change_order' ? form.change_order_uuid : null"
+      :project-uuid="form.project_uuid ?? null"
+      :show-location-column="showGrnLocationColumn"
+      :current-receipt-note-uuid="form.uuid ?? null"
+      :editing-receipt-note="props.editingReceiptNote"
+      :readonly="props.readonly"
+      @received-quantity-change="handleReceivedQuantityChange"
+    >
+      <template #header-actions>
+        <UButton
+          v-if="receiptItems.length > 0 && !props.readonly"
+          color="primary"
+          variant="outline"
+          size="sm"
+          icon="i-heroicons-cog-6-tooth"
+          @click="handleConfigureItems"
+        >
+          Configure Items
+        </UButton>
+      </template>
+    </ReceiptNoteItemsTable>
+
+    <!-- File Upload, Notes, and Financial Breakdown Section -->
+    <div v-if="(receiptType === 'purchase_order' && form.purchase_order_uuid) || (receiptType === 'change_order' && form.change_order_uuid)" class="mt-6 flex flex-col lg:flex-row gap-6">
+      <!-- File Upload Section (Left) -->
+      <div class="w-full lg:w-auto lg:flex-shrink-0 lg:max-w-md">
+        <!-- Upload Section -->
+        <UCard variant="soft" class="mb-3">
+          <div class="flex justify-between items-center mb-3">
+            <h4 class="text-base font-bold text-default flex items-center gap-2 border-b border-default/60 pb-2">
+              <UIcon name="i-heroicons-cloud-arrow-up-solid" class="w-5 h-5 text-primary-500" />
+              File Upload
+            </h4>
+            <span class="text-xs text-muted bg-elevated px-2 py-1 rounded border border-default/60">
+              {{ attachmentCount }} files
+              <span
+                v-if="uploadedAttachmentCount > 0"
+                class="text-success-600 dark:text-success-400"
+              >
+                ({{ uploadedAttachmentCount }} uploaded)
+              </span>
+            </span>
+          </div>
+
+          <UFileUpload
+            v-slot="{ open }"
+            v-model="uploadedFiles"
+            accept=".pdf,.png,.jpg,.jpeg"
+            multiple
+            :disabled="props.readonly"
+          >
+            <div class="space-y-2">
+              <UButton
+                :label="uploadedFiles.length > 0 ? 'Add more files' : 'Choose files'"
+                color="primary"
+                variant="solid"
+                size="sm"
+                icon="i-heroicons-document-plus"
+                :disabled="props.readonly"
+                @click="open()"
+              />
+
+              <p
+                v-if="fileUploadErrorMessage"
+                class="text-xs text-error-600 flex items-center gap-1 p-2 bg-error-50 rounded border border-error-200 dark:bg-error-500/10 dark:border-error-500/30"
+              >
+                <UIcon name="i-heroicons-exclamation-triangle" class="w-3 h-3 flex-shrink-0" />
+                <span class="truncate">{{ fileUploadErrorMessage }}</span>
+              </p>
+
+              <p class="text-[11px] text-muted text-center">
+                PDF or image files · Maximum size 10MB each
+              </p>
+            </div>
+          </UFileUpload>
+        </UCard>
+
+        <!-- Uploaded Files List -->
+        <UCard variant="soft">
+          <div class="flex justify-between items-center mb-3">
+            <h4 class="text-base font-bold text-default flex items-center gap-2 border-b border-default/60 pb-2">
+              <UIcon name="i-heroicons-document-text-solid" class="w-5 h-5 text-primary-500" />
+              Uploaded Files
+            </h4>
+          </div>
+
+          <div
+            v-if="!form.attachments || form.attachments.length === 0"
+            class="flex flex-col items-center justify-center min-h-[200px] text-muted p-6"
+          >
+            <UIcon name="i-heroicons-document" class="w-12 h-12 mb-3 text-muted" />
+            <p class="text-sm font-medium mb-1">No files uploaded</p>
+            <p class="text-xs text-muted text-center">
+              Use the button above to attach delivery documents.
+            </p>
+          </div>
+
+          <div v-else class="max-h-[300px] overflow-y-auto">
+            <div class="space-y-2">
+              <div
+                v-for="(attachment, index) in form.attachments"
+                :key="attachment.uuid || attachment.tempId || `attachment-${index}`"
+                class="flex items-center gap-2 p-2 bg-elevated rounded-md border border-default text-xs hover:bg-accented transition-colors"
+              >
+                <UIcon
+                  :name="attachment.uuid || attachment.isUploaded ? 'i-heroicons-check-circle' : 'i-heroicons-arrow-up-tray'"
+                  class="w-3 h-3"
+                  :class="attachment.uuid || attachment.isUploaded ? 'text-success-600' : 'text-warning-500'"
+                />
+                <span class="truncate flex-1 text-default">
+                  {{ attachment.document_name || attachment.name || `File ${(index as number) + 1}` }}
+                </span>
+                <span class="text-[11px] text-muted">
+                  {{ formatFileSize(attachment.size || attachment.file_size) }}
+                </span>
+                <div class="flex items-center gap-1">
+                  <UButton
+                    icon="i-heroicons-eye-solid"
+                    color="neutral"
+                    variant="soft"
+                    size="xs"
+                    class="p-1 h-auto text-xs"
+                    @click.stop="previewFile(attachment)"
+                  />
+                  <UButton
+                    icon="mingcute:delete-fill"
+                    color="error"
+                    variant="soft"
+                    size="xs"
+                    class="p-1 h-auto text-xs"
+                    :disabled="props.readonly"
+                    @click.stop="removeAttachment(index as number)"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </UCard>
+      </div>
+
+      <!-- Notes Section (Middle) -->
+      <div class="w-full lg:flex-1">
+        <UCard variant="soft">
+          <label class="block text-xs font-medium text-default mb-1">
+            Notes
+          </label>
+          <UTextarea
+            :model-value="form.notes || ''"
+            placeholder="Additional notes about this receipt"
+            size="sm"
+            :rows="4"
+            class="w-full"
+            autoresize
+            :disabled="props.readonly"
+            @update:model-value="(value) => updateFormField('notes', value)"
+          />
+        </UCard>
+      </div>
+
+      <!-- Financial Breakdown (Right) -->
+      <div class="w-full lg:flex-1 flex justify-start lg:justify-end">
+        <div class="w-full lg:w-auto lg:min-w-[520px]">
+          <FinancialBreakdown
+            :item-total="grnItemTotal"
+            :form-data="form"
+            :read-only="true"
+            item-total-label="Item Total"
+            total-label="GRN Total"
+            total-field-name="grn_total_with_charges_taxes"
+            @update="handleFinancialBreakdownUpdate"
+          />
+        </div>
+      </div>
+    </div>
+
+    <UCard v-else variant="soft" class="mt-6">
+      <label class="block text-xs font-medium text-default mb-1">
+        Notes
+      </label>
+      <UTextarea
+        :model-value="form.notes || ''"
+        placeholder="Additional notes about this receipt"
+        size="sm"
+        :rows="4"
+        class="w-full"
+        autoresize
+        @update:model-value="(value) => updateFormField('notes', value)"
+      />
+    </UCard>
+
+    <!-- File Preview Modal -->
+    <UModal
+      v-model:open="showFilePreviewModal"
+      class="w-[95vw] max-w-[95vw] h-[100vh] max-h-[100vh]"
+      :ui="{
+        body: 'p-0 overflow-hidden'
+      }"
+    >
+      <template #header>
+        <div class="flex items-center justify-between w-full">
+          <h3 class="text-base font-semibold">File Preview</h3>
+          <UButton icon="i-heroicons-x-mark" size="xs" variant="solid" color="neutral" @click="closeFilePreview" />
+        </div>
+      </template>
+      <template #body>
+        <div class="h-[calc(100vh-8rem)] overflow-hidden">
+          <FilePreview :attachment="selectedFileForPreview" />
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Receipt Note Items Selection Modal -->
+    <ReceiptNoteItemsSelectionModal
+      v-model:open="showItemsSelectionModal"
+      :items="availableItemsForSelection"
+      :preselected-items="currentReceiptItemsForPreselection"
+      :title="itemsSelectionModalTitle"
+      @confirm="handleItemsSelectionConfirm"
+      @cancel="handleItemsSelectionCancel"
+    />
+
+    <!-- Vendor Edit Modal -->
+    <VendorForm 
+      v-model="showVendorEditModal" 
+      :vendor="editingVendor"
+      @vendor-saved="handleVendorSaved"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref, watch, onMounted, nextTick } from "vue";
+import { storeToRefs } from "pinia";
+import { CalendarDate, DateFormatter, getLocalTimeZone } from "@internationalized/date";
+import { useCorporationStore } from "~/stores/corporations";
+import { usePurchaseOrdersStore } from "~/stores/purchaseOrders";
+import { usePurchaseOrderResourcesStore } from "~/stores/purchaseOrderResources";
+import { useChangeOrdersStore } from "~/stores/changeOrders";
+import { useProjectsStore } from "~/stores/projects";
+import { useVendorStore } from "~/stores/vendors";
+import { useUTCDateFormat } from "~/composables/useUTCDateFormat";
+import { useCurrencyFormat } from "~/composables/useCurrencyFormat";
+import { useLocalPOCOData } from "~/composables/useLocalPOCOData";
+import ProjectSelect from "~/components/shared/ProjectSelect.vue";
+import CorporationSelect from "~/components/shared/CorporationSelect.vue";
+import VendorSelect from "~/components/shared/VendorSelect.vue";
+import ReceiptNoteItemsTable from "~/components/purchaseOrders/ReceiptNoteItemsTable.vue";
+// userProfiles store not available - simplified
+import { useNimbleSessionStore } from "~/stores/nimbleSession";
+import { useItemTypesStore } from "~/stores/itemTypes";
+import {
+  pickFirstSequence,
+  buildItemDivisionConfigMap,
+  buildItemTypeConfigMap,
+  buildPreferredItemTypeMetaLookup,
+  mergeItemTypeFromPreferredCatalog,
+  resolveItemHierarchyFields,
+  type ItemDivisionConfigRow,
+  type ItemTypeConfigRow,
+} from "~/utils/itemHierarchyResolution";
+import { useStockReceiptNotesStore } from "~/stores/stockReceiptNotes";
+import FinancialBreakdown from "~/components/purchaseOrders/FinancialBreakdown.vue";
+import FilePreview from "~/components/shared/FilePreview.vue";
+import ReceiptNoteItemsSelectionModal from "~/components/purchaseOrders/ReceiptNoteItemsSelectionModal.vue";
+import VendorForm from "~/components/purchaseOrders/VendorForm.vue";
+
+interface Props {
+  form: any;
+  editingReceiptNote: boolean;
+  readonly?: boolean;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  readonly: false
+});
+
+const emit = defineEmits<{
+  "update:form": [value: any];
+  "shortfall-detected": [items: any[]];
+}>();
+
+const corpStore = useCorporationStore();
+const purchaseOrdersStore = usePurchaseOrdersStore();
+const purchaseOrderResourcesStore = usePurchaseOrderResourcesStore();
+const changeOrdersStore = useChangeOrdersStore();
+const projectsStore = useProjectsStore();
+const vendorStore = useVendorStore();
+const nimbleSession = useNimbleSessionStore();
+const itemTypesStore = useItemTypesStore();
+const stockReceiptNotesStore = useStockReceiptNotesStore();
+const runtimeConfig = useRuntimeConfig();
+const nimbleIntegrationsEnabled = computed(() =>
+  Boolean(runtimeConfig.public.nimbleIntegrations)
+);
+
+// Item category / item division from API (parity with ChangeOrderForm / purchase-order-breakout)
+const grnItemHierarchyDivisionByUuid = ref(new Map<string, ItemDivisionConfigRow>());
+const grnItemHierarchyItemTypeByUuid = ref(new Map<string, ItemTypeConfigRow>());
+const grnItemHierarchyPreferredMeta = ref(buildPreferredItemTypeMetaLookup([]));
+
+const selectedGrnHierarchyCorp = computed(() =>
+  String(props.form.corporation_uuid || corpStore.selectedCorporation?.uuid || "")
+);
+const selectedGrnHierarchyProject = computed(() =>
+  String(props.form.project_uuid || "").trim()
+);
+
+const showGrnLocationColumn = computed(() => {
+  const projUuid = String(props.form.project_uuid || "").trim();
+  if (!projUuid) return false;
+  const project = (projectsStore as any).projects?.find((p: any) => String(p?.uuid || "").trim() === projUuid);
+  return Boolean(project?.enable_location_wise);
+});
+
+const refreshGrnItemHierarchyFromApi = async () => {
+  const corp = selectedGrnHierarchyCorp.value;
+  const proj = selectedGrnHierarchyProject.value;
+  if (!corp || !proj) {
+    grnItemHierarchyDivisionByUuid.value = new Map();
+    grnItemHierarchyItemTypeByUuid.value = new Map();
+    grnItemHierarchyPreferredMeta.value = buildPreferredItemTypeMetaLookup([]);
+    return;
+  }
+  const [prefSettled, divSettled, typeSettled] = await Promise.allSettled([
+    $fetch("/api/cost-code-preferred-items", {
+      method: "GET",
+      params: { corporation_uuid: corp, project_uuid: proj },
+    }),
+    $fetch("/api/item-divisions", {
+      method: "GET",
+      params: { corporation_uuid: corp },
+    }),
+    $fetch("/api/item-types", {
+      method: "GET",
+      params: { corporation_uuid: corp },
+    }),
+  ]);
+
+  let preferredMeta = buildPreferredItemTypeMetaLookup([]);
+  if (prefSettled.status === "fulfilled") {
+    preferredMeta = buildPreferredItemTypeMetaLookup(
+      (prefSettled.value as any)?.data || []
+    );
+  }
+  grnItemHierarchyPreferredMeta.value = preferredMeta;
+
+  let divMap = new Map<string, ItemDivisionConfigRow>();
+  if (divSettled.status === "fulfilled") {
+    divMap = buildItemDivisionConfigMap((divSettled.value as any)?.data || []);
+  }
+  grnItemHierarchyDivisionByUuid.value = divMap;
+
+  let typeMap = new Map<string, ItemTypeConfigRow>();
+  if (typeSettled.status === "fulfilled") {
+    typeMap = buildItemTypeConfigMap((typeSettled.value as any)?.data || []);
+  }
+  grnItemHierarchyItemTypeByUuid.value = typeMap;
+};
+
+watch(
+  () => [selectedGrnHierarchyCorp.value, selectedGrnHierarchyProject.value] as const,
+  () => {
+    refreshGrnItemHierarchyFromApi();
+  },
+  { immediate: true }
+);
+
+/** Map PO/CO line → item category + item_divisions (not cost-code division). */
+const applyReceiptItemHierarchyToGrnLine = (line: Record<string, any>) => {
+  const mergedPref = mergeItemTypeFromPreferredCatalog(
+    line,
+    grnItemHierarchyPreferredMeta.value
+  );
+  const hasType = Boolean(mergedPref.item_type_uuid);
+  const source = hasType
+    ? { ...mergedPref, division_name: "", division_label: "", item_division_uuid: null }
+    : { ...mergedPref };
+  const hier = resolveItemHierarchyFields(
+    source,
+    grnItemHierarchyDivisionByUuid.value,
+    grnItemHierarchyItemTypeByUuid.value
+  );
+  const divName = hier._division_name === "-" ? "" : hier._division_name;
+  const resolvedTypeLabel = pickFirstSequence(
+    line.item_type_label,
+    mergedPref.item_type_label,
+    hier._item_type_label !== "-" ? hier._item_type_label : ""
+  );
+  const itemTypeLabelFinal =
+    resolvedTypeLabel && String(resolvedTypeLabel).trim()
+      ? resolvedTypeLabel
+      : line.item_type_label ?? null;
+
+  return {
+    ...line,
+    item_type_uuid: mergedPref.item_type_uuid ?? line.item_type_uuid,
+    item_type_label: itemTypeLabelFinal,
+    category: hier._category_value || line.category || "",
+    division_name: divName,
+    item_division_uuid:
+      hier._resolved_item_division_uuid ?? line.item_division_uuid ?? null,
+  };
+};
+const { users: allUsers, hasData: hasUsersData } = storeToRefs(userProfilesStore);
+const { toUTCString, fromUTCString } = useUTCDateFormat();
+const { formatCurrency } = useCurrencyFormat();
+
+// PO Items state
+const poItems = ref<any[]>([]);
+const poItemsLoading = ref(false);
+const entryDatePopoverOpen = ref(false);
+const shipmentDatePopoverOpen = ref(false);
+const receivedDatePopoverOpen = ref(false);
+const poItemsError = ref<string | null>(null);
+const receiptItems = ref<any[]>([]);
+
+// Items selection modal state
+const showItemsSelectionModal = ref(false);
+const availableItemsForSelection = ref<any[]>([]);
+const pendingSourceUuid = ref<string | null>(null);
+const pendingSourceType = ref<string | null>(null);
+
+// Vendor edit functionality
+const showVendorEditModal = ref(false);
+const editingVendor = ref<any>(null);
+
+// Local purchase orders and change orders (independent from global store)
+const { localPurchaseOrders, localChangeOrders, fetchLocalPurchaseOrders, fetchLocalChangeOrders } = useLocalPOCOData();
+
+// Local vendors (independent from global store)
+const localVendors = ref<any[]>([]);
+
+/**
+ * Fetch vendors directly via API (independent from global store)
+ * @param corporationUuid - The corporation UUID to fetch vendors for
+ */
+const fetchLocalVendors = async (corporationUuid: string) => {
+  if (!corporationUuid) {
+    localVendors.value = [];
+    return;
+  }
+  
+  try {
+    const response: any = await $fetch("/api/purchase-orders/vendors", {
+      method: "GET",
+      query: {
+        corporation_uuid: corporationUuid,
+      },
+    });
+    
+    // Handle different response formats
+    const vendors = Array.isArray(response)
+      ? response
+      : Array.isArray(response?.data)
+      ? response.data
+      : [];
+    
+    localVendors.value = vendors;
+  } catch (error: any) {
+    console.error("[ReceiptNoteForm] Failed to fetch vendors:", error);
+    localVendors.value = [];
+  }
+};
+
+// Receipt type state - sync with form
+const receiptType = computed({
+  get: () => {
+    // If form has receipt_type, use it; otherwise default to purchase_order
+    return props.form.receipt_type || 'purchase_order';
+  },
+  set: (value: 'purchase_order' | 'change_order') => {
+    const currentType = props.form.receipt_type || 'purchase_order';
+    
+    // Only clear fields if actually switching types
+    if (currentType !== value) {
+      if (value === 'purchase_order') {
+        // Clear change order selection
+        updateFormField("change_order_uuid", null);
+        // Clear purchase_order_uuid if it was a change order UUID
+        if (currentType === 'change_order' && props.form.purchase_order_uuid) {
+          updateFormField("purchase_order_uuid", null);
+        }
+      } else if (value === 'change_order') {
+        // Clear purchase order selection
+        updateFormField("purchase_order_uuid", null);
+        // Clear change_order_uuid if it was a purchase order UUID
+        if (currentType === 'purchase_order' && props.form.change_order_uuid) {
+          updateFormField("change_order_uuid", null);
+        }
+      }
+    }
+    
+    // Always update receipt_type
+    updateFormField("receipt_type", value);
+  },
+});
+
+const receiptTypeOptions = [
+  { label: 'Purchase Order', value: 'purchase_order' },
+  { label: 'Change Order', value: 'change_order' },
+];
+
+// Reset internal state when form changes (for new receipt notes)
+watch(
+  () => props.form,
+  (newForm) => {
+    // Reset internal state when creating a new receipt note (no UUID)
+    if (!newForm?.uuid) {
+      poItems.value = [];
+      poItemsLoading.value = false;
+      poItemsError.value = null;
+      // Don't reset receiptItems here - let the PO watch handle it
+    }
+  },
+  { immediate: true }
+);
+
+// Financial calculation helpers
+const parseNumericInput = (value: any): number => {
+  if (value === null || value === undefined || value === '') return 0
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0
+  }
+  const normalized = String(value).replace(/,/g, '').trim()
+  if (!normalized) return 0
+  const numeric = Number(normalized)
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
+const toInputString = (value: any): string => {
+  if (value === null || value === undefined) return ''
+  return typeof value === 'number' ? String(value) : String(value)
+}
+
+const roundCurrencyValue = (value: number): number => {
+  if (!Number.isFinite(value)) return 0
+  return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
+const roundTo = (value: number, decimals = 4): number => {
+  if (!Number.isFinite(value)) return 0
+  const factor = Math.pow(10, decimals)
+  return Math.round((value + Number.EPSILON) * factor) / factor
+}
+
+const chargeRows = [
+  { key: 'freight', label: 'Freight Charges' },
+  { key: 'packing', label: 'Packing Charges' },
+  { key: 'custom_duties', label: 'Custom & Duties' },
+  { key: 'other', label: 'Other Charges' },
+] as const
+
+const salesTaxRows = [
+  { key: 'sales_tax_1', label: 'Sales Tax 1' },
+  { key: 'sales_tax_2', label: 'Sales Tax 2' },
+] as const
+
+// Calculate GRN Item Total from receipt items
+const grnItemTotal = computed(() => {
+  const items = receiptItems.value || []
+  const total = items.reduce((sum: number, item: any) => {
+    const receivedTotal = parseNumericInput(item.received_total)
+    return sum + receivedTotal
+  }, 0)
+  const rounded = roundCurrencyValue(total)
+  return rounded
+})
+
+
+// Watch form data for charges/taxes to ensure FinancialBreakdown recalculates
+watch(
+  () => [
+    props.form.freight_charges_percentage,
+    props.form.packing_charges_percentage,
+    props.form.custom_duties_charges_percentage,
+    props.form.other_charges_percentage,
+    props.form.sales_tax_1_percentage,
+    props.form.sales_tax_2_percentage,
+  ],
+  () => {
+    // FinancialBreakdown should automatically recalculate when formData changes
+  },
+  { deep: false }
+);
+
+// Note: Financial calculations are now handled by FinancialBreakdown component
+
+// Handler for financial breakdown component updates
+const handleFinancialBreakdownUpdate = (updates: Record<string, any>) => {
+  // Update total_received_amount with GRN Total from financial breakdown
+  // This should always match grn_total_with_charges_taxes
+  if (updates.grn_total_with_charges_taxes !== undefined) {
+    updates.total_received_amount = updates.grn_total_with_charges_taxes;
+  } else {
+    // Try to get it from financial_breakdown.totals
+    if (updates.financial_breakdown?.totals?.grn_total_with_charges_taxes !== undefined) {
+      updates.grn_total_with_charges_taxes = updates.financial_breakdown.totals.grn_total_with_charges_taxes;
+      updates.total_received_amount = updates.grn_total_with_charges_taxes;
+    }
+  }
+
+  // Update all form fields at once (similar to PurchaseOrderForm)
+  const source = props.form;
+  const next = { ...source };
+  Object.keys(updates).forEach((key) => {
+    next[key] = updates[key];
+  });
+
+  // Also update receipt items with grn_total and grn_total_with_charges_taxes per item
+  if (receiptItems.value.length > 0 && grnItemTotal.value > 0) {
+    const grnTotalValue = updates.grn_total_with_charges_taxes || updates.total_po_amount || 0
+    
+    const updatedReceiptItems = receiptItems.value.map((item: any) => {
+      const itemGrnTotal = parseNumericInput(item.received_total)
+      const itemGrnTotalWithCharges = (itemGrnTotal / grnItemTotal.value) * grnTotalValue
+
+      return {
+        ...item,
+        grn_total: itemGrnTotal,
+        grn_total_with_charges_taxes: Number.isFinite(itemGrnTotalWithCharges) ? roundCurrencyValue(itemGrnTotalWithCharges) : null,
+      }
+    })
+
+    receiptItems.value = updatedReceiptItems
+    next.receipt_items = updatedReceiptItems
+  }
+
+  // Emit all updates at once
+  emit("update:form", next);
+}
+
+// Recalculate GRN totals - now handled by FinancialBreakdown component
+// This function is kept for backward compatibility but is a no-op
+const recalculateGrnTotals = () => {
+  // The FinancialBreakdown component handles all calculations
+  // This is kept for any watchers that might still call it
+}
+
+const statusOptions = [
+  { label: "In Shipment", value: "Shipment" },
+  { label: "Received", value: "Received" },
+];
+
+const uploadedFiles = ref<File[]>([]);
+const fileUploadError = ref<string | null>(null);
+
+// File preview functionality
+const showFilePreviewModal = ref(false);
+const selectedFileForPreview = ref<any>(null);
+
+// Helper function to get PO type color and label
+const getPOTypeInfo = (poType: string) => {
+  const typeInfo: Record<string, { color: "error" | "warning" | "info" | "success" | "primary" | "secondary" | "neutral", label: string }> = {
+    'LABOR': { color: 'primary', label: 'Labor' },
+    'MATERIAL': { color: 'success', label: 'Material' }
+  }
+  return typeInfo[poType] || { color: 'neutral' as const, label: 'Unknown' }
+}
+
+// Helper function to get CO type color and label (same as PO types)
+const getCOTypeInfo = (coType: string) => {
+  const typeInfo: Record<string, { color: "error" | "warning" | "info" | "success" | "primary" | "secondary" | "neutral", label: string }> = {
+    'LABOR': { color: 'primary', label: 'Labor' },
+    'MATERIAL': { color: 'success', label: 'Material' }
+  }
+  return typeInfo[coType] || { color: 'neutral' as const, label: 'Unknown' }
+}
+
+const poOptions = computed(() => {
+  const list = localPurchaseOrders.value ?? [];
+  if (!Array.isArray(list)) return [];
+
+  const corporationUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  const projectUuid = props.form.project_uuid
+    ? String(props.form.project_uuid)
+    : null;
+  const vendorUuid = props.form.vendor_uuid
+    ? String(props.form.vendor_uuid)
+    : null;
+
+  // Determine allowed statuses based on whether we're editing an existing receipt note
+  // Note: 'Completed' status is excluded because receipt notes should not be created for completed POs/COs
+  const isEditing = props.editingReceiptNote || !!props.form.uuid;
+  const allowedStatuses = ['Approved', 'Partially_Received'];
+
+  // Get current PO UUID if editing (for fallback when vendor is not set)
+  const currentPoUuid = props.form.purchase_order_uuid || null;
+  
+  return list
+    .filter((po) => {
+      if (!po?.uuid) return false;
+      
+      // Filter by corporation UUID (form's corporation takes priority)
+      if (corporationUuid && po.corporation_uuid !== corporationUuid) return false;
+      
+      // Filter by project UUID if provided
+      if (projectUuid && po.project_uuid !== projectUuid) return false;
+      
+      // Vendor filtering logic:
+      // 1. If vendor is selected: Only show POs matching that vendor
+      // 2. If vendor is NOT selected AND editing: Show only the current PO (if it exists)
+      // 3. If vendor is NOT selected AND creating new: Show nothing (require vendor selection)
+      if (vendorUuid) {
+        // Vendor is selected - filter by vendor
+        if (po.vendor_uuid !== vendorUuid) return false;
+      } else {
+        // Vendor is NOT selected
+        if (isEditing && currentPoUuid) {
+          // Editing existing receipt note - only show the current PO
+          if (po.uuid !== currentPoUuid) return false;
+        } else {
+          // Creating new receipt note - require vendor selection (show nothing)
+          return false;
+        }
+      }
+      
+      // Only show material purchase orders (exclude labor)
+      const poType = String(po.po_type || '').trim().toUpperCase();
+      if (poType !== 'MATERIAL') return false;
+      
+      // Show purchase orders with allowed statuses (case-insensitive)
+      const poStatus = String(po.status || '').trim();
+      const isAllowedStatus = allowedStatuses.some(
+        (status) => poStatus.toLowerCase() === status.toLowerCase()
+      );
+      if (!isAllowedStatus) return false;
+      
+      return true;
+    })
+    .map((po) => {
+      // Use local vendors instead of global store
+      const vendor = localVendors.value.find(v => v.uuid === po.vendor_uuid)
+      const vendorName = vendor?.vendor_name || 'N/A'
+      const poNum = po?.po_number || 'Unnamed PO'
+      const typeInfo = getPOTypeInfo(String(po.po_type || '').toUpperCase())
+
+      return {
+        label: `${poNum} — ${vendorName}`,
+      value: po.uuid,
+      project_uuid: po.project_uuid,
+      vendor_uuid: po.vendor_uuid,
+      total: po.total_po_amount ?? 0,
+        type_color: typeInfo.color,
+        type_label: typeInfo.label,
+        po: po
+      };
+    });
+});
+
+// Computed property to determine if PO dropdown should be disabled
+const isPODropdownDisabled = computed(() => {
+  // Always disabled if readonly
+  if (props.readonly) return true;
+  
+  // Always disabled if project is not selected
+  if (!props.form?.project_uuid) return true;
+  
+  // For new receipt notes (not editing and no UUID), require both vendor and project
+  const isCreatingNew = !props.editingReceiptNote && !props.form?.uuid;
+  if (isCreatingNew) {
+    // Creating new - require both vendor and project selection
+    if (!props.form?.vendor_uuid) return true;
+  }
+  
+  // For editing existing receipt notes, allow if project is selected (vendor optional)
+  // Otherwise enabled
+  return false;
+});
+
+const poOption = computed({
+  get: () => {
+    if (!props.form.purchase_order_uuid) return null;
+    
+    // First try to find in the filtered options
+    const foundOption = poOptions.value.find(
+      (opt) => opt.value === props.form.purchase_order_uuid
+    );
+    
+    if (foundOption) return foundOption;
+    
+    // If not found in filtered options but we're editing, try to find in localPurchaseOrders
+    // This handles cases where the PO exists but doesn't match current filters
+    if (props.editingReceiptNote && props.form.uuid) {
+      const po = localPurchaseOrders.value.find(
+        (p: any) => p.uuid === props.form.purchase_order_uuid
+      );
+      if (po) {
+        const vendor = localVendors.value.find(v => v.uuid === po.vendor_uuid);
+        const vendorName = vendor?.vendor_name || 'N/A';
+        const poNum = po?.po_number || 'Unnamed PO';
+        const typeInfo = getPOTypeInfo(String(po.po_type || '').toUpperCase());
+        
+        return {
+          label: `${poNum} — ${vendorName}`,
+          value: po.uuid,
+          project_uuid: po.project_uuid,
+          vendor_uuid: po.vendor_uuid,
+          total: po.total_po_amount ?? 0,
+          type_color: typeInfo.color,
+          type_label: typeInfo.label,
+          po: po
+        };
+      }
+    }
+    
+    return null;
+  },
+  set: (option) => {
+    const value =
+      typeof option === "string"
+        ? option
+        : option?.value
+        ? String(option.value)
+        : null;
+    updateFormField("purchase_order_uuid", value ?? null);
+  },
+});
+
+const coOptions = computed(() => {
+  const list = localChangeOrders.value ?? [];
+  if (!Array.isArray(list)) return [];
+
+  const corporationUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  const projectUuid = props.form.project_uuid
+    ? String(props.form.project_uuid)
+    : null;
+  const vendorUuid = props.form.vendor_uuid
+    ? String(props.form.vendor_uuid)
+    : null;
+
+  // Determine allowed statuses based on whether we're editing an existing receipt note
+  // Note: 'Completed' status is excluded because receipt notes should not be created for completed POs/COs
+  const isEditing = props.editingReceiptNote || !!props.form.uuid;
+  const allowedStatuses = ['Approved', 'Partially_Received'];
+
+  // Get current CO UUID if editing (for fallback when vendor/project is not set)
+  const currentCoUuid = props.form.change_order_uuid || null;
+  
+  return list
+    .filter((co) => {
+      if (!co?.uuid) return false;
+      
+      // Filter by corporation UUID (form's corporation takes priority)
+      if (corporationUuid && co.corporation_uuid !== corporationUuid) return false;
+      
+      // Filter by project UUID if provided
+      if (projectUuid && co.project_uuid !== projectUuid) return false;
+      
+      // Vendor filtering logic:
+      // 1. If vendor is selected: Only show COs matching that vendor
+      // 2. If vendor is NOT selected AND editing: Show only the current CO (if it exists)
+      // 3. If vendor is NOT selected AND creating new: Show nothing (require vendor selection)
+      if (vendorUuid) {
+        // Vendor is selected - filter by vendor
+        if (co.vendor_uuid !== vendorUuid) return false;
+      } else {
+        // Vendor is NOT selected
+        if (isEditing && currentCoUuid) {
+          // Editing existing receipt note - only show the current CO
+          if (co.uuid !== currentCoUuid) return false;
+        } else {
+          // Creating new receipt note - require vendor selection (show nothing)
+          return false;
+        }
+      }
+      
+      // Only show material change orders (exclude labor)
+      const coType = String(co.co_type || '').trim().toUpperCase();
+      if (coType !== 'MATERIAL') return false;
+      
+      // Show change orders with allowed statuses (case-insensitive)
+      const coStatus = String(co.status || '').trim();
+      const isAllowedStatus = allowedStatuses.some(
+        (status) => coStatus.toLowerCase() === status.toLowerCase()
+      );
+      if (!isAllowedStatus) return false;
+      
+      return true;
+    })
+    .map((co) => {
+      // Use local vendors instead of global store
+      const vendor = localVendors.value.find(v => v.uuid === co.vendor_uuid)
+      const vendorName = vendor?.vendor_name || co.vendor_name || 'N/A'
+      const coNum = co?.co_number || 'Unnamed CO'
+      const typeInfo = getCOTypeInfo(String(co.co_type || '').toUpperCase())
+
+      return {
+        label: `${coNum} — ${vendorName}`,
+      value: co.uuid,
+      project_uuid: co.project_uuid,
+      vendor_uuid: co.vendor_uuid,
+      total: co.total_co_amount ?? 0,
+        type_color: typeInfo.color,
+        type_label: typeInfo.label,
+        co: co
+      };
+    });
+});
+
+// Computed property to determine if CO dropdown should be disabled
+const isCODropdownDisabled = computed(() => {
+  // Always disabled if readonly
+  if (props.readonly) return true;
+  
+  // Always disabled if project is not selected
+  if (!props.form?.project_uuid) return true;
+  
+  // For new receipt notes (not editing and no UUID), require both vendor and project
+  const isCreatingNew = !props.editingReceiptNote && !props.form?.uuid;
+  if (isCreatingNew) {
+    // Creating new - require both vendor and project selection
+    if (!props.form?.vendor_uuid) return true;
+  }
+  
+  // For editing existing receipt notes, allow if project is selected (vendor optional)
+  // Otherwise enabled
+  return false;
+});
+
+const coOption = computed({
+  get: () => {
+    if (!props.form.change_order_uuid) return null;
+    
+    // First try to find in the filtered options
+    const foundOption = coOptions.value.find(
+      (opt) => opt.value === props.form.change_order_uuid
+    );
+    
+    if (foundOption) return foundOption;
+    
+    // If not found in filtered options but we're editing, try to find in localChangeOrders
+    // This handles cases where the CO exists but doesn't match current filters
+    if (props.editingReceiptNote && props.form.uuid) {
+      const co = localChangeOrders.value.find(
+        (c: any) => c.uuid === props.form.change_order_uuid
+      );
+      if (co) {
+        const vendor = localVendors.value.find(v => v.uuid === co.vendor_uuid);
+        const vendorName = vendor?.vendor_name || co.vendor_name || 'N/A';
+        const coNum = co?.co_number || 'Unnamed CO';
+        const typeInfo = getCOTypeInfo(String(co.co_type || '').toUpperCase());
+        
+        return {
+          label: `${coNum} — ${vendorName}`,
+          value: co.uuid,
+          project_uuid: co.project_uuid,
+          vendor_uuid: co.vendor_uuid,
+          total: co.total_co_amount ?? 0,
+          type_color: typeInfo.color,
+          type_label: typeInfo.label,
+          co: co
+        };
+      }
+    }
+    
+    return null;
+  },
+  set: (option) => {
+    const value =
+      typeof option === "string"
+        ? option
+        : option?.value
+        ? String(option.value)
+        : null;
+    updateFormField("change_order_uuid", value ?? null);
+  },
+});
+
+const statusOption = computed<any>({
+  get: () => {
+    const value = String(props.form.status || "Shipment");
+    return (
+      statusOptions.find(
+        (option) => option.value.toLowerCase() === value.toLowerCase()
+      ) ?? statusOptions[0]
+    );
+  },
+  set: (option) => {
+    const value =
+      typeof option === "string"
+        ? option
+        : option?.value
+        ? String(option.value)
+        : "Shipment";
+    updateFormField("status", value);
+  },
+});
+
+const computeInitials = (user: any) => {
+  const segments = [user.firstName, user.lastName]
+    .filter((value: any) => typeof value === "string" && value.trim().length > 0)
+    .map((value: string) => value.trim()[0]?.toUpperCase())
+    .join("");
+  if (segments.length) return segments;
+  const emailFirst = typeof user.email === "string" ? user.email.trim()[0] : "";
+  return emailFirst ? emailFirst.toUpperCase() : "U";
+};
+
+const selectedCorporationUuid = computed(
+  () => props.form.corporation_uuid || corpStore.selectedCorporation?.uuid || corpStore.selectedCorporationId || null
+);
+
+type NimbleReceivedByUser = {
+  userId: string;
+  userName: string;
+  firstName: string;
+  lastName: string;
+  middleName: string;
+};
+
+const nimbleReceivedByUsers = ref<NimbleReceivedByUser[]>([]);
+
+const fetchNimbleReceivedByUsers = async () => {
+  const token = String(nimbleSession.token || "").trim();
+  if (!token) {
+    nimbleReceivedByUsers.value = [];
+    return;
+  }
+
+  try {
+    const response = await $fetch<{ clientSubUsers?: any[] }>(
+      "/api/nimble/client-sub-users",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    const list = Array.isArray(response?.clientSubUsers)
+      ? response.clientSubUsers
+      : [];
+    nimbleReceivedByUsers.value = list
+      .map((row: any) => {
+        const userId = String(row?.UserID ?? row?.userID ?? row?.userId ?? "").trim();
+        if (!userId) return null;
+        return {
+          userId,
+          userName: String(row?.UserName ?? row?.userName ?? "").trim(),
+          firstName: String(row?.FirstName ?? row?.firstName ?? "").trim(),
+          lastName: String(row?.LastName ?? row?.lastName ?? "").trim(),
+          middleName: String(row?.MiddleName ?? row?.middleName ?? "").trim(),
+        } as NimbleReceivedByUser;
+      })
+      .filter((item: NimbleReceivedByUser | null): item is NimbleReceivedByUser => item !== null);
+  } catch (_error) {
+    nimbleReceivedByUsers.value = [];
+  }
+};
+
+const corporationUsers = computed(() => {
+  const corpUuid = selectedCorporationUuid.value;
+  const list = Array.isArray(allUsers.value) ? allUsers.value : [];
+  return list.filter((user: any) => {
+    if (user.status !== "active") return false;
+    if (!corpUuid) return true;
+    if (!Array.isArray(user.corporationAccess)) return false;
+    return user.corporationAccess.includes(corpUuid);
+  });
+});
+
+const receivedByOptions = computed(() =>
+  nimbleIntegrationsEnabled.value
+    ? nimbleReceivedByUsers.value.map((user) => {
+        const fullName = [user.firstName, user.middleName, user.lastName]
+          .filter((value) => typeof value === "string" && value.trim().length > 0)
+          .join(" ");
+        const label = fullName || user.userName || "Team Member";
+        const alt = label;
+        return {
+          label,
+          value: user.userId,
+          description: user.userName || "",
+          avatar: {
+            alt,
+            text: computeInitials({
+              firstName: user.firstName,
+              lastName: user.lastName,
+              email: user.userName,
+            }),
+            size: "xs" as const,
+          },
+          user,
+        };
+      })
+    : corporationUsers.value.map((user) => {
+        const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ");
+        const label = fullName || user.email || "Team Member";
+        const alt = label;
+        const avatar = user.imageUrl
+          ? {
+              src: user.imageUrl,
+              alt,
+              size: "xs" as const,
+            }
+          : {
+              alt,
+              text: computeInitials(user),
+              size: "xs" as const,
+            };
+        return {
+          label,
+          value: String(user.id ?? user.email ?? ""),
+          description: user.email,
+          avatar,
+          user,
+        };
+      })
+);
+
+const receivedByOption = computed<any>({
+  get: () => {
+    const selectedValue = nimbleIntegrationsEnabled.value
+      ? props.form.nimble_received_by_user_id || props.form.received_by
+      : props.form.received_by;
+    if (!selectedValue) return null;
+    return (
+      receivedByOptions.value.find(
+        (option) => option.value === selectedValue
+      ) ?? null
+    );
+  },
+  set: (option) => {
+    const value =
+      typeof option === "string"
+        ? option
+        : option?.value
+        ? String(option.value)
+        : null;
+    updateFormField("received_by", value ?? null);
+  },
+});
+
+const ensureUsersLoaded = async () => {
+  if (nimbleIntegrationsEnabled.value) {
+    await fetchNimbleReceivedByUsers();
+    return;
+  }
+  try {
+    await Promise.resolve();
+  } catch (error) {
+    console.error("[ReceiptNoteForm] Failed to load users:", error);
+  }
+};
+
+const shouldFetchUsers = computed(
+  () => !hasUsersData.value || !(Array.isArray(allUsers.value) && allUsers.value.length > 0)
+);
+
+watch(
+  [selectedCorporationUuid, shouldFetchUsers, nimbleIntegrationsEnabled, () => nimbleSession.token],
+  ([, needsData, nimbleEnabled, token]) => {
+    if (nimbleEnabled && token) {
+      ensureUsersLoaded();
+      return;
+    }
+    if (nimbleEnabled && !token) {
+      nimbleReceivedByUsers.value = [];
+      return;
+    }
+    if (!nimbleEnabled && needsData) {
+      ensureUsersLoaded();
+    }
+  },
+  { immediate: true }
+);
+
+// Ensure vendors are loaded
+const ensureVendorsLoaded = async () => {
+  // Use form's corporation_uuid, fallback to store's selectedCorporation
+  const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  if (corpUuid) {
+    try {
+      await vendorStore.fetchVendors(corpUuid);
+    } catch (error) {
+      console.error("[ReceiptNoteForm] Failed to load vendors:", error);
+    }
+  }
+};
+
+
+watch(
+  [() => props.form.corporation_uuid, selectedCorporationUuid],
+  async ([formCorpUuid]) => {
+    // Prioritize form's corporation_uuid
+    const corpUuid = formCorpUuid || selectedCorporationUuid.value;
+    if (corpUuid) {
+      // Only fetch vendors initially - POs/COs will be fetched when vendor and project are selected
+      await Promise.allSettled([
+        ensureVendorsLoaded(),
+        fetchLocalVendors(String(corpUuid)),
+      ]);
+      
+      // Clear POs/COs when corporation changes
+      localPurchaseOrders.value = [];
+      localChangeOrders.value = [];
+    }
+  },
+  { immediate: true }
+);
+
+// Watch for vendor and project changes together to fetch matching POs/COs
+watch(
+  [() => props.form.vendor_uuid, () => props.form.project_uuid, () => props.form.corporation_uuid],
+  async ([vendorUuid, projectUuid, formCorpUuid], [oldVendorUuid, oldProjectUuid, oldFormCorpUuid]) => {
+    console.log("[ReceiptNoteForm] Watcher triggered:", {
+      vendorUuid,
+      vendorUuidType: typeof vendorUuid,
+      projectUuid,
+      projectUuidType: typeof projectUuid,
+      formCorpUuid,
+      oldVendorUuid,
+      oldProjectUuid,
+      oldFormCorpUuid,
+      editingReceiptNote: props.editingReceiptNote,
+      formUuid: props.form.uuid,
+      fullForm: { ...props.form },
+    });
+    
+    const corpUuid = formCorpUuid || corpStore.selectedCorporation?.uuid;
+    
+    // Skip on initial mount if values haven't changed (to avoid duplicate fetches in onMounted)
+    const isInitialMount = oldVendorUuid === undefined && oldProjectUuid === undefined && oldFormCorpUuid === undefined;
+    
+    console.log("[ReceiptNoteForm] Watcher check:", {
+      corpUuid,
+      isInitialMount,
+      shouldFetch: vendorUuid && projectUuid && corpUuid,
+      shouldSkip: isInitialMount && props.editingReceiptNote && props.form.uuid,
+    });
+    
+    // Fetch stock receipt notes when corporation is available
+    if (corpUuid) {
+      await Promise.allSettled([
+        stockReceiptNotesStore.fetchStockReceiptNotes(String(corpUuid), { force: false }),
+      ]);
+    }
+    
+    // Only fetch when both vendor and project are selected
+    if (vendorUuid && projectUuid && corpUuid) {
+      // Skip if this is initial mount and we're editing (onMounted will handle it)
+      if (isInitialMount && props.editingReceiptNote && props.form.uuid) {
+        console.log("[ReceiptNoteForm] Skipping fetch - initial mount and editing");
+        return;
+      }
+      
+      console.log("[ReceiptNoteForm] Fetching POs/COs with:", {
+        corpUuid,
+        vendorUuid,
+        projectUuid,
+      });
+      
+      await Promise.allSettled([
+        fetchLocalPurchaseOrders(String(corpUuid), vendorUuid, projectUuid),
+        fetchLocalChangeOrders(String(corpUuid), vendorUuid, projectUuid),
+      ]);
+      
+      console.log("[ReceiptNoteForm] Fetch completed. Results:", {
+        poCount: localPurchaseOrders.value.length,
+        coCount: localChangeOrders.value.length,
+      });
+    } else {
+      console.log("[ReceiptNoteForm] Not fetching - missing requirements:", {
+        hasVendor: !!vendorUuid,
+        hasProject: !!projectUuid,
+        hasCorp: !!corpUuid,
+      });
+      
+      // Clear POs/COs when vendor or project is cleared (but not on initial mount)
+      if (!isInitialMount) {
+        console.log("[ReceiptNoteForm] Clearing POs/COs");
+        localPurchaseOrders.value = [];
+        localChangeOrders.value = [];
+      }
+    }
+  },
+  { immediate: true }
+);
+
+onMounted(async () => {
+  // Initialize corporation_uuid in form if not set
+  if (!props.form.corporation_uuid && corpStore.selectedCorporation?.uuid) {
+    updateFormField('corporation_uuid', corpStore.selectedCorporation.uuid);
+  }
+  
+  // NOTE: We do NOT update corpStore.selectedCorporation here to avoid affecting other components
+  // The form operates independently with its own corporation selection (props.form.corporation_uuid)
+  
+  // Use the form's corporation_uuid for fetching data (independent from TopBar)
+  const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  
+  if (shouldFetchUsers.value) {
+    ensureUsersLoaded();
+  }
+  
+  if (corpUuid) {
+    // Only fetch vendors initially - POs/COs will be fetched when vendor and project are selected
+    await Promise.allSettled([
+      ensureVendorsLoaded(),
+      fetchLocalVendors(String(corpUuid)),
+      stockReceiptNotesStore.fetchStockReceiptNotes(String(corpUuid), { force: false }),
+    ]);
+    
+    // If editing existing receipt note
+    if (props.editingReceiptNote && props.form.uuid) {
+      const vendorUuid = props.form.vendor_uuid;
+      const projectUuid = props.form.project_uuid;
+      const currentReceiptType = receiptType.value;
+      const poUuid = props.form.purchase_order_uuid;
+      const coUuid = props.form.change_order_uuid;
+      
+      // If vendor is not set but PO/CO is set, fetch the PO/CO to get its vendor_uuid
+      if (!vendorUuid && projectUuid) {
+        if (currentReceiptType === 'purchase_order' && poUuid) {
+          try {
+            const response: any = await $fetch("/api/purchase-order-forms", {
+              method: "GET",
+              query: {
+                corporation_uuid: corpUuid,
+                uuid: poUuid,
+              },
+            });
+            const poData = Array.isArray(response?.data) ? response.data[0] : response?.data;
+            if (poData?.vendor_uuid) {
+              // Update form with vendor_uuid from PO
+              updateFormField("vendor_uuid", poData.vendor_uuid);
+              // Add the PO to localPurchaseOrders if not already there
+              if (!localPurchaseOrders.value.find((p: any) => p.uuid === poUuid)) {
+                localPurchaseOrders.value.push(poData);
+              }
+              // Use the vendor from PO for fetching
+              const poVendorUuid = poData.vendor_uuid;
+              await Promise.allSettled([
+                fetchLocalPurchaseOrders(String(corpUuid), poVendorUuid, projectUuid),
+                fetchLocalChangeOrders(String(corpUuid), poVendorUuid, projectUuid),
+              ]);
+            } else {
+              // Add the PO to localPurchaseOrders if not already there
+              if (poData && !localPurchaseOrders.value.find((p: any) => p.uuid === poUuid)) {
+                localPurchaseOrders.value.push(poData);
+              }
+              // Fallback: fetch all POs/COs for the project
+              await Promise.allSettled([
+                fetchLocalPurchaseOrders(String(corpUuid), null, projectUuid),
+                fetchLocalChangeOrders(String(corpUuid), null, projectUuid),
+              ]);
+            }
+          } catch (error) {
+            console.error("[ReceiptNoteForm] Failed to fetch PO for vendor:", error);
+            // Fallback: fetch all POs/COs for the project
+            if (projectUuid) {
+              await Promise.allSettled([
+                fetchLocalPurchaseOrders(String(corpUuid), null, projectUuid),
+                fetchLocalChangeOrders(String(corpUuid), null, projectUuid),
+              ]);
+            }
+          }
+        } else if (currentReceiptType === 'change_order' && coUuid) {
+          try {
+            const response: any = await $fetch("/api/change-orders", {
+              method: "GET",
+              query: {
+                corporation_uuid: corpUuid,
+                uuid: coUuid,
+              },
+            });
+            const coData = Array.isArray(response?.data) ? response.data[0] : response?.data;
+            if (coData?.vendor_uuid) {
+              // Update form with vendor_uuid from CO
+              updateFormField("vendor_uuid", coData.vendor_uuid);
+              // Add the CO to localChangeOrders if not already there
+              if (!localChangeOrders.value.find((c: any) => c.uuid === coUuid)) {
+                localChangeOrders.value.push(coData);
+              }
+              // Use the vendor from CO for fetching
+              const coVendorUuid = coData.vendor_uuid;
+              await Promise.allSettled([
+                fetchLocalPurchaseOrders(String(corpUuid), coVendorUuid, projectUuid),
+                fetchLocalChangeOrders(String(corpUuid), coVendorUuid, projectUuid),
+              ]);
+            } else {
+              // Add the CO to localChangeOrders if not already there
+              if (coData && !localChangeOrders.value.find((c: any) => c.uuid === coUuid)) {
+                localChangeOrders.value.push(coData);
+              }
+              // Fallback: fetch all POs/COs for the project
+              await Promise.allSettled([
+                fetchLocalPurchaseOrders(String(corpUuid), null, projectUuid),
+                fetchLocalChangeOrders(String(corpUuid), null, projectUuid),
+              ]);
+            }
+          } catch (error) {
+            console.error("[ReceiptNoteForm] Failed to fetch CO for vendor:", error);
+            // Fallback: fetch all POs/COs for the project
+            if (projectUuid) {
+              await Promise.allSettled([
+                fetchLocalPurchaseOrders(String(corpUuid), null, projectUuid),
+                fetchLocalChangeOrders(String(corpUuid), null, projectUuid),
+              ]);
+            }
+          }
+        } else if (projectUuid) {
+          // Project is set but no PO/CO - fetch all POs/COs for the project
+          await Promise.allSettled([
+            fetchLocalPurchaseOrders(String(corpUuid), null, projectUuid),
+            fetchLocalChangeOrders(String(corpUuid), null, projectUuid),
+          ]);
+        }
+      } else if (vendorUuid && projectUuid) {
+        // Both vendor and project are set - fetch filtered POs/COs
+        await Promise.allSettled([
+          fetchLocalPurchaseOrders(String(corpUuid), vendorUuid, projectUuid),
+          fetchLocalChangeOrders(String(corpUuid), vendorUuid, projectUuid),
+        ]);
+      } else if (projectUuid && (poUuid || coUuid)) {
+        // Project is set but vendor is not - fetch all POs/COs for the project
+        // This allows showing the current PO/CO even if vendor isn't set
+        // Also fetch the specific PO/CO to ensure it's in the list
+        await Promise.allSettled([
+          fetchLocalPurchaseOrders(String(corpUuid), null, projectUuid),
+          fetchLocalChangeOrders(String(corpUuid), null, projectUuid),
+        ]);
+        
+        // Ensure the current PO/CO is in the local arrays
+        if (poUuid && !localPurchaseOrders.value.find((p: any) => p.uuid === poUuid)) {
+          try {
+            const response: any = await $fetch("/api/purchase-order-forms", {
+              method: "GET",
+              query: {
+                corporation_uuid: corpUuid,
+                uuid: poUuid,
+              },
+            });
+            const poData = Array.isArray(response?.data) ? response.data[0] : response?.data;
+            if (poData) {
+              localPurchaseOrders.value.push(poData);
+              // If vendor is not set, set it from PO
+              if (!vendorUuid && poData.vendor_uuid) {
+                updateFormField("vendor_uuid", poData.vendor_uuid);
+              }
+            }
+          } catch (error) {
+            console.error("[ReceiptNoteForm] Failed to fetch specific PO:", error);
+          }
+        }
+        
+        if (coUuid && !localChangeOrders.value.find((c: any) => c.uuid === coUuid)) {
+          try {
+            const response: any = await $fetch("/api/change-orders", {
+              method: "GET",
+              query: {
+                corporation_uuid: corpUuid,
+                uuid: coUuid,
+              },
+            });
+            const coData = Array.isArray(response?.data) ? response.data[0] : response?.data;
+            if (coData) {
+              localChangeOrders.value.push(coData);
+              // If vendor is not set, set it from CO
+              if (!vendorUuid && coData.vendor_uuid) {
+                updateFormField("vendor_uuid", coData.vendor_uuid);
+              }
+            }
+          } catch (error) {
+            console.error("[ReceiptNoteForm] Failed to fetch specific CO:", error);
+          }
+        }
+      }
+    }
+  }
+  
+  // When editing an existing receipt note, ensure financial data is loaded
+  if (props.editingReceiptNote && props.form.uuid) {
+    const currentReceiptType = receiptType.value;
+    if (currentReceiptType === 'purchase_order' && props.form.purchase_order_uuid) {
+      await loadFinancialDataFromSource(props.form.purchase_order_uuid, 'purchase_order');
+    } else if (currentReceiptType === 'change_order' && props.form.change_order_uuid) {
+      await loadFinancialDataFromSource(props.form.change_order_uuid, 'change_order');
+    }
+  }
+});
+
+const df = new DateFormatter("en-US", {
+  dateStyle: "medium",
+});
+
+const entryDateValue = computed<CalendarDate | null>({
+  get: () => {
+    if (!props.form.entry_date) return null;
+    const src = String(props.form.entry_date);
+    const localYmd = src.includes("T") ? fromUTCString(src) : src;
+    const parts = localYmd.split("-");
+    if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      const day = parseInt(parts[2], 10);
+      if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+        return new CalendarDate(year, month, day);
+      }
+    }
+    return null;
+  },
+  set: (value) => {
+    if (value) {
+      const dateString = `${value.year}-${String(value.month).padStart(
+        2,
+        "0"
+      )}-${String(value.day).padStart(2, "0")}`;
+      updateFormField("entry_date", toUTCString(dateString));
+    } else {
+      updateFormField("entry_date", null);
+    }
+  },
+});
+
+const entryDateDisplayText = computed(() => {
+  if (!entryDateValue.value) return "Select entry date";
+  return df.format(entryDateValue.value.toDate(getLocalTimeZone()));
+});
+
+const shipmentDateValue = computed<CalendarDate | null>({
+  get: () => {
+    if (!props.form.shipment_date) return null;
+    const src = String(props.form.shipment_date);
+    const localYmd = src.includes("T") ? fromUTCString(src) : src;
+    const parts = localYmd.split("-");
+    if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      const day = parseInt(parts[2], 10);
+      if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+        return new CalendarDate(year, month, day);
+      }
+    }
+    return null;
+  },
+  set: (value) => {
+    if (value) {
+      const dateString = `${value.year}-${String(value.month).padStart(
+        2,
+        "0"
+      )}-${String(value.day).padStart(2, "0")}`;
+      updateFormField("shipment_date", toUTCString(dateString));
+    } else {
+      updateFormField("shipment_date", null);
+    }
+  },
+});
+
+const shipmentDateDisplayText = computed(() => {
+  if (!shipmentDateValue.value) return "Select shipment date";
+  return df.format(shipmentDateValue.value.toDate(getLocalTimeZone()));
+});
+
+const receivedDateValue = computed<CalendarDate | null>({
+  get: () => {
+    if (!props.form.received_date) return null;
+    const src = String(props.form.received_date);
+    const localYmd = src.includes("T") ? fromUTCString(src) : src;
+    const parts = localYmd.split("-");
+    if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      const day = parseInt(parts[2], 10);
+      if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+        return new CalendarDate(year, month, day);
+      }
+    }
+    return null;
+  },
+  set: (value) => {
+    if (value) {
+      const dateString = `${value.year}-${String(value.month).padStart(
+        2,
+        "0"
+      )}-${String(value.day).padStart(2, "0")}`;
+      updateFormField("received_date", toUTCString(dateString));
+    } else {
+      updateFormField("received_date", null);
+    }
+  },
+});
+
+const receivedDateDisplayText = computed(() => {
+  if (!receivedDateValue.value) return "Select received date";
+  return df.format(receivedDateValue.value.toDate(getLocalTimeZone()));
+});
+
+// Helper to format country code to full name
+const getCountryName = (countryCode: string): string => {
+  if (!countryCode) return '';
+  const countryMap: Record<string, string> = {
+    'US': 'UNITED STATES OF AMERICA',
+    'CA': 'CANADA',
+    'GB': 'UNITED KINGDOM',
+    'AU': 'AUSTRALIA',
+    'MX': 'MEXICO',
+    // Add more as needed
+  };
+  return countryMap[countryCode.toUpperCase()] || countryCode.toUpperCase();
+};
+
+// Vendor address block (display only)
+const vendorAddressText = computed(() => {
+  if (props.form.vendor_uuid) {
+    // First try to find in localVendors (preferred for ReceiptNoteForm)
+    const localVendor = localVendors.value.find((v: any) => v.uuid === props.form.vendor_uuid);
+    if (localVendor) {
+      const parts = [
+        localVendor.vendor_address,
+        localVendor.vendor_city,
+        localVendor.vendor_state,
+        localVendor.vendor_zip,
+        getCountryName(localVendor.vendor_country || '')
+      ].filter(Boolean);
+      const addr = parts.length > 0 ? parts.join(', ').toUpperCase() : '';
+      return addr;
+    }
+    // Fallback to vendorStore
+    const vendor = vendorStore.vendors.find((v: any) => v.uuid === props.form.vendor_uuid);
+    if (vendor) {
+      const parts = [
+        vendor.vendor_address,
+        vendor.vendor_city,
+        vendor.vendor_state,
+        vendor.vendor_zip,
+        getCountryName(vendor.vendor_country || '')
+      ].filter(Boolean);
+      const addr = parts.length > 0 ? parts.join(', ').toUpperCase() : '';
+      return addr;
+    }
+  }
+  return '';
+});
+
+const updateAttachments = (attachments: any[]) => {
+  updateFormField("attachments", attachments);
+};
+
+const updateFormField = (field: string, value: any, base?: Record<string, any>) => {
+  console.log("[ReceiptNoteForm] updateFormField called:", {
+    field,
+    value,
+    valueType: typeof value,
+    hasBase: !!base,
+  });
+  
+  const source = base ?? props.form;
+  const next = { ...source, [field]: value };
+  
+  console.log("[ReceiptNoteForm] updateFormField result:", {
+    field,
+    oldValue: source[field],
+    newValue: next[field],
+  });
+  
+  emit("update:form", next);
+  return next;
+};
+
+const handleCorporationChange = async (corporationUuid?: string | null) => {
+  const normalizedCorporationUuid = corporationUuid || '';
+  updateFormField('corporation_uuid', normalizedCorporationUuid);
+  
+  // Fetch vendors for the selected corporation
+  // NOTE: We do NOT update corpStore.selectedCorporation here to avoid affecting other components
+  // The form operates independently with its own corporation selection
+  if (normalizedCorporationUuid) {
+    await Promise.allSettled([
+      vendorStore.fetchVendors(normalizedCorporationUuid),
+      fetchLocalVendors(normalizedCorporationUuid),
+      ensureUsersLoaded(),
+    ]);
+    
+    // Clear POs/COs when corporation changes
+    localPurchaseOrders.value = [];
+    localChangeOrders.value = [];
+    
+    // Clear project, vendor, PO, and CO selections when corporation changes
+    if (props.form.project_uuid) {
+      updateFormField("project_uuid", null);
+    }
+    if (props.form.vendor_uuid) {
+      updateFormField("vendor_uuid", null);
+    }
+    if (props.form.purchase_order_uuid) {
+      updateFormField("purchase_order_uuid", null);
+    }
+    if (props.form.change_order_uuid) {
+      updateFormField("change_order_uuid", null);
+    }
+  }
+};
+
+const handleProjectChange = async (projectUuid?: string | null) => {
+  console.log("[ReceiptNoteForm] handleProjectChange called:", { projectUuid });
+  
+  // Check if project actually changed - if it's the same value, still update form but skip validation
+  const currentProjectUuid = props.form.project_uuid ? String(props.form.project_uuid) : null;
+  const newProjectUuid = projectUuid ? String(projectUuid) : null;
+  const projectChanged = currentProjectUuid !== newProjectUuid;
+  
+  const nextForm = updateFormField("project_uuid", projectUuid || null);
+  
+  if (!projectChanged) {
+    console.log("[ReceiptNoteForm] Project value unchanged, skipping PO/CO validation");
+    return;
+  }
+
+  const currentPurchaseOrderUuid = nextForm.purchase_order_uuid;
+  const currentChangeOrderUuid = nextForm.change_order_uuid;
+  const vendorUuid = nextForm.vendor_uuid;
+
+  console.log("[ReceiptNoteForm] handleProjectChange state:", {
+    projectUuid,
+    vendorUuid,
+    currentPurchaseOrderUuid,
+    currentChangeOrderUuid,
+  });
+
+  // The watcher will handle fetching POs/COs when both vendor and project are available
+  // Here we just need to check if current selections are still valid
+  
+  if (projectUuid && vendorUuid) {
+    console.log("[ReceiptNoteForm] Both vendor and project selected, waiting for watcher...");
+    // Wait a bit for the watcher to fetch the data
+    await nextTick();
+    
+    console.log("[ReceiptNoteForm] After nextTick, checking current selections:", {
+      poCount: localPurchaseOrders.value.length,
+      coCount: localChangeOrders.value.length,
+    });
+    
+    // Check if current PO/CO still matches the new project by checking if it's in the filtered options
+    // This ensures we use the same filtering logic as the dropdown options
+    // Only clear if options list has items (meaning data has been fetched) and PO/CO is not in it
+    if (currentPurchaseOrderUuid) {
+      if (poOptions.value.length > 0) {
+        // Data has been fetched - check if PO is in filtered options
+        const poOption = poOptions.value.find((opt) => opt.value === currentPurchaseOrderUuid);
+        if (!poOption) {
+          console.log("[ReceiptNoteForm] Clearing PO - not found in filtered options");
+          updateFormField("purchase_order_uuid", null, nextForm);
+        }
+      } else {
+        // Data hasn't been fetched yet - check raw data as fallback
+        const po = localPurchaseOrders.value.find((p: any) => p.uuid === currentPurchaseOrderUuid);
+        if (po && po.project_uuid !== projectUuid) {
+          console.log("[ReceiptNoteForm] Clearing PO - doesn't match project in raw data");
+          updateFormField("purchase_order_uuid", null, nextForm);
+        }
+      }
+    }
+
+    if (currentChangeOrderUuid) {
+      if (coOptions.value.length > 0) {
+        // Data has been fetched - check if CO is in filtered options
+        const coOption = coOptions.value.find((opt) => opt.value === currentChangeOrderUuid);
+        if (!coOption) {
+          console.log("[ReceiptNoteForm] Clearing CO - not found in filtered options");
+          updateFormField("change_order_uuid", null, nextForm);
+        }
+      } else {
+        // Data hasn't been fetched yet - check raw data as fallback
+        const co = localChangeOrders.value.find((c: any) => c.uuid === currentChangeOrderUuid);
+        if (co && co.project_uuid !== projectUuid) {
+          console.log("[ReceiptNoteForm] Clearing CO - doesn't match project in raw data");
+          updateFormField("change_order_uuid", null, nextForm);
+        }
+      }
+    }
+  } else {
+    console.log("[ReceiptNoteForm] Missing vendor or project, clearing PO/CO selections");
+    // Clear both PO and CO when project is cleared
+    if (currentPurchaseOrderUuid) {
+      updateFormField("purchase_order_uuid", null, nextForm);
+    }
+    if (currentChangeOrderUuid) {
+      updateFormField("change_order_uuid", null, nextForm);
+    }
+  }
+};
+
+// Vendor edit methods
+const openVendorEditModal = () => {
+  if (!props.form.vendor_uuid) return;
+  
+  // First try to find in localVendors (preferred for ReceiptNoteForm)
+  const localVendor = localVendors.value.find((v: any) => v.uuid === props.form.vendor_uuid);
+  if (localVendor) {
+    editingVendor.value = localVendor;
+    showVendorEditModal.value = true;
+    return;
+  }
+  
+  // Fallback to vendorStore
+  const vendor = vendorStore.vendors.find((v: any) => v.uuid === props.form.vendor_uuid);
+  if (!vendor) {
+    return;
+  }
+  
+  editingVendor.value = vendor;
+  showVendorEditModal.value = true;
+};
+
+const handleVendorSaved = async () => {
+  // Refresh vendors from API to get the updated data
+  const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  if (corpUuid) {
+    await Promise.allSettled([
+      vendorStore.fetchVendors(corpUuid),
+      fetchLocalVendors(String(corpUuid))
+    ]);
+  }
+  
+  // Close the modal
+  showVendorEditModal.value = false;
+  editingVendor.value = null;
+};
+
+const handleVendorChange = async (value: any) => {
+  // VendorSelect emits update:modelValue with the UUID string, then change with the option object.
+  // Normalize like PurchaseOrderForm so we never write "[object Object]" into vendor_uuid.
+  const vendorUuid =
+    typeof value === 'string'
+      ? value
+      : value && typeof value === 'object'
+        ? (value.value ?? value.uuid ?? '')
+        : '';
+
+  // If value is undefined but we're trying to set it, this is likely a clearing action
+  if (value === undefined && props.form.vendor_uuid) {
+    return;
+  }
+
+  const normalizedUuid = vendorUuid ? String(vendorUuid) : null;
+
+  // Check if vendor actually changed - if it's the same value, still update form but skip validation
+  const currentVendorUuid = props.form.vendor_uuid ? String(props.form.vendor_uuid) : null;
+  const newVendorUuid = normalizedUuid;
+  const vendorChanged = currentVendorUuid !== newVendorUuid;
+
+  const nextForm = updateFormField("vendor_uuid", normalizedUuid);
+  
+  if (!vendorChanged) {
+    return;
+  }
+
+  const currentPurchaseOrderUuid = nextForm.purchase_order_uuid;
+  const currentChangeOrderUuid = nextForm.change_order_uuid;
+  const projectUuid = nextForm.project_uuid;
+
+  // The watcher will handle fetching POs/COs when both vendor and project are available
+  // Here we just need to check if current selections are still valid
+
+  if (normalizedUuid && projectUuid) {
+    await nextTick();
+    
+    // Check if current PO/CO still matches the new vendor by checking if it's in the filtered options
+    // This ensures we use the same filtering logic as the dropdown options
+    // Only clear if options list has items (meaning data has been fetched) and PO/CO is not in it
+    if (currentPurchaseOrderUuid) {
+      if (poOptions.value.length > 0) {
+        // Data has been fetched - check if PO is in filtered options
+        const poOption = poOptions.value.find((opt) => opt.value === currentPurchaseOrderUuid);
+        if (!poOption) {
+          updateFormField("purchase_order_uuid", null, nextForm);
+        }
+      } else {
+        // Data hasn't been fetched yet - check raw data as fallback
+        const po = localPurchaseOrders.value.find((p: any) => p.uuid === currentPurchaseOrderUuid);
+        if (po && po.vendor_uuid !== normalizedUuid) {
+          updateFormField("purchase_order_uuid", null, nextForm);
+        }
+      }
+    }
+
+    if (currentChangeOrderUuid) {
+      if (coOptions.value.length > 0) {
+        // Data has been fetched - check if CO is in filtered options
+        const coOption = coOptions.value.find((opt) => opt.value === currentChangeOrderUuid);
+        if (!coOption) {
+          updateFormField("change_order_uuid", null, nextForm);
+        }
+      } else {
+        // Data hasn't been fetched yet - check raw data as fallback
+        const co = localChangeOrders.value.find((c: any) => c.uuid === currentChangeOrderUuid);
+        if (co && co.vendor_uuid !== normalizedUuid) {
+          updateFormField("change_order_uuid", null, nextForm);
+        }
+      }
+    }
+  } else {
+    // Clear both PO and CO when vendor is cleared
+    if (currentPurchaseOrderUuid) {
+      updateFormField("purchase_order_uuid", null, nextForm);
+    }
+    if (currentChangeOrderUuid) {
+      updateFormField("change_order_uuid", null, nextForm);
+    }
+  }
+};
+
+const formatFileSize = (size?: number | null) => {
+  if (!size || size <= 0) return "0 KB";
+  const kb = size / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+};
+
+const attachmentCount = computed(
+  () => (props.form.attachments ? props.form.attachments.length : 0)
+);
+
+const uploadedAttachmentCount = computed(() =>
+  Array.isArray(props.form.attachments)
+    ? props.form.attachments.filter((att: any) => att?.uuid || att?.isUploaded).length
+    : 0
+);
+
+const fileUploadErrorMessage = computed(() => fileUploadError.value);
+
+const removeAttachment = (index: number) => {
+  const attachments = Array.isArray(props.form.attachments)
+    ? [...props.form.attachments]
+    : [];
+  attachments.splice(index, 1);
+  updateAttachments(attachments);
+};
+
+const previewFile = (attachment: any) => {
+  // Map the attachment to the format expected by FilePreview component
+  selectedFileForPreview.value = {
+    id: attachment.uuid || attachment.tempId,
+    // Handle both database format (document_name) and temporary format (name)
+    file_name: attachment.document_name || attachment.name,
+    name: attachment.document_name || attachment.name,
+    // Handle both database format (mime_type) and temporary format (type)
+    file_type: attachment.mime_type || attachment.type,
+    type: attachment.mime_type || attachment.type,
+    // Handle both database format (file_size) and temporary format (size)
+    file_size: attachment.file_size || attachment.size,
+    size: attachment.file_size || attachment.size,
+    // For database files, use file_url; for temporary files, use base64 data
+    file_url: attachment.file_url || attachment.url || attachment.fileData,
+    url: attachment.file_url || attachment.url || attachment.fileData
+  };
+  showFilePreviewModal.value = true;
+};
+
+const closeFilePreview = () => {
+  showFilePreviewModal.value = false;
+  selectedFileForPreview.value = null;
+};
+
+const handleFileUpload = async () => {
+  fileUploadError.value = null;
+
+  if (!uploadedFiles.value.length) {
+    return;
+  }
+
+  const allowedTypes = [
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+  ];
+  const maxSize = 10 * 1024 * 1024;
+
+  for (const file of uploadedFiles.value) {
+    if (!allowedTypes.includes(file.type)) {
+      fileUploadError.value =
+        "Invalid file type. Only PDF or image files are allowed.";
+      uploadedFiles.value = [];
+      return;
+    }
+
+    if (file.size > maxSize) {
+      fileUploadError.value = "File size too large. Maximum size is 10MB.";
+      uploadedFiles.value = [];
+      return;
+    }
+  }
+
+  try {
+    const processed = await Promise.all(
+      uploadedFiles.value.map(
+        (file) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const fileData = e.target?.result;
+              if (typeof fileData !== "string") {
+                reject(new Error("Failed to read file"));
+                return;
+              }
+
+              resolve({
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                fileData,
+                tempId:
+                  Date.now().toString(36) +
+                  Math.random().toString(36).slice(2),
+                isUploaded: false,
+              });
+            };
+            reader.onerror = () => reject(new Error("Failed to read file"));
+            reader.readAsDataURL(file);
+          })
+      )
+    );
+
+    const current = Array.isArray(props.form.attachments)
+      ? [...props.form.attachments]
+      : [];
+    updateAttachments(current.concat(processed));
+    uploadedFiles.value = [];
+  } catch (error) {
+    console.error("[ReceiptNoteForm] file processing error:", error);
+    fileUploadError.value = "Failed to process files. Please try again.";
+  }
+};
+
+watch(uploadedFiles, handleFileUpload, { deep: true });
+
+watch(
+  () => props.form.project_uuid,
+  (projectUuid) => {
+    if (!projectUuid && props.form.purchase_order_uuid) {
+      updateFormField("purchase_order_uuid", null);
+    }
+  }
+);
+
+// Format sequence to preserve leading zeros (e.g., "001", "002", "003")
+// Similar to how it's handled in PurchaseOrdersList.vue and POBreakdown.vue
+const formatSequenceLabel = (sequence: any): string | null => {
+  if (sequence === null || sequence === undefined || sequence === '') {
+    return null;
+  }
+  
+  // If sequence is a number, format it with leading zeros (3 digits: 001, 002, etc.)
+  // This matches the formatting logic in project-items-summary API
+  if (typeof sequence === 'number') {
+    return String(sequence).padStart(3, '0');
+  }
+  
+  // If it's already a string, return as-is (may already have leading zeros)
+  return String(sequence);
+};
+
+// Transform PO items to receipt items format
+const transformPoItemsToReceiptItems = (items: any[]) => {
+  // Get preferred items for lookup (for sequence and UOM)
+  const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  const projectUuid = props.form.project_uuid;
+  const preferredItemsGetter = purchaseOrderResourcesStore.getPreferredItems;
+  const preferredItems = (typeof preferredItemsGetter === 'function' && corpUuid && projectUuid)
+    ? preferredItemsGetter(corpUuid, projectUuid) || []
+    : [];
+  
+  // Create a map for quick lookup by item_uuid
+  const preferredItemsMap = new Map<string, any>();
+  preferredItems.forEach((prefItem: any) => {
+    const itemUuid = prefItem.item_uuid || prefItem.uuid;
+    if (itemUuid) {
+      preferredItemsMap.set(String(itemUuid).toLowerCase(), prefItem);
+    }
+  });
+  
+  console.log('[ReceiptNoteForm] [transformPoItemsToReceiptItems] Preferred items map:', {
+    preferredItemsCount: preferredItems.length,
+    mapSize: preferredItemsMap.size,
+    samplePreferredItems: preferredItems.slice(0, 3).map((pref: any) => ({
+      item_uuid: pref.item_uuid || pref.uuid,
+      item_name: pref.item_name,
+    })),
+  });
+  
+  return items.map((item) => {
+    const metadata = item.display_metadata || item.metadata || {};
+    const itemTypeUuid = item.item_type_uuid || metadata.item_type_uuid || null;
+    
+    // Look up item type from store if available
+    let itemTypeCode = item.item_type_code || metadata.item_type_code || item.short_name || metadata.short_name || null;
+    let itemTypeLabel = item.item_type_label || metadata.item_type_label || null;
+    
+    if (itemTypeUuid && itemTypesStore.itemTypes.length > 0) {
+      const itemType = itemTypesStore.itemTypes.find((it: any) => it.uuid === itemTypeUuid);
+      if (itemType) {
+        // Use store values if not already set
+        if (!itemTypeCode) {
+          itemTypeCode = itemType.short_name || null;
+        }
+        if (!itemTypeLabel) {
+          itemTypeLabel = itemType.item_type || null;
+        }
+      }
+    }
+    
+    // Look up preferred item by item_uuid for sequence and UOM
+    const itemUuid = item.item_uuid || null;
+    const preferredItem = itemUuid ? preferredItemsMap.get(String(itemUuid)) : null;
+    
+    // Get sequence from preferred item if not in item
+    let sequenceLabel = item.sequence_label || item.sequence || metadata.sequence || null;
+    if (!sequenceLabel && preferredItem) {
+      sequenceLabel = preferredItem.item_sequence || null;
+    }
+    
+    // Format sequence to preserve leading zeros (e.g., "001", "002", "003")
+    sequenceLabel = formatSequenceLabel(sequenceLabel);
+    
+    // Get unit_label from preferred item if not in item
+    let unitLabel = item.unit_label || item.uom_label || item.unit || metadata.unit_label || metadata.unit || null;
+    if (!unitLabel && preferredItem) {
+      unitLabel = preferredItem.unit || preferredItem.unit_label || preferredItem.uom || preferredItem.uom_label || null;
+    }
+    
+    const line = {
+      id: item.uuid || item.id,
+      uuid: item.uuid,
+      base_item_uuid: item.base_item_uuid || null,
+      cost_code_uuid: item.cost_code_uuid || metadata.cost_code_uuid || null,
+      cost_code_label: item.cost_code_label || metadata.cost_code_label || 
+        (item.cost_code_number && item.cost_code_name 
+          ? `${item.cost_code_number} ${item.cost_code_name}`.trim()
+          : (metadata.cost_code_number && metadata.cost_code_name
+            ? `${metadata.cost_code_number} ${metadata.cost_code_name}`.trim()
+            : null)),
+      cost_code_number: item.cost_code_number || metadata.cost_code_number || null,
+      cost_code_name: item.cost_code_name || metadata.cost_code_name || null,
+      item_type_uuid: itemTypeUuid,
+      item_type_code: itemTypeCode,
+      item_type_label: itemTypeLabel,
+      sequence_label: sequenceLabel,
+      item_uuid: itemUuid,
+      // Get item name - prioritize lookup from preferred items by item_uuid
+      // Priority: 
+      // 1. Look up from preferred items by item_uuid (source of truth for item names)
+      // 2. item.item_name (direct database field) 
+      // 3. metadata.item_name (from JSONB) 
+      // 4. item.name (if sequence exists)
+      item_name: (() => {
+        console.log('[ReceiptNoteForm] [transformPoItemsToReceiptItems] Extracting item_name for item:', {
+          item_uuid: item.uuid || item.id,
+          po_item_item_uuid: itemUuid,
+          'item.item_name': item.item_name,
+          'item.name': item.name,
+          'item.description': item.description,
+          'metadata.item_name': metadata.item_name,
+          'display_metadata.item_name': item.display_metadata?.item_name,
+          sequenceLabel,
+        });
+        
+        let itemName = '';
+        
+        // First priority: Look up from preferred items by item_uuid (this is the source of truth)
+        if (itemUuid) {
+          const preferredItem = preferredItemsMap.get(String(itemUuid).toLowerCase());
+          if (preferredItem?.item_name) {
+            itemName = preferredItem.item_name;
+            console.log('[ReceiptNoteForm] [transformPoItemsToReceiptItems] Found item_name from preferred items:', {
+              itemName,
+              preferredItemName: preferredItem.item_name,
+              itemUuid,
+            });
+          } else {
+            console.log('[ReceiptNoteForm] [transformPoItemsToReceiptItems] No preferred item found for item_uuid:', {
+              itemUuid,
+              preferredItemsMapKeys: Array.from(preferredItemsMap.keys()),
+            });
+          }
+        }
+        
+        // Fallback: check the direct database field
+        if (!itemName) {
+          itemName = item.item_name || ''
+          console.log('[ReceiptNoteForm] [transformPoItemsToReceiptItems] After checking item.item_name:', {
+            itemName,
+            'item.item_name': item.item_name,
+          });
+        }
+        
+        // If item_name is empty, check metadata (JSONB field) - check both metadata and display_metadata
+        if (!itemName) {
+          const metadataItemName = metadata.item_name || item.display_metadata?.item_name || ''
+          console.log('[ReceiptNoteForm] [transformPoItemsToReceiptItems] Checking metadata:', {
+            'metadata.item_name': metadata.item_name,
+            'display_metadata.item_name': item.display_metadata?.item_name,
+            metadataItemName,
+          });
+          itemName = metadataItemName
+        }
+        
+        // If we have sequence but still no item_name, try item.name (preferred items may use 'name' field)
+        if (!itemName) {
+          const hasSequence = sequenceLabel && sequenceLabel !== '—' && sequenceLabel.trim() !== ''
+          console.log('[ReceiptNoteForm] [transformPoItemsToReceiptItems] Checking item.name (hasSequence check):', {
+            hasSequence,
+            sequenceLabel,
+            'item.name': item.name,
+          });
+          if (hasSequence) {
+            itemName = item.name || ''
+            console.log('[ReceiptNoteForm] [transformPoItemsToReceiptItems] Using item.name:', itemName);
+          }
+        }
+        
+        // Return the item name
+        // DO NOT fall back to description - item_name and description are separate fields
+        const finalItemName = itemName || null
+        console.log('[ReceiptNoteForm] [transformPoItemsToReceiptItems] Final item_name result:', {
+          finalItemName,
+          'item.description (for comparison)': item.description,
+          'item.item_name (original)': item.item_name,
+          'Will show in table': finalItemName || '—',
+        });
+        return finalItemName
+      })(),
+      description: item.description || metadata.description || null,
+      model_number: item.model_number || item.display_metadata?.model_number || metadata.model_number || null,
+      unit_uuid: item.unit_uuid || item.uom_uuid || metadata.unit_uuid || null,
+      unit_label: unitLabel,
+      // For change orders, use co_unit_price; for purchase orders, use po_unit_price
+      // Also check metadata and handle both CO and PO unit prices
+      unit_price: (() => {
+        const price = item.unit_price || 
+                      item.co_unit_price || 
+                      item.po_unit_price || 
+                      metadata.unit_price || 
+                      metadata.co_unit_price || 
+                      metadata.po_unit_price || 
+                      0;
+        return price;
+      })(),
+      ordered_quantity: item.po_quantity || item.co_quantity || item.quantity || 0,
+      po_quantity: item.po_quantity || item.co_quantity || item.quantity || 0,
+      received_quantity: item.received_quantity || null,
+      received_total: item.received_total || null,
+      location_uuid: item.location_uuid || metadata.location_uuid || null,
+      location_label: item.location_label || item.location || metadata.location_display || metadata.location_label || null,
+      // Raw PO/CO fields (may be cost-code division); corrected below via API hierarchy
+      category: item.category ?? metadata?.category ?? null,
+      division_name: item.division_name ?? metadata?.division_name ?? null,
+      item_division_uuid: item.item_division_uuid ?? metadata?.item_division_uuid ?? null,
+    };
+    return applyReceiptItemHierarchyToGrnLine(line);
+  });
+};
+
+// Computed property for items selection modal title
+const itemsSelectionModalTitle = computed(() => {
+  if (pendingSourceType.value === 'purchase_order') {
+    return 'Select Items from Purchase Order';
+  } else if (pendingSourceType.value === 'change_order') {
+    return 'Select Items from Change Order';
+  }
+  return 'Select Items to Import';
+});
+
+// Preselected rows in the items modal — exclude fully fulfilled lines for new GRNs (parity with main table)
+const currentReceiptItemsForPreselection = computed(() => {
+  const list = Array.isArray(receiptItems.value) ? receiptItems.value : []
+  if (props.editingReceiptNote) return list
+  return list.filter((item) => !isItemFullyFulfilled(item))
+});
+
+// Fetch items when purchase order or change order changes
+const fetchItems = async (sourceUuid: string | null, sourceType: string | null, showModal = true) => {
+  
+  if (!sourceUuid || !sourceType) {
+    poItems.value = [];
+    receiptItems.value = [];
+    updateFormField("has_excluded_source_items", false);
+    return;
+  }
+
+  poItemsLoading.value = true;
+  poItemsError.value = null;
+
+  try {
+    // Ensure item types and preferred items are loaded for lookup
+    const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+    const projectUuid = props.form.project_uuid;
+    if (corpUuid && projectUuid) {
+      await refreshGrnItemHierarchyFromApi();
+
+      // Fetch item types if needed
+      if (itemTypesStore.itemTypes.length === 0) {
+        try {
+          await itemTypesStore.fetchItemTypes(corpUuid, projectUuid);
+        } catch (error) {
+          // Continue even if item types fetch fails
+        }
+      }
+      
+      // Ensure preferred items are loaded (for sequence and UOM lookup)
+      try {
+        await purchaseOrderResourcesStore.ensurePreferredItems({
+          corporationUuid: corpUuid,
+          projectUuid: projectUuid,
+          force: false,
+        });
+      } catch (error) {
+        // Continue even if preferred items fetch fails
+      }
+    }
+
+    let items: any[] = [];
+
+    if (sourceType === 'purchase_order') {
+      // Try to use the store function, fallback to direct API call
+      if (typeof purchaseOrderResourcesStore.fetchPurchaseOrderItems === 'function') {
+        items = await purchaseOrderResourcesStore.fetchPurchaseOrderItems(sourceUuid);
+      } else {
+        // Fallback: call API directly
+        const response: any = await $fetch("/api/purchase-order-items", {
+          method: "GET",
+          query: {
+            purchase_order_uuid: sourceUuid,
+          },
+        });
+        items = Array.isArray(response?.data) ? response.data : [];
+      }
+    } else if (sourceType === 'change_order') {
+      // Fetch change order items
+      const response: any = await $fetch("/api/change-order-items", {
+        method: "GET",
+        query: {
+          change_order_uuid: sourceUuid,
+        },
+      });
+      items = Array.isArray(response?.data) ? response.data : [];
+    }
+    
+    console.log('[ReceiptNoteForm] [fetchItems] Raw API response items:', {
+      sourceType,
+      sourceUuid,
+      itemsCount: items.length,
+      sampleItem: items.length > 0 ? {
+        'item.item_name': items[0]?.item_name,
+        'item.name': items[0]?.name,
+        'item.description': items[0]?.description,
+        'item.metadata': items[0]?.metadata,
+        'item.display_metadata': items[0]?.display_metadata,
+        'item.uuid': items[0]?.uuid,
+        'item.id': items[0]?.id,
+        fullItem: items[0],
+      } : null,
+      allItems: items.map((item, idx) => ({
+        index: idx,
+        'item.item_name': item?.item_name,
+        'item.name': item?.name,
+        'item.description': item?.description,
+        'item.metadata?.item_name': item?.metadata?.item_name,
+        'item.display_metadata?.item_name': item?.display_metadata?.item_name,
+      })),
+    });
+    
+    poItems.value = items;
+    const transformed = transformPoItemsToReceiptItems(items);
+    
+    console.log('[ReceiptNoteForm] [fetchItems] After transformation:', {
+      sourceType,
+      sourceUuid,
+      itemsCount: items.length,
+      transformedCount: transformed.length,
+      transformedItems: transformed.map((item, idx) => ({
+        index: idx,
+        'item.item_name': item.item_name,
+        'item.description': item.description,
+        'item.id': item.id,
+        'item.uuid': item.uuid,
+        'item.base_item_uuid': item.base_item_uuid,
+      })),
+    });
+
+    // If showModal is true and we're creating a new receipt note, show the selection modal
+    if (showModal && !props.editingReceiptNote) {
+      // Same rule as the GRN table: omit lines with nothing left to receive (Configure Items must match)
+      availableItemsForSelection.value = transformed.filter((item) => !isItemFullyFulfilled(item));
+      pendingSourceUuid.value = sourceUuid;
+      pendingSourceType.value = sourceType;
+      showItemsSelectionModal.value = true;
+      poItemsLoading.value = false;
+      return;
+    }
+
+    // For new receipt notes, ensure received quantities are null (not prefilled)
+    // Also filter out items with zero leftover quantity
+    if (!props.editingReceiptNote) {
+      const newReceiptItems = transformed
+        .map((item) => ({
+          ...item,
+          received_quantity: null, // Ensure no prefilled received quantity for new receipts
+          received_total: null,
+        }))
+        .filter((item) => {
+          // Filter out items that are already fully fulfilled (received + returned = ordered) for new receipt notes
+          // Only show items that still need to be received
+          return !isItemFullyFulfilled(item);
+        });
+      
+      console.log('[ReceiptNoteForm] [fetchItems] Setting receiptItems for new receipt note:', {
+        newReceiptItemsCount: newReceiptItems.length,
+        newReceiptItems: newReceiptItems.map((item, idx) => ({
+          index: idx,
+          'item.item_name': item.item_name,
+          'item.description': item.description,
+          'item.id': item.id,
+          'item.uuid': item.uuid,
+          'item.base_item_uuid': item.base_item_uuid,
+        })),
+      });
+      
+      receiptItems.value = newReceiptItems;
+    } else {
+      // When editing, fetch receipt note items from the new receipt_note_items table
+      let receiptNoteItemsMap = new Map<string, any>();
+      let poItemsWithReceiptNote: any[] = [];
+      let receiptNoteItems: any[] = []; // Declare outside the if block so it's accessible later
+      let currentReceiptType: string = receiptType.value;
+      let currentPoUuid: string | null = null;
+      let currentCoUuid: string | null = null;
+      
+      if (props.form.uuid) {
+        try {
+          const corpUuid =
+            props.form.corporation_uuid ||
+            corpStore.selectedCorporation?.uuid ||
+            stockReceiptNotesStore.stockReceiptNotes.find((n: any) => n.uuid === props.form.uuid)
+              ?.corporation_uuid ||
+            null;
+          const projectUuid = props.form.project_uuid;
+
+          if (!corpUuid) {
+            console.warn(
+              "[ReceiptNoteForm] Cannot load receipt_note_items: missing corporation_uuid (form, TopBar, and store lookup all empty).",
+            );
+          } else {
+            const receiptNoteItemsResponse: any = await $fetch("/api/receipt-note-items", {
+              method: "GET",
+              query: {
+                corporation_uuid: corpUuid,
+                receipt_note_uuid: props.form.uuid,
+              },
+            });
+            
+            
+            receiptNoteItems = Array.isArray(receiptNoteItemsResponse?.data) 
+              ? receiptNoteItemsResponse.data 
+              : [];
+            
+            // Set receipt type and UUIDs early so they can be used in the query below
+            currentReceiptType = receiptType.value;
+            currentPoUuid = currentReceiptType === 'purchase_order' 
+              ? (props.form.purchase_order_uuid || sourceUuid)
+              : null;
+            currentCoUuid = currentReceiptType === 'change_order'
+              ? (props.form.change_order_uuid || sourceUuid)
+              : null;
+            
+            
+            // Query purchase order items to find which current items reference this receipt note
+            // This helps us match receipt note items to current PO items when UUIDs have changed
+            if (currentReceiptType === 'purchase_order' && currentPoUuid && props.form.uuid) {
+              try {
+                const poItemsResponse: any = await $fetch("/api/purchase-order-items", {
+                  method: "GET",
+                  query: {
+                    purchase_order_uuid: currentPoUuid,
+                    corporation_uuid: corpUuid,
+                  },
+                });
+                const allPoItems = Array.isArray(poItemsResponse?.data) ? poItemsResponse.data : [];
+                // Find PO items that have this receipt note UUID in their receipt_note_uuids array
+                poItemsWithReceiptNote = allPoItems.filter((poItem: any) => {
+                  const receiptNoteUuids = poItem.receipt_note_uuids || [];
+                  return Array.isArray(receiptNoteUuids) && receiptNoteUuids.includes(props.form.uuid);
+                });
+                
+                // Also create a map of receipt note item_uuid to receipt note item for direct lookup
+                // This will help us match even when PO item UUIDs have changed
+                const receiptNoteItemUuidMap = new Map<string, any>();
+                receiptNoteItems.forEach((rni: any) => {
+                  if (rni.item_uuid) {
+                    receiptNoteItemUuidMap.set(String(rni.item_uuid).trim().toLowerCase(), rni);
+                  }
+                });
+                
+                // Try to find current PO items that match receipt note items by checking if
+                // any current PO item's UUID matches a receipt note item's item_uuid
+                // OR if we can match by position when counts match
+              } catch (error) {
+              }
+            }
+            
+            // Create a map by item_uuid (the UUID of the original PO/CO item)
+            // The receipt_note_items.item_uuid field references purchase_order_items_list.uuid for PO items
+            // or change_order_items_list.uuid for CO items
+            // Filter by item_type and purchase_order_uuid/change_order_uuid to ensure we only match items of the correct type and order
+            // Note: currentReceiptType, currentPoUuid, and currentCoUuid are already declared above
+            
+            let skippedCount = 0;
+            receiptNoteItems.forEach((rni: any) => {
+              // Skip only when item_type is explicitly set and disagrees (NULL/legacy rows still map)
+              if (
+                rni.item_type != null &&
+                rni.item_type !== "" &&
+                rni.item_type !== currentReceiptType
+              ) {
+                skippedCount++;
+                return;
+              }
+
+              // For purchase orders, skip only when a non-null PO uuid disagrees (NULL = legacy / denormalized gap; parent note already scopes the GRN)
+              if (currentReceiptType === 'purchase_order' && currentPoUuid) {
+                if (
+                  rni.purchase_order_uuid != null &&
+                  rni.purchase_order_uuid !== '' &&
+                  rni.purchase_order_uuid !== currentPoUuid
+                ) {
+                  skippedCount++;
+                  return;
+                }
+              }
+
+              if (currentReceiptType === 'change_order' && currentCoUuid) {
+                if (
+                  rni.change_order_uuid != null &&
+                  rni.change_order_uuid !== '' &&
+                  rni.change_order_uuid !== currentCoUuid
+                ) {
+                  skippedCount++;
+                  return;
+                }
+              }
+
+              // Map by item_uuid (the primary matching field)
+              if (rni.item_uuid) {
+                const itemUuidKey = String(rni.item_uuid).trim().toLowerCase();
+                receiptNoteItemsMap.set(itemUuidKey, rni);
+              } else {
+                // Skip items without item_uuid - they cannot be properly matched
+                skippedCount++;
+              }
+            });
+            
+          }
+        } catch (error: any) {
+          console.error("[ReceiptNoteForm] Failed to fetch receipt note items:", error);
+          // Continue with fallback to props.form.receipt_items if available
+        }
+      }
+      
+      // receiptNoteItemsMap contains all valid receipt note items that passed filtering
+      // We only use UUID-based matching, no position-based fallbacks
+      
+      
+      // Merge receipt note items with transformed PO/CO items
+      // IMPORTANT: When editing, only show items that have a corresponding receipt note item
+      receiptItems.value = transformed
+        .map((item, index) => {
+        // Get the item UUID that should match the receipt note item
+        // For purchase orders: match by purchase_order_item_uuid column
+        // For change orders: match by change_order_item_uuid column
+        const itemUuid = item.uuid || item.base_item_uuid || item.id;
+        const currentReceiptType = receiptType.value;
+        
+        
+        // Match based on receipt type using ONLY UUID-based strategies:
+        // 1. Match by item.uuid (the row's primary key UUID)
+        // 2. Match by item.base_item_uuid (another potential identifier)
+        // 3. Match by item.item_uuid (the item reference UUID - fallback for legacy data)
+        let receiptNoteItem = null;
+        let matchedBy = null;
+        
+        // Strategy 1: Try matching by item.uuid (primary key - this is what receipt_note_items.item_uuid references)
+        // This is the correct field for matching purchase order and change order items
+        if (item.uuid) {
+          const itemUuidKey = String(item.uuid).trim().toLowerCase();
+          receiptNoteItem = receiptNoteItemsMap.get(itemUuidKey);
+          if (receiptNoteItem) {
+            matchedBy = 'item.uuid';
+          }
+        }
+        
+        // Strategy 2: If no match, try matching by base_item_uuid (should be same as uuid, but check anyway)
+        if (!receiptNoteItem && item.base_item_uuid && item.base_item_uuid !== item.uuid) {
+          const baseItemUuidKey = String(item.base_item_uuid).trim().toLowerCase();
+          receiptNoteItem = receiptNoteItemsMap.get(baseItemUuidKey);
+          if (receiptNoteItem) {
+            matchedBy = 'base_item_uuid';
+          }
+        }
+        
+        // Strategy 3: Fallback - try matching by item.item_uuid (master item reference)
+        // This should rarely match, but included for legacy data compatibility
+        if (!receiptNoteItem && item.item_uuid) {
+          const itemRefUuidKey = String(item.item_uuid).trim().toLowerCase();
+          receiptNoteItem = receiptNoteItemsMap.get(itemRefUuidKey);
+          if (receiptNoteItem) {
+            matchedBy = 'item.item_uuid';
+          }
+        }
+        
+        // Only use UUID-based matching strategies - no position-based matching
+        
+        if (receiptNoteItem) {
+          // Use data from receipt_note_items table
+          // Ensure received_quantity is properly set (can be 0, so use nullish coalescing carefully)
+          const receivedQty = receiptNoteItem.received_quantity !== null && receiptNoteItem.received_quantity !== undefined 
+            ? receiptNoteItem.received_quantity 
+            : null;
+          
+          
+          return {
+            ...item,
+            cost_code_uuid: receiptNoteItem.cost_code_uuid ?? item.cost_code_uuid,
+            cost_code_label: receiptNoteItem.cost_code_label ?? item.cost_code_label,
+            cost_code_number: receiptNoteItem.cost_code_number ?? item.cost_code_number,
+            cost_code_name: receiptNoteItem.cost_code_name ?? item.cost_code_name,
+            received_quantity: receivedQty,
+            received_total: receiptNoteItem.received_total ?? null,
+            grn_total: receiptNoteItem.grn_total ?? null,
+            grn_total_with_charges_taxes: receiptNoteItem.grn_total_with_charges_taxes ?? null,
+            location_uuid: receiptNoteItem.location_uuid ?? item.location_uuid,
+            location_label: receiptNoteItem.location_label ?? item.location_label,
+          };
+        }
+        
+        // Fallback: If no receipt note item found, check props.form.receipt_items (for backward compatibility)
+        if (props.form.receipt_items && Array.isArray(props.form.receipt_items)) {
+          const existing = props.form.receipt_items.find(
+            (ri: any) => (ri.uuid || ri.base_item_uuid) === itemUuid
+          );
+          if (existing) {
+            return {
+              ...item,
+              cost_code_uuid: existing.cost_code_uuid ?? item.cost_code_uuid,
+              cost_code_label: existing.cost_code_label ?? item.cost_code_label,
+              cost_code_number: existing.cost_code_number ?? item.cost_code_number,
+              cost_code_name: existing.cost_code_name ?? item.cost_code_name,
+              received_quantity: existing.received_quantity ?? item.received_quantity,
+              received_total: existing.received_total ?? item.received_total,
+            };
+          }
+        }
+        
+        // Return null for items that don't have a corresponding receipt note item
+        // This will be filtered out in the next step
+        return null;
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+      
+      console.log('[ReceiptNoteForm] [fetchItems] Setting receiptItems for editing receipt note:', {
+        receiptItemsCount: receiptItems.value.length,
+        receiptItems: receiptItems.value.map((item, idx) => ({
+          index: idx,
+          'item.item_name': item.item_name,
+          'item.description': item.description,
+          'item.id': item.id,
+          'item.uuid': item.uuid,
+          'item.base_item_uuid': item.base_item_uuid,
+        })),
+      });
+    }
+  } catch (error: any) {
+    console.error("[ReceiptNoteForm] Failed to fetch PO items:", error);
+    poItemsError.value = error?.message || "Failed to load purchase order items";
+    poItems.value = [];
+    receiptItems.value = [];
+  } finally {
+    poItemsLoading.value = false;
+  }
+};
+
+// Handle received quantity change
+const handleReceivedQuantityChange = (payload: {
+  index: number;
+  value: string | number | null | undefined;
+  numericValue: number;
+  computedTotal: number;
+}) => {
+  const { index, numericValue } = payload;
+  const item = receiptItems.value[index];
+  
+  if (!item) {
+    return;
+  }
+
+  // Update the item - create a new array to ensure reactivity
+  const updatedItems = [...receiptItems.value];
+  updatedItems[index] = {
+    ...item,
+    received_quantity: numericValue,
+    received_total: payload.computedTotal,
+  };
+  receiptItems.value = updatedItems;
+
+  // Update form with receipt items for saving
+  updateFormField("receipt_items", receiptItems.value);
+};
+
+// Check for items with received quantity less than PO quantity
+const parseNumericValue = (value: any): number => {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const normalized = String(value).replace(/,/g, '').trim();
+  if (!normalized) return 0;
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) ? numeric : 0;
+};
+
+// Calculate total received quantities from other receipt notes (excluding current one)
+// Note: This is a ref that will be populated asynchronously
+const totalReceivedQuantitiesMap = ref<Map<string, number>>(new Map());
+const totalReturnedQuantitiesMap = ref<Map<string, number>>(new Map());
+
+// Fetch receipt note items and populate the map
+const updateTotalReceivedQuantitiesMap = async () => {
+  const map = new Map<string, number>();
+  const currentReceiptNoteId = props.form.uuid;
+  const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  const projectUuid = props.form.project_uuid;
+  const poUuid = props.form.purchase_order_uuid;
+  const coUuid = props.form.change_order_uuid;
+  const currentReceiptType = receiptType.value;
+
+  if (!corpUuid || !projectUuid || (!poUuid && !coUuid)) {
+    totalReceivedQuantitiesMap.value = map;
+    return;
+  }
+
+  // Filter receipt notes that match the current PO/CO and exclude the current receipt note
+  const matchingReceiptNotes = stockReceiptNotesStore.stockReceiptNotes.filter((note) => {
+    if (note.is_active === false || note.uuid === currentReceiptNoteId) return false;
+    const isMatchingPO = currentReceiptType === 'purchase_order' && note.purchase_order_uuid === poUuid;
+    const isMatchingCO = currentReceiptType === 'change_order' && (note as any).change_order_uuid === coUuid;
+    return isMatchingPO || isMatchingCO;
+  });
+
+  // Fetch receipt note items for all matching receipt notes
+  for (const note of matchingReceiptNotes) {
+    try {
+      const response: any = await $fetch("/api/receipt-note-items", {
+        method: "GET",
+        query: {
+          corporation_uuid: corpUuid,
+          receipt_note_uuid: note.uuid,
+          item_type: currentReceiptType,
+        },
+      });
+      
+      const receiptNoteItems = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
+      
+      receiptNoteItems.forEach((rni: any) => {
+        if (rni.is_active === false) return;
+        const itemUuid = rni.item_uuid || rni.base_item_uuid;
+        if (itemUuid) {
+          const key = String(itemUuid).trim().toLowerCase();
+          const existingQty = map.get(key) || 0;
+          const receivedQty = parseNumericValue(rni.received_quantity || 0);
+          map.set(key, existingQty + receivedQty);
+        }
+      });
+    } catch (error) {
+      console.error(`[ReceiptNoteForm] Failed to fetch receipt note items for ${note.uuid}:`, error);
+    }
+  }
+
+  totalReceivedQuantitiesMap.value = map;
+};
+
+// Fetch return note items and populate the returned quantities map
+const updateTotalReturnedQuantitiesMap = async () => {
+  const map = new Map<string, number>();
+  const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  const projectUuid = props.form.project_uuid;
+  const poUuid = props.form.purchase_order_uuid;
+  const coUuid = props.form.change_order_uuid;
+  const currentReceiptType = receiptType.value;
+
+  if (!corpUuid || !projectUuid || (!poUuid && !coUuid)) {
+    totalReturnedQuantitiesMap.value = map;
+    return;
+  }
+
+  try {
+    const response: any = await $fetch("/api/return-note-items", {
+      method: "GET",
+      query: {
+        corporation_uuid: corpUuid,
+        project_uuid: projectUuid,
+        purchase_order_uuid: poUuid,
+        change_order_uuid: coUuid,
+        item_type: currentReceiptType,
+      },
+    });
+
+    const returnNoteItems = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
+
+    returnNoteItems.forEach((rni: any) => {
+      if (rni.is_active === false) return;
+      const itemUuid = rni.item_uuid || rni.base_item_uuid;
+      if (itemUuid) {
+        const key = String(itemUuid).trim().toLowerCase();
+        const existingQty = map.get(key) || 0;
+        const returnedQty = parseNumericValue(rni.return_quantity || 0);
+        map.set(key, existingQty + returnedQty);
+      }
+    });
+  } catch (error) {
+    console.error(`[ReceiptNoteForm] Failed to fetch return note items:`, error);
+  }
+
+  totalReturnedQuantitiesMap.value = map;
+};
+
+// Watch for changes that require updating the total received quantities map
+watch(
+  [
+    () => props.form.corporation_uuid,
+    () => props.form.project_uuid,
+    () => props.form.purchase_order_uuid,
+    () => props.form.change_order_uuid,
+    () => receiptType.value,
+    () => props.form.uuid,
+    () => stockReceiptNotesStore.stockReceiptNotes,
+  ],
+  () => {
+    updateTotalReceivedQuantitiesMap();
+    updateTotalReturnedQuantitiesMap();
+  },
+  { immediate: true }
+);
+
+// Calculate leftover quantity for an item
+const getLeftoverQuantity = (item: any): number => {
+  const orderedQty = parseNumericValue(item.ordered_quantity ?? item.po_quantity ?? 0);
+
+  // Get the item identifier - use uuid or base_item_uuid (PO/CO item UUID)
+  const itemUuid = item.uuid || item.base_item_uuid;
+  if (!itemUuid) {
+    return orderedQty; // If no item UUID, assume no previous receipts
+  }
+
+  const key = String(itemUuid).trim().toLowerCase();
+  const totalReceived = totalReceivedQuantitiesMap.value.get(key) || 0;
+
+  // Calculate leftover: ordered quantity - total received (excluding current input)
+  const leftover = orderedQty - totalReceived;
+
+  return Math.max(0, leftover); // Don't return negative values
+};
+
+// Check if an item is already fully fulfilled (received + returned = ordered)
+const isItemFullyFulfilled = (item: any): boolean => {
+  const orderedQty = parseNumericValue(item.ordered_quantity ?? item.po_quantity ?? 0);
+
+  // Get the item identifier - use uuid or base_item_uuid (PO/CO item UUID)
+  const itemUuid = item.uuid || item.base_item_uuid;
+  if (!itemUuid) {
+    return false; // If no item UUID, assume not fulfilled
+  }
+
+  const key = String(itemUuid).trim().toLowerCase();
+  const totalReceived = totalReceivedQuantitiesMap.value.get(key) || 0;
+  const totalReturned = totalReturnedQuantitiesMap.value.get(key) || 0;
+
+  // Check if received + returned = ordered (within small tolerance)
+  const fulfilledQty = totalReceived + totalReturned;
+  return Math.abs(fulfilledQty - orderedQty) < 0.01; // Use small epsilon for floating point comparison
+};
+
+const shortfallItems = computed(() => {
+  if (!Array.isArray(receiptItems.value) || receiptItems.value.length === 0) {
+    return [];
+  }
+
+  return receiptItems.value
+    .map((item, index) => {
+      const leftoverQty = getLeftoverQuantity(item);
+      const receivedQty = parseNumericValue(item.received_quantity ?? 0);
+      
+      // Shortfall is the difference between leftover quantity and received quantity
+      // If received quantity is less than leftover quantity, there's a shortfall
+      if (receivedQty < leftoverQty && leftoverQty > 0) {
+        return {
+          ...item,
+          index,
+          ordered_quantity: parseNumericValue(item.ordered_quantity ?? item.po_quantity ?? 0),
+          received_quantity: receivedQty,
+          leftover_quantity: leftoverQty,
+          shortfall_quantity: leftoverQty - receivedQty,
+        };
+      }
+      return null;
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+});
+
+const hasShortfallItems = computed(() => shortfallItems.value.length > 0);
+
+// Check for items with received quantity greater than leftover quantity
+const overReceivedItems = computed(() => {
+  if (!Array.isArray(receiptItems.value) || receiptItems.value.length === 0) {
+    return [];
+  }
+
+  return receiptItems.value
+    .map((item, index) => {
+      const leftoverQty = getLeftoverQuantity(item);
+      const receivedQty = parseNumericValue(item.received_quantity ?? 0);
+      
+      // Check if received quantity exceeds leftover quantity
+      if (receivedQty > leftoverQty && leftoverQty > 0) {
+        return {
+          ...item,
+          index,
+          ordered_quantity: parseNumericValue(item.ordered_quantity ?? item.po_quantity ?? 0),
+          leftover_quantity: leftoverQty,
+          received_quantity: receivedQty,
+          over_received_quantity: receivedQty - leftoverQty,
+        };
+      }
+      return null;
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+});
+
+const hasOverReceivedItems = computed(() => overReceivedItems.value.length > 0);
+
+const overReceivedValidationError = computed(() => {
+  if (!hasOverReceivedItems.value) return null;
+  
+  const itemCount = overReceivedItems.value.length;
+  const itemsList = overReceivedItems.value
+    .map((item, idx) => {
+      const itemName = item.item_name || item.description || `Item ${idx + 1}`;
+      const leftoverQty = item.leftover_quantity ?? 0;
+      const receivedQty = item.received_quantity ?? 0;
+      return `"${itemName}" (Leftover: ${leftoverQty}, Received: ${receivedQty})`;
+    })
+    .join('; ');
+  
+  return `Cannot save receipt note: ${itemCount} item(s) have received quantity greater than leftover quantity. ${itemsList}`;
+});
+
+// Combined validation error (for consistency with ReturnNoteForm)
+const hasValidationError = computed(() => !!hasOverReceivedItems.value);
+
+// Handler for when user confirms item selection in modal
+const handleItemsSelectionConfirm = async (selectedItems: any[]) => {
+  if (!pendingSourceUuid.value || !pendingSourceType.value) {
+    return;
+  }
+
+  const corpUuidConfirm = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+  const projectUuidConfirm = props.form.project_uuid;
+  if (corpUuidConfirm && projectUuidConfirm) {
+    await refreshGrnItemHierarchyFromApi();
+  }
+
+  // Check if we're reconfiguring (items already exist)
+  const isReconfiguring = receiptItems.value.length > 0 && 
+    ((pendingSourceType.value === 'purchase_order' && pendingSourceUuid.value === props.form.purchase_order_uuid) ||
+     (pendingSourceType.value === 'change_order' && pendingSourceUuid.value === props.form.change_order_uuid));
+
+  // Transform selected items to receipt items format
+  const transformed = transformPoItemsToReceiptItems(selectedItems);
+  const hasExcludedSourceItems =
+    Array.isArray(availableItemsForSelection.value) &&
+    selectedItems.length < availableItemsForSelection.value.length;
+  
+  if (isReconfiguring) {
+    // When reconfiguring, preserve received quantities from existing items
+    // Create a map of existing items by their UUID for quick lookup
+    const existingItemsMap = new Map<string, any>();
+    receiptItems.value.forEach((existingItem: any) => {
+      const itemUuid = existingItem.uuid || existingItem.base_item_uuid || existingItem.id;
+      if (itemUuid) {
+        existingItemsMap.set(String(itemUuid), existingItem);
+      }
+    });
+    
+    // Merge transformed items with existing received quantities
+    const newReceiptItems = transformed.map((item) => {
+      const itemUuid = item.uuid || item.base_item_uuid || item.id;
+      const existingItem = itemUuid ? existingItemsMap.get(String(itemUuid)) : null;
+      
+      if (existingItem) {
+        // Preserve received quantity and total from existing item
+        return {
+          ...item,
+          received_quantity: existingItem.received_quantity ?? null,
+          received_total: existingItem.received_total ?? null,
+          grn_total: existingItem.grn_total ?? null,
+          grn_total_with_charges_taxes: existingItem.grn_total_with_charges_taxes ?? null,
+        };
+      } else {
+        // New item - no received quantity
+        return {
+          ...item,
+          received_quantity: null,
+          received_total: null,
+        };
+      }
+    });
+    
+    receiptItems.value = newReceiptItems.filter((item) => !isItemFullyFulfilled(item));
+  } else {
+    // For new receipt notes, ensure received quantities are null (not prefilled)
+    // Also filter out items with zero leftover quantity
+    const newReceiptItems = transformed
+      .map((item) => ({
+        ...item,
+        received_quantity: null,
+        received_total: null,
+      }))
+      .filter((item) => {
+        // Filter out items that are already fully fulfilled (received + returned = ordered) for new receipt notes
+        // Only show items that still need to be received
+        return !isItemFullyFulfilled(item);
+      });
+    
+    receiptItems.value = newReceiptItems;
+  }
+  
+  // Update form with receipt items
+  const nextForm = updateFormField("receipt_items", receiptItems.value);
+  updateFormField("has_excluded_source_items", hasExcludedSourceItems, nextForm);
+  
+  // Load financial data from source (only if not already loaded)
+  if (!isReconfiguring) {
+    await loadFinancialDataFromSource(pendingSourceUuid.value, pendingSourceType.value);
+  }
+  
+  // Clear pending data
+  pendingSourceUuid.value = null;
+  pendingSourceType.value = null;
+  availableItemsForSelection.value = [];
+};
+
+// Handler for when user cancels item selection
+const handleItemsSelectionCancel = () => {
+  // Only clear PO/CO selection if this was a new selection (not reconfiguration)
+  // If we're reconfiguring (pendingSourceUuid matches current PO/CO), don't clear
+  const isReconfiguring = (pendingSourceType.value === 'purchase_order' && pendingSourceUuid.value === props.form.purchase_order_uuid) ||
+                          (pendingSourceType.value === 'change_order' && pendingSourceUuid.value === props.form.change_order_uuid);
+  
+  if (!isReconfiguring) {
+    // Clear the PO/CO selection if user cancels
+    if (pendingSourceType.value === 'purchase_order') {
+      updateFormField("purchase_order_uuid", null);
+    } else if (pendingSourceType.value === 'change_order') {
+      updateFormField("change_order_uuid", null);
+    }
+    
+    // Clear items
+    poItems.value = [];
+    receiptItems.value = [];
+    const nextForm = updateFormField("has_excluded_source_items", false);
+    updateFormField("receipt_items", [], nextForm);
+  }
+  
+  // Clear pending data
+  pendingSourceUuid.value = null;
+  pendingSourceType.value = null;
+  availableItemsForSelection.value = [];
+};
+
+// Handler for Configure Items button - reopen selection modal with current items
+const handleConfigureItems = async () => {
+  const currentSourceUuid = receiptType.value === 'purchase_order' 
+    ? props.form.purchase_order_uuid 
+    : props.form.change_order_uuid;
+  const currentSourceType = receiptType.value;
+  
+  if (!currentSourceUuid || !currentSourceType) {
+    return;
+  }
+  
+  // Set pending data
+  pendingSourceUuid.value = currentSourceUuid;
+  pendingSourceType.value = currentSourceType;
+  
+  // Fetch all items from PO/CO to show in modal
+  try {
+    poItemsLoading.value = true;
+    poItemsError.value = null;
+    
+    // Ensure item types and preferred items are loaded for lookup
+    const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+    const projectUuid = props.form.project_uuid;
+    if (corpUuid && projectUuid) {
+      await refreshGrnItemHierarchyFromApi();
+
+      // Fetch item types if needed
+      if (itemTypesStore.itemTypes.length === 0) {
+        try {
+          await itemTypesStore.fetchItemTypes(corpUuid, projectUuid);
+        } catch (error) {
+          // Continue even if item types fetch fails
+        }
+      }
+      
+      // Ensure preferred items are loaded (for sequence and UOM lookup)
+      try {
+        await purchaseOrderResourcesStore.ensurePreferredItems({
+          corporationUuid: corpUuid,
+          projectUuid: projectUuid,
+          force: false,
+        });
+      } catch (error) {
+        // Continue even if preferred items fetch fails
+      }
+    }
+    
+    let items: any[] = [];
+    
+    if (currentSourceType === 'purchase_order') {
+      // Try to use the store function, fallback to direct API call
+      if (typeof purchaseOrderResourcesStore.fetchPurchaseOrderItems === 'function') {
+        items = await purchaseOrderResourcesStore.fetchPurchaseOrderItems(currentSourceUuid);
+      } else {
+        // Fallback: call API directly
+        const response: any = await $fetch("/api/purchase-order-items", {
+          method: "GET",
+          query: {
+            purchase_order_uuid: currentSourceUuid,
+          },
+        });
+        items = Array.isArray(response?.data) ? response.data : [];
+      }
+    } else if (currentSourceType === 'change_order') {
+      // Fetch change order items
+      const response: any = await $fetch("/api/change-order-items", {
+        method: "GET",
+        query: {
+          change_order_uuid: currentSourceUuid,
+        },
+      });
+      items = Array.isArray(response?.data) ? response.data : [];
+    }
+    
+    // Transform items to receipt items format for the modal (omit fulfilled lines — same as main GRN table)
+    const transformed = transformPoItemsToReceiptItems(items);
+    availableItemsForSelection.value = transformed.filter((item) => !isItemFullyFulfilled(item));
+    
+    // Show the modal
+    showItemsSelectionModal.value = true;
+  } catch (error: any) {
+    console.error("[ReceiptNoteForm] Failed to fetch items for configuration:", error);
+    poItemsError.value = error?.message || "Failed to load items";
+  } finally {
+    poItemsLoading.value = false;
+  }
+};
+
+// Expose shortfall items and over-received validation to parent component
+defineExpose({
+  shortfallItems,
+  hasShortfallItems,
+  overReceivedItems,
+  hasOverReceivedItems,
+  overReceivedValidationError,
+  hasValidationError,
+  /** @internal Unit tests: fulfilled-line filtering for GRN / Configure Items modal */
+  fetchItems,
+  handleConfigureItems,
+  handleItemsSelectionConfirm,
+  availableItemsForSelection,
+  receiptItems,
+  totalReceivedQuantitiesMap,
+  totalReturnedQuantitiesMap,
+  isItemFullyFulfilled,
+  pendingSourceUuid,
+  pendingSourceType,
+});
+
+// Watch for purchase order or change order changes
+watch(
+  [() => props.form.purchase_order_uuid, () => props.form.change_order_uuid, () => receiptType.value],
+  async ([poUuid, coUuid, currentReceiptType], [oldPoUuid, oldCoUuid, oldReceiptType]) => {
+    // Determine which one changed and handle accordingly
+    const isPoChange = poUuid !== oldPoUuid;
+    const isCoChange = coUuid !== oldCoUuid;
+    const isInitialMount = oldPoUuid === undefined && oldCoUuid === undefined && oldReceiptType === undefined;
+    const isReceiptTypeChange = !isInitialMount && currentReceiptType !== oldReceiptType;
+
+    // If receipt type changed (but not on initial mount), clear items first
+    if (isReceiptTypeChange) {
+      await fetchItems(null, null, false);
+      // If we have a UUID for the new type, fetch items for it
+      if (currentReceiptType === 'purchase_order' && poUuid) {
+        await fetchItems(poUuid, 'purchase_order', true);
+        await loadFinancialDataFromSource(poUuid, 'purchase_order');
+      } else if (currentReceiptType === 'change_order' && coUuid) {
+        await fetchItems(coUuid, 'change_order', true);
+        await loadFinancialDataFromSource(coUuid, 'change_order');
+      }
+      return;
+    }
+
+    // If both changed, prioritize the current receipt type
+    let sourceUuid = null;
+    let sourceType = null;
+
+    if (currentReceiptType === 'purchase_order' && isPoChange) {
+      sourceUuid = poUuid;
+      sourceType = 'purchase_order';
+    } else if (currentReceiptType === 'change_order' && isCoChange) {
+      sourceUuid = coUuid;
+      sourceType = 'change_order';
+    }
+
+    // If clearing (setting to null/undefined), clear items and return early
+    if (!sourceUuid || !sourceType) {
+      // Only clear if we had a previous value
+      if ((oldPoUuid !== undefined && oldPoUuid !== null) || (oldCoUuid !== undefined && oldCoUuid !== null)) {
+        await fetchItems(null, null, false);
+      }
+      return;
+    }
+
+    // Fetch items and load financial data for the selected source
+    // Show modal for new receipt notes when PO/CO changes after mount, but auto-populate on initial mount
+    // Skip modal for editing existing ones
+    const shouldShowModal = !props.editingReceiptNote && !isInitialMount;
+    await fetchItems(sourceUuid, sourceType, shouldShowModal);
+    
+    // Only load financial data if we're not showing the modal (editing existing receipt note or initial mount)
+    if (!shouldShowModal) {
+      await loadFinancialDataFromSource(sourceUuid, sourceType);
+    }
+  },
+  { immediate: true }
+);
+
+// Load financial data from purchase order or change order
+const loadFinancialDataFromSource = async (sourceUuid: string, sourceType: string) => {
+  try {
+    const corpUuid = props.form.corporation_uuid || corpStore.selectedCorporation?.uuid;
+
+    if (sourceType === 'purchase_order') {
+      // Ensure local purchase orders are loaded
+      if (corpUuid && localPurchaseOrders.value.length === 0) {
+        await fetchLocalPurchaseOrders(corpUuid);
+      }
+
+      const po = localPurchaseOrders.value.find((p: any) => p.uuid === sourceUuid);
+      if (!po) {
+        // Try fetching the specific PO if not found
+        try {
+          const response: any = await $fetch(`/api/purchase-order-forms`, {
+            method: "GET",
+            query: { uuid: sourceUuid },
+          });
+          if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
+            const fetchedPO = response.data[0];
+            await applyChargeTaxPercentages(fetchedPO);
+            return;
+          }
+        } catch (fetchError) {
+          console.error("[ReceiptNoteForm] Failed to fetch PO:", fetchError);
+        }
+        return;
+      }
+
+      await applyChargeTaxPercentages(po);
+    } else if (sourceType === 'change_order') {
+      // Ensure local change orders are loaded
+      if (corpUuid && localChangeOrders.value.length === 0) {
+        await fetchLocalChangeOrders(corpUuid);
+      }
+
+      const co = localChangeOrders.value.find((c: any) => c.uuid === sourceUuid);
+      
+      if (!co) {
+        // Try fetching the specific CO if not found
+        try {
+          const response: any = await $fetch(`/api/change-orders`, {
+            method: "GET",
+            query: { uuid: sourceUuid },
+          });
+          if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
+            const fetchedCO = response.data[0];
+            await applyChargeTaxPercentages(fetchedCO);
+            return;
+          }
+        } catch (fetchError) {
+          console.error("[ReceiptNoteForm] Failed to fetch CO:", fetchError);
+        }
+        return;
+      }
+
+      await applyChargeTaxPercentages(co);
+    }
+  } catch (error) {
+    console.error("[ReceiptNoteForm] Failed to load financial data:", error);
+  }
+};
+
+// Apply charge and tax percentages to form
+const applyChargeTaxPercentages = async (po: any) => {
+  const updates: Record<string, any> = {};
+
+  // Load charge percentages and taxable flags only
+  // DO NOT copy amounts - they will be recalculated by FinancialBreakdown based on GRN item total
+  chargeRows.forEach((row) => {
+    const percentageKey = `${row.key}_charges_percentage`;
+    const taxableKey = `${row.key}_charges_taxable`;
+
+    if (po[percentageKey] !== undefined) {
+      updates[percentageKey] = po[percentageKey];
+    }
+    if (po[taxableKey] !== undefined) {
+      updates[taxableKey] = po[taxableKey];
+    }
+    // Don't copy amounts - they will be recalculated by FinancialBreakdown component
+    // based on GRN item total (grnItemTotal), not PO item total
+  });
+
+  // Load sales tax percentages only
+  // DO NOT copy amounts - they will be recalculated by FinancialBreakdown based on GRN item total
+  salesTaxRows.forEach((row) => {
+    const percentageKey = `${row.key}_percentage`;
+
+    if (po[percentageKey] !== undefined) {
+      updates[percentageKey] = po[percentageKey];
+    }
+    // Don't copy amounts - they will be recalculated by FinancialBreakdown component
+    // based on GRN item total (grnItemTotal), not PO item total
+  });
+
+  // Apply all updates at once to avoid multiple emits
+  if (Object.keys(updates).length > 0) {
+    const source = props.form;
+    const next = { ...source, ...updates };
+    emit("update:form", next);
+    
+    // The FinancialBreakdown component will automatically recalculate when formData changes
+    // It watches for percentage changes and recalculates amounts based on itemTotal (grnItemTotal)
+    // Use nextTick to ensure the form update is processed before FinancialBreakdown recalculates
+    await nextTick();
+  }
+};
+
+// Note: Financial calculations are now handled by FinancialBreakdown component
+// The component watches itemTotal (grnItemTotal) and formData changes automatically
+</script>
+
+<style scoped>
+/* Force FinancialBreakdown UCard to take full width of its column */
+.flex-shrink-0 > div :deep(.w-full),
+.flex-shrink-0 > div :deep([class*="w-1/2"]),
+.flex-shrink-0 > div :deep([class*="w-5/12"]),
+.flex-shrink-0 > div :deep([class*="w-1/3"]) {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+</style>
+
+

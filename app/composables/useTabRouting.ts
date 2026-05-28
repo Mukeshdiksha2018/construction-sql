@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 export type ProjectsTabName = 'project-details' | 'items' | 'estimates' | 'cost-codes'
 export type ConfigurationsTabName = 'project-types' | 'service-types' | 'terms-and-conditions'
+export type PurchaseOrdersTabName = 'purchase-orders' | 'stock-receipt-note'
 
 export type MastersTabName =
   | 'freight'
@@ -54,6 +55,21 @@ export const MASTERS_TABS: TabConfig[] = [
   { name: 'po-instruction', label: 'PO Instruction', icon: 'i-heroicons-document-text', value: 'po-instruction' },
   { name: 'location', label: 'Location', icon: 'i-heroicons-map-pin', value: 'location' },
   { name: 'reason', label: 'Reason', icon: 'i-heroicons-document-text', value: 'reason' },
+]
+
+export const PURCHASE_ORDERS_TABS: TabConfig[] = [
+  {
+    name: 'purchase-orders',
+    label: 'Purchase Orders',
+    icon: 'i-heroicons-shopping-cart',
+    value: 'purchase-orders',
+  },
+  {
+    name: 'stock-receipt-note',
+    label: 'Stock Receipt Note',
+    icon: 'i-heroicons-clipboard-document-check',
+    value: 'stock-receipt-note',
+  },
 ]
 
 export const CONFIGURATIONS_TABS: TabConfig[] = [
