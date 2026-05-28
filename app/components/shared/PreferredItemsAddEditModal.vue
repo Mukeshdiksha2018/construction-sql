@@ -203,11 +203,11 @@
                   <!-- UOM -->
                   <td class="px-2 py-1.5">
                     <SharedUOMSelect
-                      :model-value="row.unit"
+                      :model-value="row.uom_uuid"
                       placeholder="Select UOM"
                       size="xs"
                       class-name="w-full"
-                      @update:model-value="(v: string | undefined) => { row.unit = v || '' }"
+                      @update:model-value="(v: string | undefined) => { row.uom_uuid = v || '' }"
                     />
                   </td>
                   <!-- Cost Code -->
@@ -372,7 +372,7 @@ interface ItemRow {
   description: string
   model_number: string
   unit_price: string | number
-  unit: string
+  uom_uuid: string
   cost_code_configuration_uuid: string
   initial_quantity: string | number
   as_of_date: string
@@ -445,7 +445,7 @@ function addEmptyRow() {
     description: '',
     model_number: '',
     unit_price: '',
-    unit: '',
+    uom_uuid: '',
     cost_code_configuration_uuid: '',
     initial_quantity: '',
     as_of_date: '',
@@ -497,7 +497,7 @@ watch(
         description: String(r.description || ''),
         model_number: String(r.model_number || ''),
         unit_price: r.unit_price != null ? r.unit_price : '',
-        unit: String(r.unit || ''),
+        uom_uuid: String(r.uom_uuid || ''),
         cost_code_configuration_uuid: String(r.cost_code_configuration_uuid || ''),
         initial_quantity: r.initial_quantity != null ? r.initial_quantity : '',
         as_of_date: r.as_of_date ? localDate(String(r.as_of_date)) : '',
@@ -558,7 +558,7 @@ async function saveItem() {
           description: r.description || null,
           model_number: r.model_number || null,
           unit_price: r.unit_price !== '' && r.unit_price != null ? Number(r.unit_price) : null,
-          unit: r.unit || null,
+          uom_uuid: r.uom_uuid || null,
           cost_code_configuration_uuid: r.cost_code_configuration_uuid || null,
           initial_quantity: r.initial_quantity !== '' && r.initial_quantity != null ? Number(r.initial_quantity) : null,
           as_of_date: r.as_of_date || null,

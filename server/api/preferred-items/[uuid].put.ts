@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
       ...(p.item_sequence !== undefined && { item_sequence: typeof p.item_sequence === 'string' ? p.item_sequence : null }),
       ...(p.model_number !== undefined && { model_number: typeof p.model_number === 'string' ? p.model_number : null }),
       ...(p.unit_price !== undefined && { unit_price: p.unit_price != null ? Number(p.unit_price) : null }),
-      ...(p.unit !== undefined && { unit: typeof p.unit === 'string' ? p.unit : null }),
+      ...(p.uom_uuid !== undefined && { uom_uuid: typeof p.uom_uuid === 'string' ? p.uom_uuid : null }),
       ...(p.location_uuid !== undefined && { location_uuid: typeof p.location_uuid === 'string' ? p.location_uuid : null }),
       ...(p.preferred_vendor_uuid !== undefined && { preferred_vendor_uuid: typeof p.preferred_vendor_uuid === 'string' ? p.preferred_vendor_uuid : null }),
       ...(p.initial_quantity !== undefined && { initial_quantity: p.initial_quantity != null && p.initial_quantity !== '' ? Number(p.initial_quantity) : null }),

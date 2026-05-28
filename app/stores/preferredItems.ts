@@ -11,7 +11,7 @@ export interface PreferredItem {
   category: string | null
   item_name: string
   unit_price: number | null
-  unit: string | null
+  uom_uuid: string | null
   description: string | null
   status: string
   is_active: boolean
@@ -27,7 +27,7 @@ export interface CreatePreferredItemPayload {
   category?: string | null
   item_name: string
   unit_price?: number | null
-  unit?: string | null
+  uom_uuid?: string | null
   description?: string | null
   status?: string
   is_active?: boolean

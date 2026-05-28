@@ -78,7 +78,7 @@
                 <span class="text-xs text-gray-600 dark:text-gray-400">{{ formatCurrency(item.unit_price) }}</span>
               </td>
               <td class="px-4 py-2">
-                <span class="text-xs text-gray-600 dark:text-gray-400">{{ getUOMName(item.unit) }}</span>
+                <span class="text-xs text-gray-600 dark:text-gray-400">{{ getUOMName(item.uom_uuid) }}</span>
               </td>
               <td class="px-4 py-2">
                 <UBadge
@@ -221,7 +221,7 @@ const filteredItems = computed(() => {
     list = list.filter(
       i => i.item_name.toLowerCase().includes(q)
         || (i.item_sequence || '').toLowerCase().includes(q)
-        || getUOMName(i.unit).toLowerCase().includes(q)
+        || getUOMName(i.uom_uuid).toLowerCase().includes(q)
         || getItemTypeName(i.item_type_uuid).toLowerCase().includes(q)
         || getCategoryLabel(i.category ?? '').toLowerCase().includes(q),
     )
@@ -253,11 +253,10 @@ function formatCurrency(val: number | null | undefined): string {
  * Resolve a UOM UUID to its short name (e.g. "KG", "C").
  * Falls back to the raw value if the UOM list hasn't loaded yet, or '—' if empty.
  */
-function getUOMName(unit: string | null | undefined): string {
-  if (!unit) return '—'
-  // If UOMs are loaded, resolve UUID → name; otherwise show the raw value
-  if (uomStore.loaded) return uomStore.getShortName(unit) || unit
-  return unit
+function getUOMName(uomUuid: string | null | undefined): string {
+  if (!uomUuid) return '—'
+  if (uomStore.loaded) return uomStore.getShortName(uomUuid) || uomUuid
+  return uomUuid
 }
 
 // Form / modal state

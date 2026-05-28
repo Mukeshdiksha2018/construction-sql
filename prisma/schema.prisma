@@ -331,7 +331,7 @@ model CostCodePreferredItem {
   item_sequence                String?   @db.NVarChar(100)
   model_number                 String?   @db.NVarChar(100)
   unit_price                   Decimal?  @db.Decimal(18, 2)
-  unit                         String?   @db.NVarChar(50)
+  uom_uuid                     String?   @db.NVarChar(100)
   location_uuid                String?   @db.NVarChar(36)
   preferred_vendor_uuid        String?   @db.NVarChar(36)
   initial_quantity             Decimal?  @db.Decimal(18, 4)

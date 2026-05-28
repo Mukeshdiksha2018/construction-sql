@@ -14,7 +14,7 @@ export interface PreferredItem {
   item_sequence: string | null
   model_number: string | null
   unit_price: number | null
-  unit: string | null
+  uom_uuid: string | null
   location_uuid: string | null
   preferred_vendor_uuid: string | null
   initial_quantity: number | null
@@ -38,7 +38,7 @@ export interface CreatePreferredItemInput {
   item_sequence?: string | null
   model_number?: string | null
   unit_price?: number | null
-  unit?: string | null
+  uom_uuid?: string | null
   location_uuid?: string | null
   preferred_vendor_uuid?: string | null
   initial_quantity?: number | null
@@ -71,7 +71,7 @@ function mapRow(row: Row): PreferredItem {
     item_sequence: row.item_sequence ?? null,
     model_number: row.model_number ?? null,
     unit_price: dec(row.unit_price),
-    unit: row.unit ?? null,
+    uom_uuid: row.uom_uuid ?? null,
     location_uuid: row.location_uuid ? String(row.location_uuid).toLowerCase() : null,
     preferred_vendor_uuid: row.preferred_vendor_uuid ? String(row.preferred_vendor_uuid).toLowerCase() : null,
     initial_quantity: dec(row.initial_quantity),
@@ -140,7 +140,7 @@ export async function createPreferredItem(input: CreatePreferredItemInput): Prom
       item_sequence: input.item_sequence?.trim() ?? null,
       model_number: input.model_number?.trim() ?? null,
       unit_price: toDecimal(input.unit_price),
-      unit: input.unit?.trim() ?? null,
+      uom_uuid: input.uom_uuid?.trim() ?? null,
       location_uuid: input.location_uuid?.toLowerCase() ?? null,
       preferred_vendor_uuid: input.preferred_vendor_uuid?.toLowerCase() ?? null,
       initial_quantity: toDecimal(input.initial_quantity),
@@ -170,7 +170,7 @@ export async function updatePreferredItem(uuid: string, input: UpdatePreferredIt
       ...(input.item_sequence !== undefined && { item_sequence: input.item_sequence?.trim() ?? null }),
       ...(input.model_number !== undefined && { model_number: input.model_number?.trim() ?? null }),
       ...(input.unit_price !== undefined && { unit_price: toDecimal(input.unit_price) }),
-      ...(input.unit !== undefined && { unit: input.unit?.trim() ?? null }),
+      ...(input.uom_uuid !== undefined && { uom_uuid: input.uom_uuid?.trim() ?? null }),
       ...(input.location_uuid !== undefined && { location_uuid: input.location_uuid?.toLowerCase() ?? null }),
       ...(input.preferred_vendor_uuid !== undefined && { preferred_vendor_uuid: input.preferred_vendor_uuid?.toLowerCase() ?? null }),
       ...(input.initial_quantity !== undefined && { initial_quantity: toDecimal(input.initial_quantity) }),
