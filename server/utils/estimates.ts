@@ -435,7 +435,7 @@ async function insertLineItems(
         estimate_line_item_uuid: lineItemUuid,
         location_uuid: r.location_uuid,
         amount: toNum(r.amount),
-        sequence: r.sequence ?? idx + 1,
+        sequence: typeof r.sequence === 'number' ? Math.round(r.sequence) : (parseInt(String(r.sequence ?? '')) || idx + 1),
       }))
       await prisma.estimateLocationWiseMaterial.createMany({ data: lwmRows })
     }
