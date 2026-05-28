@@ -249,6 +249,270 @@ model ProjectDocument {
   @@map("project_documents")
 }
 
+/// Cost code divisions (e.g., Division 01 – General Requirements).
+model CostCodeDivision {
+  id                               BigInt                 @id @default(autoincrement())
+  uuid                             String                 @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid                 String                 @db.NVarChar(36)
+  division_number                  String                 @db.NVarChar(50)
+  division_name                    String                 @db.NVarChar(255)
+  division_order                   Int                    @default(1)
+  description                      String?                @db.NVarChar(Max)
+  is_active                        Boolean                @default(true)
+  exclude_in_estimates_and_reports Boolean                @default(false)
+  created_at                       DateTime               @default(now()) @db.DateTime2
+  updated_at                       DateTime               @updatedAt @db.DateTime2
+
+  configurations CostCodeConfiguration[]
+
+  @@unique([corporation_uuid, division_number])
+  @@index([corporation_uuid])
+  @@index([is_active])
+  @@map("cost_code_divisions")
+}
+
+/// Individual cost codes within a division.
+model CostCodeConfiguration {
+  id                           BigInt    @id @default(autoincrement())
+  uuid                         String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid             String    @db.NVarChar(36)
+  division_uuid                String?   @db.NVarChar(36)
+  cost_code_number             String    @db.NVarChar(50)
+  cost_code_name               String    @db.NVarChar(255)
+  parent_cost_code_uuid        String?   @db.NVarChar(36)
+  order_number                 Int?
+  gl_account_uuid              String?   @db.NVarChar(36)
+  effective_from               DateTime? @db.DateTime2
+  description                  String?   @db.NVarChar(Max)
+  update_previous_transactions Boolean   @default(false)
+  is_active                    Boolean   @default(true)
+  created_at                   DateTime  @default(now()) @db.DateTime2
+  updated_at                   DateTime  @updatedAt @db.DateTime2
+
+  division CostCodeDivision? @relation(fields: [division_uuid], references: [uuid])
+
+  @@unique([corporation_uuid, cost_code_number])
+  @@index([corporation_uuid])
+  @@index([division_uuid])
+  @@index([is_active])
+  @@map("cost_code_configurations")
+}
+
+/// Item types — procurement or construction, global (corporation_uuid nullable).
+model ItemType {
+  id                 BigInt    @id @default(autoincrement())
+  uuid               String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid   String?   @db.NVarChar(36)
+  category           String    @db.NVarChar(50)
+  spec_type          String    @db.NVarChar(255)
+  item_division_uuid String?   @db.NVarChar(36)
+  item_type          String    @db.NVarChar(255)
+  description        String?   @db.NVarChar(Max)
+  is_active          Boolean   @default(true)
+  created_at         DateTime  @default(now()) @db.DateTime2
+  updated_at         DateTime  @updatedAt @db.DateTime2
+
+  @@index([corporation_uuid])
+  @@index([category])
+  @@index([is_active])
+  @@map("item_types")
+}
+
+/// Preferred items attached to cost code configurations (the "Items" sub-tab).
+model CostCodePreferredItem {
+  id                           BigInt    @id @default(autoincrement())
+  uuid                         String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid             String    @db.NVarChar(36)
+  project_uuid                 String?   @db.NVarChar(36)
+  cost_code_configuration_uuid String?   @db.NVarChar(36)
+  item_type_uuid               String?   @db.NVarChar(36)
+  category                     String?   @db.NVarChar(50)
+  item_name                    String    @db.NVarChar(255)
+  item_sequence                String?   @db.NVarChar(100)
+  model_number                 String?   @db.NVarChar(100)
+  unit_price                   Decimal?  @db.Decimal(18, 2)
+  uom_uuid                     String?   @db.NVarChar(100)
+  location_uuid                String?   @db.NVarChar(36)
+  preferred_vendor_uuid        String?   @db.NVarChar(36)
+  initial_quantity             Decimal?  @db.Decimal(18, 4)
+  as_of_date                   DateTime? @db.DateTime2
+  reorder_point                Decimal?  @db.Decimal(18, 4)
+  maximum_limit                Decimal?  @db.Decimal(18, 4)
+  description                  String?   @db.NVarChar(Max)
+  status                       String    @default("Active") @db.NVarChar(50)
+  is_active                    Boolean   @default(true)
+  created_at                   DateTime  @default(now()) @db.DateTime2
+  updated_at                   DateTime  @updatedAt @db.DateTime2
+
+  @@index([corporation_uuid])
+  @@index([project_uuid])
+  @@index([cost_code_configuration_uuid])
+  @@index([item_type_uuid])
+  @@index([is_active])
+  @@map("cost_code_preferred_items")
+}
+
+/// Estimate header — one estimate per project submission.
+model Estimate {
+  id                      BigInt    @id @default(autoincrement())
+  uuid                    String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid        String    @db.NVarChar(36)
+  project_uuid            String    @db.NVarChar(36)
+  estimate_number         String    @db.NVarChar(100)
+  estimate_date           DateTime? @db.DateTime2
+  valid_until             DateTime? @db.DateTime2
+  status                  String    @default("Draft") @db.NVarChar(50)
+  total_amount            Decimal   @default(0) @db.Decimal(18, 2)
+  tax_amount              Decimal   @default(0) @db.Decimal(18, 2)
+  discount_amount         Decimal   @default(0) @db.Decimal(18, 2)
+  final_amount            Decimal   @default(0) @db.Decimal(18, 2)
+  notes                   String?   @db.NVarChar(Max)
+  attachments             String?   @db.NVarChar(Max)
+  removed_cost_code_uuids String?   @db.NVarChar(Max)
+  audit_log               String?   @db.NVarChar(Max)
+  created_by              String?   @db.NVarChar(128)
+  approved_by             String?   @db.NVarChar(128)
+  approved_at             DateTime? @db.DateTime2
+  is_active               Boolean   @default(true)
+  created_at              DateTime  @default(now()) @db.DateTime2
+  updated_at              DateTime  @updatedAt @db.DateTime2
+
+  lineItems             EstimateLineItem[]
+
+  @@index([corporation_uuid])
+  @@index([project_uuid])
+  @@index([status])
+  @@index([is_active])
+  @@index([created_at(sort: Desc)])
+  @@map("estimates")
+}
+
+/// Per-cost-code labor/material row inside an estimate.
+model EstimateLineItem {
+  id                     BigInt   @id @default(autoincrement())
+  uuid                   String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid       String   @db.NVarChar(36)
+  project_uuid           String   @db.NVarChar(36)
+  estimate_uuid          String   @db.NVarChar(36)
+  cost_code_uuid         String   @db.NVarChar(36)
+  cost_code_number       String?  @db.NVarChar(100)
+  cost_code_name         String?  @db.NVarChar(255)
+  division_name          String?  @db.NVarChar(255)
+  description            String?  @db.NVarChar(Max)
+  is_sub_cost_code       Boolean  @default(false)
+  labor_estimation_type  String?  @db.NVarChar(50)
+  labor_amount           Decimal  @default(0) @db.Decimal(18, 2)
+  labor_amount_per_room  Decimal  @default(0) @db.Decimal(18, 2)
+  labor_rooms_count      Int      @default(0)
+  labor_amount_per_sqft  Decimal  @default(0) @db.Decimal(18, 2)
+  labor_sq_ft_count      Int      @default(0)
+  labor_number_of_hours  Decimal  @default(0) @db.Decimal(18, 2)
+  labor_hourly_wage      Decimal  @default(0) @db.Decimal(18, 2)
+  material_amount        Decimal  @default(0) @db.Decimal(18, 2)
+  contingency_amount     Decimal  @default(0) @db.Decimal(18, 2)
+  total_amount           Decimal  @default(0) @db.Decimal(18, 2)
+  metadata               String?  @db.NVarChar(Max)
+  created_at             DateTime @default(now()) @db.DateTime2
+  updated_at             DateTime @updatedAt @db.DateTime2
+
+  estimate              Estimate                    @relation(fields: [estimate_uuid], references: [uuid], onDelete: Cascade)
+  materialItems         EstimateMaterialItem[]
+  locationWiseLabor     EstimateLocationWiseLabor[]
+  locationWiseMaterial  EstimateLocationWiseMaterial[]
+
+  @@index([estimate_uuid])
+  @@index([corporation_uuid])
+  @@index([cost_code_uuid])
+  @@map("estimate_line_items")
+}
+
+/// Normalised material item rows attached to an estimate line item.
+model EstimateMaterialItem {
+  id                      BigInt   @id @default(autoincrement())
+  uuid                    String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid        String   @db.NVarChar(36)
+  project_uuid            String   @db.NVarChar(36)
+  estimate_uuid           String   @db.NVarChar(36)
+  cost_code_uuid          String   @db.NVarChar(36)
+  estimate_line_item_uuid String   @db.NVarChar(36)
+  item_type_uuid          String?  @db.NVarChar(36)
+  item_uuid               String?  @db.NVarChar(36)
+  preferred_vendor_uuid   String?  @db.NVarChar(36)
+  item_division_uuid      String?  @db.NVarChar(36)
+  location_uuid           String?  @db.NVarChar(36)
+  category                String?  @db.NVarChar(100)
+  name                    String   @db.NVarChar(500)
+  description             String?  @db.NVarChar(Max)
+  model_number            String?  @db.NVarChar(200)
+  unit_price              Decimal  @default(0) @db.Decimal(18, 2)
+  quantity                Decimal  @default(0) @db.Decimal(18, 4)
+  uom_uuid                String?  @db.NVarChar(100)
+  total_amount            Decimal  @default(0) @db.Decimal(18, 2)
+  sequence                Int      @default(1)
+  metadata                String?  @db.NVarChar(Max)
+  is_active               Boolean  @default(true)
+  created_at              DateTime @default(now()) @db.DateTime2
+  updated_at              DateTime @updatedAt @db.DateTime2
+
+  lineItem EstimateLineItem @relation(fields: [estimate_line_item_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([estimate_uuid])
+  @@index([estimate_line_item_uuid])
+  @@index([corporation_uuid])
+  @@index([is_active])
+  @@map("estimate_material_items")
+}
+
+/// Per-location labor breakdown for location-wise labor estimation.
+model EstimateLocationWiseLabor {
+  id                      BigInt   @id @default(autoincrement())
+  uuid                    String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid        String   @db.NVarChar(36)
+  project_uuid            String   @db.NVarChar(36)
+  estimate_uuid           String   @db.NVarChar(36)
+  cost_code_uuid          String   @db.NVarChar(36)
+  estimate_line_item_uuid String   @db.NVarChar(36)
+  location_uuid           String   @db.NVarChar(36)
+  area_sq_ft              Decimal  @default(0) @db.Decimal(18, 2)
+  no_of_rooms             Decimal  @default(0) @db.Decimal(18, 2)
+  num_hours               Decimal  @default(0) @db.Decimal(18, 2)
+  amount_per_sqft         Decimal  @default(0) @db.Decimal(18, 2)
+  amount_per_room         Decimal  @default(0) @db.Decimal(18, 2)
+  hourly_wage             Decimal  @default(0) @db.Decimal(18, 2)
+  amount                  Decimal  @default(0) @db.Decimal(18, 2)
+  sequence                Int      @default(1)
+  created_at              DateTime @default(now()) @db.DateTime2
+  updated_at              DateTime @updatedAt @db.DateTime2
+
+  lineItem EstimateLineItem @relation(fields: [estimate_line_item_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([estimate_uuid])
+  @@index([estimate_line_item_uuid])
+  @@map("estimate_location_wise_labor")
+}
+
+/// Per-location material amount breakdown inside an estimate line item.
+model EstimateLocationWiseMaterial {
+  id                      BigInt   @id @default(autoincrement())
+  uuid                    String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid        String   @db.NVarChar(36)
+  project_uuid            String   @db.NVarChar(36)
+  estimate_uuid           String   @db.NVarChar(36)
+  cost_code_uuid          String   @db.NVarChar(36)
+  estimate_line_item_uuid String   @db.NVarChar(36)
+  location_uuid           String   @db.NVarChar(36)
+  amount                  Decimal  @default(0) @db.Decimal(18, 2)
+  sequence                Int      @default(1)
+  created_at              DateTime @default(now()) @db.DateTime2
+  updated_at              DateTime @updatedAt @db.DateTime2
+
+  lineItem EstimateLineItem @relation(fields: [estimate_line_item_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([estimate_uuid])
+  @@index([estimate_line_item_uuid])
+  @@map("estimate_location_wise_material")
+}
+
 /// Global terms and conditions templates.
 model TermsAndCondition {
   id         BigInt   @id @default(autoincrement())

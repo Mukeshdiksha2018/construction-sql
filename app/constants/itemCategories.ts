@@ -1,11 +1,11 @@
-export const ITEM_CATEGORIES = [
-  { label: 'Material', value: 'MATERIAL' },
-  { label: 'Labor', value: 'LABOR' },
-  { label: 'Equipment', value: 'EQUIPMENT' },
-  { label: 'Subcontract', value: 'SUBCONTRACT' },
-  { label: 'Other', value: 'OTHER' },
+export const CATEGORY_OPTIONS = [
+  { value: 'procurement', label: 'Procurement' },
+  { value: 'construction', label: 'Construction' },
 ] as const
 
-export const CATEGORY_OPTIONS = ITEM_CATEGORIES.map(c => ({ ...c }))
+export type ItemCategory = (typeof CATEGORY_OPTIONS)[number]['value']
 
-export type ItemCategory = (typeof ITEM_CATEGORIES)[number]['value']
+export function getCategoryLabel(value: string): string {
+  const found = CATEGORY_OPTIONS.find(c => c.value === value)
+  return found ? found.label : value
+}

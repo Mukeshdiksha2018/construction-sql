@@ -9,8 +9,8 @@
       :searchable-placeholder="searchablePlaceholder"
       :size="size"
       :class="className"
-      :disabled="disabled || loading || !corporationUuid"
-      :loading="loading"
+      :disabled="disabled || vendorStore.loading || !corporationUuid"
+      :loading="vendorStore.loading"
       :ui="menuUi"
       value-key="value"
       label-key="label"
@@ -76,7 +76,6 @@ const emit = defineEmits<{
 const vendorStore = useVendorStore()
 const selectedVendor = ref<string | undefined>(props.modelValue)
 const selectedVendorObject = ref<any>(undefined)
-const loading = ref(false)
 
 const menuUi = {
   content: 'max-h-60 min-w-full w-max',
@@ -84,8 +83,9 @@ const menuUi = {
 }
 
 const vendors = computed(() => {
-  const source = props.localVendors || vendorStore.vendors
-  return source.filter((v: any) => !props.corporationUuid || v.corporation_uuid === props.corporationUuid || !v.corporation_uuid)
+  if (Array.isArray(props.localVendors)) return props.localVendors
+  if (props.corporationUuid) return vendorStore.getVendorsForCorporation(props.corporationUuid)
+  return vendorStore.vendors
 })
 
 const vendorOptions = computed(() => {
@@ -143,12 +143,9 @@ watch(() => props.modelValue, v => { selectedVendor.value = v; updateSelectedObj
 watch(vendorOptions, () => updateSelectedObject(), { immediate: true })
 watch(selectedVendor, () => updateSelectedObject())
 
-watch(() => props.corporationUuid, async v => {
+watch(() => props.corporationUuid, (v) => {
   if (v) {
-    loading.value = true
-    try { await vendorStore.fetchVendors(v) } finally { loading.value = false }
-  } else {
-    vendorStore.clear()
+    vendorStore.fetchVendors(v).catch(() => {})
   }
 }, { immediate: true })
 </script>
