@@ -28,40 +28,51 @@ export const useCostCodeConfigurationsStore = defineStore('costCodeConfiguration
   const hasDataForCorporation = ref<Set<string>>(new Set())
 
   const getConfigurationsByCorporation = computed(() => {
-    return (corporationUuid: string) =>
-      configurations.value.filter(c => c.corporation_uuid === corporationUuid)
+    return (corporationUuid: string) => {
+      const id = corporationUuid?.toLowerCase()
+      return configurations.value.filter(c => c.corporation_uuid?.toLowerCase() === id)
+    }
   })
 
   const getActiveConfigurations = computed(() => {
-    return (corporationUuid: string) =>
-      configurations.value.filter(c => c.corporation_uuid === corporationUuid && c.is_active)
+    return (corporationUuid?: string) => {
+      if (!corporationUuid) return []
+      const id = corporationUuid.toLowerCase()
+      return configurations.value.filter(c => c.corporation_uuid?.toLowerCase() === id && c.is_active)
+    }
   })
 
   const getConfigurationById = computed(() => {
-    return (uuid: string) => configurations.value.find(c => c.uuid === uuid)
+    return (uuid: string) => configurations.value.find(c => c.uuid?.toLowerCase() === uuid?.toLowerCase())
   })
 
   const getConfigurationCountByCorporation = computed(() => {
-    return (corporationUuid: string) =>
-      configurations.value.filter(c => c.corporation_uuid === corporationUuid).length
+    return (corporationUuid: string) => {
+      const id = corporationUuid?.toLowerCase()
+      return configurations.value.filter(c => c.corporation_uuid?.toLowerCase() === id).length
+    }
   })
 
   const getActiveConfigurationCountByCorporation = computed(() => {
-    return (corporationUuid: string) =>
-      configurations.value.filter(c => c.corporation_uuid === corporationUuid && c.is_active).length
+    return (corporationUuid: string) => {
+      const id = corporationUuid?.toLowerCase()
+      return configurations.value.filter(c => c.corporation_uuid?.toLowerCase() === id && c.is_active).length
+    }
   })
 
   const configurationExists = computed(() => {
-    return (uuid: string) => configurations.value.some(c => c.uuid === uuid)
+    return (uuid: string) => configurations.value.some(c => c.uuid?.toLowerCase() === uuid?.toLowerCase())
   })
 
   const shouldFetchData = (corporationUuid: string) => {
-    if (lastFetchedCorporation.value !== corporationUuid) return true
-    return !hasDataForCorporation.value.has(corporationUuid)
+    const id = corporationUuid.toLowerCase()
+    if (lastFetchedCorporation.value !== id) return true
+    return !hasDataForCorporation.value.has(id)
   }
 
   const fetchConfigurations = async (corporationUuid: string, forceRefresh = false) => {
-    if (!forceRefresh && !shouldFetchData(corporationUuid)) return
+    const id = corporationUuid.toLowerCase()
+    if (!forceRefresh && !shouldFetchData(id)) return
     if (process.server) return
 
     loading.value = true
@@ -69,16 +80,16 @@ export const useCostCodeConfigurationsStore = defineStore('costCodeConfiguration
 
     try {
       const { data } = await $fetch<{ data: CostCodeConfiguration[] }>('/api/cost-code-configurations', {
-        query: { corporation_uuid: corporationUuid },
+        query: { corporation_uuid: id },
       })
       configurations.value = data || []
-      lastFetchedCorporation.value = corporationUuid
-      hasDataForCorporation.value.add(corporationUuid)
+      lastFetchedCorporation.value = id
+      hasDataForCorporation.value.add(id)
     }
     catch (err: any) {
       error.value = err.message || 'Failed to fetch cost code configurations'
       configurations.value = []
-      hasDataForCorporation.value.delete(corporationUuid)
+      hasDataForCorporation.value.delete(id)
     }
     finally {
       loading.value = false
@@ -163,16 +174,17 @@ export const useCostCodeConfigurationsStore = defineStore('costCodeConfiguration
   }
 
   const deleteAllConfigurations = async (corporationUuid: string) => {
+    const id = corporationUuid.toLowerCase()
     loading.value = true
     error.value = null
 
     try {
       await $fetch('/api/cost-code-configurations/delete-all', {
         method: 'DELETE',
-        query: { corporation_uuid: corporationUuid },
+        query: { corporation_uuid: id },
       })
-      configurations.value = configurations.value.filter(c => c.corporation_uuid !== corporationUuid)
-      hasDataForCorporation.value.delete(corporationUuid)
+      configurations.value = configurations.value.filter(c => c.corporation_uuid?.toLowerCase() !== id)
+      hasDataForCorporation.value.delete(id)
     }
     catch (err: any) {
       error.value = err.message || 'Failed to delete all cost code configurations'

@@ -16,7 +16,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useCostCodeConfigurationsStore } from '~/stores/costCodeConfigurations'
 
 interface Props {
@@ -49,7 +49,9 @@ const selectedOption = ref<any>(undefined)
 const options = computed(() => {
   const active = store.getActiveConfigurations(props.corporationUuid)
   return active.map((c: any) => ({
-    label: c.name || c.cost_code,
+    label: c.cost_code_name
+      ? `${c.cost_code_number} – ${c.cost_code_name}`
+      : c.cost_code_number,
     value: c.uuid,
     costCode: c,
   }))
@@ -76,7 +78,14 @@ const handleSelection = (val: any) => {
 
 watch(() => props.modelValue, v => { selectedValue.value = v; updateSelected() })
 watch(options, () => updateSelected(), { immediate: true })
+// Fetch on mount in case the prop is already set when this component first renders
+// (e.g. when editing an existing item with corporation pre-selected).
+onMounted(() => {
+  if (props.corporationUuid) store.fetchConfigurations(props.corporationUuid).catch(() => {})
+})
+
+// Re-fetch whenever the corporation changes
 watch(() => props.corporationUuid, v => {
   if (v) store.fetchConfigurations(v).catch(() => {})
-}, { immediate: true })
+})
 </script>

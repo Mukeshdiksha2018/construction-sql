@@ -66,36 +66,37 @@ export const useItemTypesStore = defineStore(
     }
 
     const shouldFetchData = (corporationUUID?: string): boolean => {
-      const cacheKey = corporationUUID || '__global__'
+      const cacheKey = corporationUUID ? corporationUUID.toLowerCase() : '__global__'
       if (lastFetchedCorporation.value !== cacheKey) return true
       return !hasDataForCorporation.value.has(cacheKey)
     }
 
     const fetchItemTypes = async (corporationUUID?: string, forceRefresh = false): Promise<void> => {
-      const cacheKey = corporationUUID || '__global__'
-      if (!forceRefresh && !shouldFetchData(corporationUUID)) return
+      const id = corporationUUID ? corporationUUID.toLowerCase() : undefined
+      const cacheKey = id || '__global__'
+      if (!forceRefresh && !shouldFetchData(id)) return
       if (import.meta.server) return
 
       loading.value = true
       error.value = null
       try {
-        const url = corporationUUID
-          ? `/api/item-types?corporation_uuid=${corporationUUID}`
+        const url = id
+          ? `/api/item-types?corporation_uuid=${id}`
           : '/api/item-types'
         const response = await $fetch<ItemTypesResponse>(url)
         if (response?.error) throw new Error(response.error)
 
         const newItemTypes = response?.data || []
 
-        if (corporationUUID && lastFetchedCorporation.value && lastFetchedCorporation.value !== cacheKey) {
+        if (id && lastFetchedCorporation.value && lastFetchedCorporation.value !== cacheKey) {
           itemTypes.value = itemTypes.value.filter(
-            it => !it.corporation_uuid || it.corporation_uuid !== lastFetchedCorporation.value,
+            it => !it.corporation_uuid || it.corporation_uuid.toLowerCase() !== lastFetchedCorporation.value,
           )
         }
 
-        if (corporationUUID) {
+        if (id) {
           itemTypes.value = [
-            ...itemTypes.value.filter(it => !it.corporation_uuid || it.corporation_uuid !== corporationUUID),
+            ...itemTypes.value.filter(it => !it.corporation_uuid || it.corporation_uuid.toLowerCase() !== id),
             ...newItemTypes,
           ]
         }
@@ -109,9 +110,9 @@ export const useItemTypesStore = defineStore(
       catch (err: unknown) {
         const e = err as Error
         error.value = e.message || 'Failed to fetch item types'
-        if (corporationUUID && lastFetchedCorporation.value === cacheKey) {
+        if (id && lastFetchedCorporation.value === cacheKey) {
           itemTypes.value = itemTypes.value.filter(
-            it => !it.corporation_uuid || it.corporation_uuid !== corporationUUID,
+            it => !it.corporation_uuid || it.corporation_uuid.toLowerCase() !== id,
           )
         }
         hasDataForCorporation.value.delete(cacheKey)
@@ -230,7 +231,8 @@ export const useItemTypesStore = defineStore(
     }
 
     const getItemTypeById = (uuid: string): ItemType | undefined => {
-      return itemTypes.value.find(it => it.uuid === uuid)
+      const id = uuid?.toLowerCase()
+      return itemTypes.value.find(it => it.uuid?.toLowerCase() === id)
     }
 
     const clearData = () => {

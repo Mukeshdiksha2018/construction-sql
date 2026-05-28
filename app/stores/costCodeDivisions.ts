@@ -24,40 +24,51 @@ export const useCostCodeDivisionsStore = defineStore('costCodeDivisions', () => 
   const hasDataForCorporation = ref<Set<string>>(new Set())
 
   const getDivisionsByCorporation = computed(() => {
-    return (corporationUuid: string) =>
-      divisions.value.filter(d => d.corporation_uuid === corporationUuid)
+    return (corporationUuid: string) => {
+      const id = corporationUuid?.toLowerCase()
+      return divisions.value.filter(d => d.corporation_uuid?.toLowerCase() === id)
+    }
   })
 
   const getActiveDivisions = computed(() => {
-    return (corporationUuid: string) =>
-      divisions.value.filter(d => d.corporation_uuid === corporationUuid && d.is_active)
+    return (corporationUuid?: string) => {
+      if (!corporationUuid) return []
+      const id = corporationUuid.toLowerCase()
+      return divisions.value.filter(d => d.corporation_uuid?.toLowerCase() === id && d.is_active)
+    }
   })
 
   const getDivisionById = computed(() => {
-    return (uuid: string) => divisions.value.find(d => d.uuid === uuid)
+    return (uuid: string) => divisions.value.find(d => d.uuid?.toLowerCase() === uuid?.toLowerCase())
   })
 
   const getDivisionCountByCorporation = computed(() => {
-    return (corporationUuid: string) =>
-      divisions.value.filter(d => d.corporation_uuid === corporationUuid).length
+    return (corporationUuid: string) => {
+      const id = corporationUuid?.toLowerCase()
+      return divisions.value.filter(d => d.corporation_uuid?.toLowerCase() === id).length
+    }
   })
 
   const getActiveDivisionCountByCorporation = computed(() => {
-    return (corporationUuid: string) =>
-      divisions.value.filter(d => d.corporation_uuid === corporationUuid && d.is_active).length
+    return (corporationUuid: string) => {
+      const id = corporationUuid?.toLowerCase()
+      return divisions.value.filter(d => d.corporation_uuid?.toLowerCase() === id && d.is_active).length
+    }
   })
 
   const divisionExists = computed(() => {
-    return (uuid: string) => divisions.value.some(d => d.uuid === uuid)
+    return (uuid: string) => divisions.value.some(d => d.uuid?.toLowerCase() === uuid?.toLowerCase())
   })
 
   const shouldFetchData = (corporationUuid: string) => {
-    if (lastFetchedCorporation.value !== corporationUuid) return true
-    return !hasDataForCorporation.value.has(corporationUuid)
+    const id = corporationUuid.toLowerCase()
+    if (lastFetchedCorporation.value !== id) return true
+    return !hasDataForCorporation.value.has(id)
   }
 
   const fetchDivisions = async (corporationUuid: string, forceRefresh = false) => {
-    if (!forceRefresh && !shouldFetchData(corporationUuid)) return
+    const id = corporationUuid.toLowerCase()
+    if (!forceRefresh && !shouldFetchData(id)) return
     if (process.server) return
 
     loading.value = true
@@ -65,16 +76,16 @@ export const useCostCodeDivisionsStore = defineStore('costCodeDivisions', () => 
 
     try {
       const { data } = await $fetch<{ data: CostCodeDivision[] }>('/api/cost-code-divisions', {
-        query: { corporation_uuid: corporationUuid },
+        query: { corporation_uuid: id },
       })
       divisions.value = data || []
-      lastFetchedCorporation.value = corporationUuid
-      hasDataForCorporation.value.add(corporationUuid)
+      lastFetchedCorporation.value = id
+      hasDataForCorporation.value.add(id)
     }
     catch (err: any) {
       error.value = err.message || 'Failed to fetch cost code divisions'
       divisions.value = []
-      hasDataForCorporation.value.delete(corporationUuid)
+      hasDataForCorporation.value.delete(id)
     }
     finally {
       loading.value = false
@@ -184,16 +195,17 @@ export const useCostCodeDivisionsStore = defineStore('costCodeDivisions', () => 
   }
 
   const deleteAllDivisions = async (corporationUuid: string) => {
+    const id = corporationUuid.toLowerCase()
     loading.value = true
     error.value = null
 
     try {
       await $fetch('/api/cost-code-divisions/delete-all', {
         method: 'DELETE',
-        query: { corporation_uuid: corporationUuid },
+        query: { corporation_uuid: id },
       })
-      divisions.value = divisions.value.filter(d => d.corporation_uuid !== corporationUuid)
-      hasDataForCorporation.value.delete(corporationUuid)
+      divisions.value = divisions.value.filter(d => d.corporation_uuid?.toLowerCase() !== id)
+      hasDataForCorporation.value.delete(id)
     }
     catch (err: any) {
       error.value = err.message || 'Failed to delete all cost code divisions'
