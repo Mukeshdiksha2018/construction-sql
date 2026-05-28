@@ -8,26 +8,26 @@ import { useAuthStore } from '~/stores/auth'
  */
 export const APPROVAL_TYPE_ENTRY = 1   // Can save drafts
 export const APPROVAL_TYPE_VERIFY = 2  // Can verify (Draft → Ready)
-export const APPROVAL_TYPE_APPROVE = 3 // Can approve (Ready → Approved)
+export const APPROVAL_TYPE_APPROVE = 3 // Can approve (Draft/Ready → Approved)
 
 /**
  * Estimate approval workflow composable.
  *
- * Rules:
- *  - Entry  (type 1): "Save & New" / "Save & Close"    — available on Draft estimates
- *  - Verify (type 2): "Verify & New" / "Verify & Close" — available on Draft estimates only
- *  - Approve (type 3): "Approve & New" / "Approve & Close" — available on Ready estimates only
+ * Button visibility by approvalType:
+ *  - Entry  (1): "Save & New" / "Save & Close"     — Draft estimates only
+ *  - Verify (2): "Verify & New" / "Verify & Close"  — Draft or Ready estimates
+ *  - Approve (3): "Approve & New" / "Approve & Close" — Draft or Ready estimates
+ *                  (highest authority, can skip the verify step)
  *
- * Edit-lock rules (hierarchy: entry < verify < approve):
- *  - Once Approved  → nobody can edit (fully locked)
- *  - Once Ready     → entry-level users are locked out; verify/approve can still edit
- *  - Draft          → all levels can edit
+ * Edit-lock hierarchy:
+ *  - Approved → locked for everyone
+ *  - Ready    → entry (1) is locked; verify (2) and approve (3) can still edit
+ *  - Draft    → all levels can edit
  *
- * Fail-open defaults: when approval data is not yet loaded, or the corporation
- * has no approval workflow configured, the user is treated as entry level so
- * they always see Save buttons and can always edit Draft estimates.
+ * Fail-open: when approval data is not yet loaded the user always sees Save
+ * buttons and can always edit, so nobody is accidentally locked out.
  *
- * @param estimateStatus - reactive ref/computed with the estimate's current status string
+ * @param estimateStatus - reactive ref/computed with the estimate's current status
  * @param isNewEstimate  - reactive ref/computed, true when creating (not editing)
  */
 export function useEstimateApproval(
@@ -45,31 +45,17 @@ export function useEstimateApproval(
    * Matching strategy (in priority order):
    *  1. `isCurrentUser === true` in the Nimble response (when the API sets it)
    *  2. `userId` matches the logged-in user's `userID` from the auth session
-   *     (needed because Nimble may return `isCurrentUser: false` for all entries)
+   *     (fallback — Nimble may return `isCurrentUser: false` for all entries)
    *
    * Falls back to ENTRY (1) when the user is not found in the approval chain,
    * no workflow is configured, or the corporation is unknown.
    */
   const currentUserApprovalType = computed((): number => {
     const corpId = String(corporationStore.selectedCorporationId || '').toLowerCase()
-    const loaded = privilegesStore.loaded
-
-    console.log('[EstimateApproval] corpId:', corpId, '| loaded:', loaded)
-    console.log('[EstimateApproval] session.userID:', authStore.session?.userID)
-    console.log('[EstimateApproval] all approvals:', JSON.stringify(privilegesStore.approvals))
-
-    if (!corpId) {
-      console.log('[EstimateApproval] No corpId → ENTRY (1)')
-      return APPROVAL_TYPE_ENTRY
-    }
+    if (!corpId) return APPROVAL_TYPE_ENTRY
 
     const approvals = privilegesStore.getApprovalsForCorporation(corpId)
-    console.log('[EstimateApproval] approvals for corp:', JSON.stringify(approvals))
-
-    if (!approvals.length) {
-      console.log('[EstimateApproval] No approvals for corp → ENTRY (1)')
-      return APPROVAL_TYPE_ENTRY
-    }
+    if (!approvals.length) return APPROVAL_TYPE_ENTRY
 
     const sessionUserId = String(authStore.session?.userID || '').toLowerCase()
     const me = approvals.find(a =>
@@ -77,20 +63,16 @@ export function useEstimateApproval(
       || (sessionUserId && a.userId === sessionUserId),
     )
 
-    const result = me?.approvalType ?? APPROVAL_TYPE_ENTRY
-    console.log('[EstimateApproval] matched:', me ? JSON.stringify(me) : 'none', '→ approvalType:', result)
-    return result
+    return me?.approvalType ?? APPROVAL_TYPE_ENTRY
   })
 
   const status = computed(() => estimateStatus.value || 'Draft')
 
   /**
    * The label for the primary action ("Save", "Verify", or "Approve").
-   * For new estimates the user is always in "Save" mode regardless of type,
-   * since there is nothing to verify/approve yet.
+   * New estimates always use "Save" regardless of approval type.
    */
   const actionLabel = computed((): 'Save' | 'Verify' | 'Approve' => {
-    // New estimates always start with Save regardless of approvalType
     if (isNewEstimate.value) return 'Save'
 
     switch (currentUserApprovalType.value) {
@@ -101,8 +83,8 @@ export function useEstimateApproval(
   })
 
   /**
-   * The status that will be written to the estimate when the user submits.
-   * Approve-level users always write 'Approved' (they can skip the Verify step).
+   * The status that will be written when the user submits.
+   * Approve-level users always write 'Approved' (can skip the Verify step).
    */
   const targetStatus = computed((): 'Draft' | 'Ready' | 'Approved' => {
     switch (actionLabel.value) {
@@ -115,63 +97,35 @@ export function useEstimateApproval(
   /**
    * Whether the action buttons should be shown at all.
    *
-   * - New estimate: always show (everyone can create drafts)
-   * - Entry  (type 1): show when status is Draft
-   * - Verify (type 2): show when status is Draft (not yet verified)
-   * - Approve (type 3): show when status is Ready (verified, awaiting approval)
+   * Fail-open: if approvals haven't loaded yet, always show buttons so the
+   * user is never accidentally locked out while data is still in-flight.
    */
   const showActionButtons = computed((): boolean => {
-    const isNew = isNewEstimate.value
+    if (!privilegesStore.loaded) return true
+    if (isNewEstimate.value) return true
+
     const type = currentUserApprovalType.value
     const s = status.value
-    const loaded = privilegesStore.loaded
 
-    console.log('[EstimateApproval] showActionButtons → isNew:', isNew, '| type:', type, '| status:', s, '| loaded:', loaded)
-
-    // Fail-open: if approvals haven't loaded yet, always show Save buttons so
-    // the user is never accidentally locked out while data is in-flight.
-    if (!loaded) {
-      console.log('[EstimateApproval] approvals not loaded yet → showing Save buttons (fail-open)')
-      return true
-    }
-
-    if (isNew) return true
-
-    let result = false
     switch (type) {
       case APPROVAL_TYPE_ENTRY:
-        // Entry users can only save/act on Draft estimates
-        result = s === 'Draft'
-        break
+        return s === 'Draft'
       case APPROVAL_TYPE_VERIFY:
-        // Verify users can act on Draft (to verify) or re-save Ready estimates
-        result = s === 'Draft' || s === 'Ready'
-        break
+        return s === 'Draft' || s === 'Ready'
       case APPROVAL_TYPE_APPROVE:
-        // Approve users are the highest authority — they can approve at any stage
-        // (Draft or Ready). They cannot re-approve an already-Approved estimate.
-        result = s === 'Draft' || s === 'Ready'
-        break
+        // Highest authority — can approve at any stage except already-Approved
+        return s === 'Draft' || s === 'Ready'
       default:
-        result = s === 'Draft'
+        return s === 'Draft'
     }
-
-    console.log('[EstimateApproval] showActionButtons →', result)
-    return result
   })
 
   /**
    * Whether the current user can make edits to this estimate.
    *
-   * Fail-open: if approvals haven't loaded yet, always allow editing so the
-   * user is never locked out while data is in-flight.
-   *
-   * - Approved  → locked for everyone
-   * - Ready     → entry level (type 1) is locked; verify (2) and approve (3) can edit
-   * - Draft     → anyone can edit
+   * Fail-open: always allow editing while approval data is still loading.
    */
   const canEdit = computed((): boolean => {
-    // Fail-open while approval data is still loading
     if (!privilegesStore.loaded) return true
 
     const s = status.value
@@ -182,10 +136,7 @@ export function useEstimateApproval(
     return true
   })
 
-  /**
-   * A human-readable explanation of why the estimate is locked (if it is).
-   * Used for tooltips / warnings in the UI.
-   */
+  /** Human-readable explanation when the estimate is locked. */
   const lockReason = computed((): string | null => {
     if (!canEdit.value) {
       if (status.value === 'Approved') return 'This estimate has been approved and cannot be modified.'
