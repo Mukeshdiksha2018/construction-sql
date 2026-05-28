@@ -51,7 +51,7 @@ export default defineEventHandler(async (event) => {
     const data = configs.map((config: any) => {
       const configItems = itemsByConfig.get(config.uuid) || []
       return {
-        id: config.id,
+        id: Number(config.id),
         uuid: config.uuid,
         corporation_uuid: config.corporation_uuid,
         division_uuid: config.division_uuid,
@@ -67,7 +67,7 @@ export default defineEventHandler(async (event) => {
         created_at: config.created_at,
         updated_at: config.updated_at,
         preferred_items: configItems.map((item: any) => ({
-          id: item.id,
+          id: Number(item.id),
           uuid: item.uuid,
           corporation_uuid: item.corporation_uuid,
           item_type_uuid: item.item_type_uuid,
@@ -76,7 +76,7 @@ export default defineEventHandler(async (event) => {
           item_sequence: item.item_sequence,
           item_uuid: item.uuid,
           model_number: item.model_number,
-          unit_price: item.unit_price,
+          unit_price: item.unit_price ? Number(item.unit_price) : null,
           unit: item.uom_uuid,
           unit_uuid: item.uom_uuid,
           description: item.description,
