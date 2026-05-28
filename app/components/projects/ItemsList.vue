@@ -78,7 +78,7 @@
                 <span class="text-xs text-gray-600 dark:text-gray-400">{{ formatCurrency(item.unit_price) }}</span>
               </td>
               <td class="px-4 py-2">
-                <span class="text-xs text-gray-600 dark:text-gray-400">{{ item.unit || '—' }}</span>
+                <span class="text-xs text-gray-600 dark:text-gray-400">{{ getUOMName(item.unit) }}</span>
               </td>
               <td class="px-4 py-2">
                 <UBadge
@@ -179,11 +179,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useCorporationStore } from '~/stores/corporations'
 import { useProjectsStore } from '~/stores/projects'
 import { usePreferredItemsStore, type PreferredItem } from '~/stores/preferredItems'
 import { useItemTypesStore } from '~/stores/itemTypes'
+import { useUOMStore } from '~/stores/uom'
 import { getCategoryLabel } from '~/constants/itemCategories'
 
 interface Props {
@@ -200,7 +201,11 @@ const corpStore = useCorporationStore()
 const projectsStore = useProjectsStore()
 const itemsStore = usePreferredItemsStore()
 const itemTypesStore = useItemTypesStore()
+const uomStore = useUOMStore()
 const toast = useToast()
+
+// Ensure UOM list is loaded for name resolution
+onMounted(() => { uomStore.fetchUOM() })
 
 const currentPage = ref(1)
 const pageSize = 20
@@ -216,7 +221,7 @@ const filteredItems = computed(() => {
     list = list.filter(
       i => i.item_name.toLowerCase().includes(q)
         || (i.item_sequence || '').toLowerCase().includes(q)
-        || (i.unit || '').toLowerCase().includes(q)
+        || getUOMName(i.unit).toLowerCase().includes(q)
         || getItemTypeName(i.item_type_uuid).toLowerCase().includes(q)
         || getCategoryLabel(i.category ?? '').toLowerCase().includes(q),
     )
@@ -242,6 +247,17 @@ function getItemTypeName(uuid: string | null | undefined): string {
 function formatCurrency(val: number | null | undefined): string {
   if (val == null) return '—'
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val)
+}
+
+/**
+ * Resolve a UOM UUID to its short name (e.g. "KG", "C").
+ * Falls back to the raw value if the UOM list hasn't loaded yet, or '—' if empty.
+ */
+function getUOMName(unit: string | null | undefined): string {
+  if (!unit) return '—'
+  // If UOMs are loaded, resolve UUID → name; otherwise show the raw value
+  if (uomStore.loaded) return uomStore.getShortName(unit) || unit
+  return unit
 }
 
 // Form / modal state
