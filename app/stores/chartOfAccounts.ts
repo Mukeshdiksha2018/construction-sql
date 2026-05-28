@@ -143,9 +143,11 @@ export const useChartOfAccountsStore = defineStore('chartOfAccounts', () => {
         },
       )
 
+      // The Core API filters by CorpID but does NOT echo CorporationID back on each
+      // account item. Inject it so the per-corporation filter in the component works.
       accounts.value = [
         ...accounts.value.filter(a => a.corporation_id.toLowerCase() !== corp),
-        ...(data.accounts ?? []).map(normalise),
+        ...(data.accounts ?? []).map(dto => normalise({ ...dto, CorporationID: corporationUuid })),
       ]
       fetchedCorps.value.add(corp)
     }
