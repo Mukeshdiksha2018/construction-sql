@@ -31,11 +31,12 @@ export interface Vendor {
 
 function normalise(dto: NimbleVendorDTO, corporationUuid: string): Vendor {
   return {
-    uuid: dto.vendorID ?? '',
+    // Lowercase UUIDs to match the DB convention (mapRow in preferredItems.ts
+    // calls .toLowerCase() on every UUID it stores, so the stored value will
+    // be lowercase and the lookup must use the same casing to match).
+    uuid: (dto.vendorID ?? '').toLowerCase(),
     vendor_name: dto.vendorName ?? '',
-    // The API echoes corporationID on each item; fall back to the queried UUID
-    // in case the field is missing (same pattern as chart-of-accounts).
-    corporation_uuid: dto.corporationID ?? corporationUuid,
+    corporation_uuid: (dto.corporationID ?? corporationUuid).toLowerCase(),
     federal_id: dto.federalID ?? null,
     payment_method: dto.paymentMethodName ?? null,
     is_active: dto.status === 1,

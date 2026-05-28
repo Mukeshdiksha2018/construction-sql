@@ -71,11 +71,11 @@ describe('useVendorStore', () => {
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
-    it('normalises the DTO: vendorID → uuid', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'v-abc' })]))
+    it('normalises the DTO: vendorID → uuid (lowercased)', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'V-ABC-UPPER' })]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
-      expect(store.vendors[0]?.uuid).toBe('v-abc')
+      expect(store.vendors[0]?.uuid).toBe('v-abc-upper')
     })
 
     it('normalises vendorName → vendor_name', async () => {
@@ -85,18 +85,18 @@ describe('useVendorStore', () => {
       expect(store.vendors[0]?.vendor_name).toBe('Northern Build Supply')
     })
 
-    it('normalises corporationID → corporation_uuid', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ corporationID: 'corp-xyz' })]))
+    it('normalises corporationID → corporation_uuid (lowercased)', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ corporationID: 'CORP-XYZ-UPPER' })]))
       const store = useVendorStore()
-      await store.fetchVendors('corp-xyz')
-      expect(store.vendors[0]?.corporation_uuid).toBe('corp-xyz')
+      await store.fetchVendors('corp-xyz-upper')
+      expect(store.vendors[0]?.corporation_uuid).toBe('corp-xyz-upper')
     })
 
-    it('falls back to the queried corporationUuid when corporationID is missing from DTO', async () => {
+    it('falls back to the queried corporationUuid when corporationID is missing, lowercased', async () => {
       mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ corporationID: undefined })]))
       const store = useVendorStore()
       await store.fetchVendors('INJECTED-CORP')
-      expect(store.vendors[0]?.corporation_uuid).toBe('INJECTED-CORP')
+      expect(store.vendors[0]?.corporation_uuid).toBe('injected-corp')
     })
 
     it('normalises federalID → federal_id', async () => {
