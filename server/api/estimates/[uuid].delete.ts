@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client'
-import { deleteEstimate } from '~/server/utils/estimates'
+import { deleteEstimate } from '../../utils/estimates'
 
 const prisma = new PrismaClient()
 

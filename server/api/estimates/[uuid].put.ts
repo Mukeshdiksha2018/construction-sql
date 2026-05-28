@@ -1,4 +1,4 @@
-import { updateEstimate } from '~/server/utils/estimates'
+import { updateEstimate } from '../../utils/estimates'
 
 export default defineEventHandler(async (event) => {
   const uuid = getRouterParam(event, 'uuid')
