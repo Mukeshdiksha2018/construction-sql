@@ -107,198 +107,19 @@
             </UButton>
           </div>
 
-          <!-- Scrollable table wrapper -->
-          <div class="overflow-auto border border-gray-200 dark:border-gray-700 rounded-lg">
-            <table class="min-w-[1800px] w-full text-xs table-fixed">
-              <thead class="bg-gray-50 dark:bg-gray-800 text-[11px] font-semibold uppercase tracking-wide text-gray-500 sticky top-0 z-10">
-                <tr>
-                  <th class="px-3 py-2 text-left w-[7%]">Spec *</th>
-                  <th class="px-3 py-2 text-left w-[12%]">Item Name *</th>
-                  <th class="px-3 py-2 text-left w-[12%]">Description</th>
-                  <th class="px-3 py-2 text-left w-[7%]">Model #</th>
-                  <th class="px-3 py-2 text-left w-[7%]">Unit Cost *</th>
-                  <th class="px-3 py-2 text-left w-[7%]">UOM</th>
-                  <th class="px-3 py-2 text-left w-[10%]">Location</th>
-                  <th class="px-3 py-2 text-left w-[10%]">Preferred Vendor</th>
-                  <th class="px-3 py-2 text-left w-[10%]">Cost Code</th>
-                  <th class="px-3 py-2 text-left w-[6%]">Initial QTY</th>
-                  <th class="px-3 py-2 text-left w-[7%]">As of Date</th>
-                  <th class="px-3 py-2 text-left w-[6%]">Reorder Pt</th>
-                  <th class="px-3 py-2 text-left w-[6%]">Max Limit</th>
-                  <th class="px-3 py-2 text-left w-[7%]">Status</th>
-                  <th class="px-1 py-2 text-right w-[3%] sticky right-0 bg-gray-50 dark:bg-gray-800 z-20"></th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
-                <tr v-for="(row, idx) in itemRows" :key="idx" class="align-middle">
-                  <!-- Spec -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <UInput v-model="row.item_sequence" size="xs" placeholder="Spec" class="w-full" />
-                  </td>
-                  <!-- Item Name -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <UTextarea
-                      v-model="row.item_name"
-                      size="xs"
-                      placeholder="Enter item name"
-                      :rows="2"
-                      class="w-full text-xs min-h-[56px] max-h-24 h-14 resize-none overflow-y-auto"
-                    />
-                  </td>
-                  <!-- Description (TipTap popover) -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <UPopover
-                      :open="activeDescriptionRow === idx"
-                      :content="{ side: 'top', align: 'start' }"
-                      :ui="{ content: 'w-[600px] p-3' }"
-                      @update:open="(v) => { if (!v && activeDescriptionRow === idx) closeDescriptionEditor() }"
-                    >
-                      <UTextarea
-                        :model-value="plainText(row.description)"
-                        size="xs"
-                        placeholder="Click to edit description"
-                        :rows="2"
-                        class="w-full text-xs min-h-[56px] max-h-24 h-14 resize-none overflow-y-auto cursor-text"
-                        readonly
-                        @click="openDescriptionEditor(idx)"
-                      />
-                      <template #content>
-                        <div class="space-y-2">
-                          <div class="text-xs font-medium text-gray-500">Rich Text Description</div>
-                          <div class="border border-gray-200 dark:border-gray-700 rounded-md">
-                            <div class="border-b border-gray-200 dark:border-gray-700 p-2 flex flex-wrap gap-1">
-                              <UButton icon="i-lucide-bold" size="xs" variant="ghost" color="neutral" @click="descEditor?.chain().focus().toggleBold().run()" />
-                              <UButton icon="i-lucide-italic" size="xs" variant="ghost" color="neutral" @click="descEditor?.chain().focus().toggleItalic().run()" />
-                              <UButton icon="i-lucide-list" size="xs" variant="ghost" color="neutral" @click="descEditor?.chain().focus().toggleBulletList().run()" />
-                              <UButton icon="i-lucide-list-ordered" size="xs" variant="ghost" color="neutral" @click="descEditor?.chain().focus().toggleOrderedList().run()" />
-                            </div>
-                            <div class="p-3 min-h-[160px] max-h-[260px] overflow-y-auto">
-                              <EditorContent :editor="descEditor" />
-                            </div>
-                          </div>
-                          <div class="flex justify-end">
-                            <UButton size="xs" color="primary" label="Done" @click="closeDescriptionEditor" />
-                          </div>
-                        </div>
-                      </template>
-                    </UPopover>
-                  </td>
-                  <!-- Model # -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <UInput v-model="row.model_number" size="xs" placeholder="Model #" class="w-full" />
-                  </td>
-                  <!-- Unit Cost -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <div class="relative">
-                      <UInput
-                        v-model="row.unit_price"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        size="xs"
-                        class="w-full pl-5"
-                      />
-                      <span class="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">$</span>
-                    </div>
-                  </td>
-                  <!-- UOM -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <SharedUOMSelect
-                      :model-value="row.uom_uuid"
-                      placeholder="Select UOM"
-                      size="xs"
-                      class-name="w-full"
-                      @update:model-value="(v: string | undefined) => { row.uom_uuid = v || '' }"
-                    />
-                  </td>
-                  <!-- Location -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <SharedLocationSelect
-                      :model-value="row.location_uuid"
-                      placeholder="Select location"
-                      size="xs"
-                      class-name="w-full"
-                      @update:model-value="(v: string | undefined) => { row.location_uuid = v || '' }"
-                    />
-                  </td>
-                  <!-- Preferred Vendor -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <SharedVendorSelect
-                      :model-value="row.preferred_vendor_uuid"
-                      placeholder="Select vendor"
-                      size="xs"
-                      class-name="w-full"
-                      :corporation-uuid="corpId"
-                      @update:model-value="(v: string | undefined) => { row.preferred_vendor_uuid = v || '' }"
-                    />
-                  </td>
-                  <!-- Cost Code -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <SharedCostCodeSelect
-                      :model-value="row.cost_code_configuration_uuid"
-                      placeholder="Select cost code"
-                      size="xs"
-                      :corporation-uuid="corpId"
-                      class="w-full"
-                      @change="(v: unknown) => { const uuid = typeof v === 'string' ? v : (v as Record<string, string>)?.value ?? ''; row.cost_code_configuration_uuid = uuid }"
-                    />
-                  </td>
-                  <!-- Initial QTY -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <UInput
-                      v-model="row.initial_quantity"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0"
-                      size="xs"
-                      class="w-full"
-                    />
-                  </td>
-                  <!-- As of Date -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <UInput
-                      :model-value="localDate(row.as_of_date)"
-                      type="date"
-                      size="xs"
-                      class="w-full"
-                      @update:model-value="(v: string) => row.as_of_date = v || ''"
-                    />
-                  </td>
-                  <!-- Reorder Point -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <UInput v-model="row.reorder_point" type="number" step="0.01" min="0" placeholder="0" size="xs" class="w-full" />
-                  </td>
-                  <!-- Max Limit -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <UInput v-model="row.maximum_limit" type="number" step="0.01" min="0" placeholder="0" size="xs" class="w-full" />
-                  </td>
-                  <!-- Status -->
-                  <td class="px-2 py-1.5 align-middle">
-                    <div class="flex items-center gap-2">
-                      <USwitch
-                        :model-value="row.status === 'Active'"
-                        size="sm"
-                        @update:model-value="(v: boolean) => row.status = v ? 'Active' : 'Inactive'"
-                      />
-                      <span class="text-xs text-gray-500">{{ row.status }}</span>
-                    </div>
-                  </td>
-                  <!-- Delete -->
-                  <td class="px-1 py-1.5 align-middle text-right sticky right-0 bg-white dark:bg-gray-900 z-10">
-                    <UButton
-                      icon="mingcute:delete-fill"
-                      size="xs"
-                      color="error"
-                      variant="soft"
-                      @click="itemRows.splice(idx, 1)"
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <!-- Items UTable -->
+          <UTable
+            :data="itemRows"
+            :columns="tableColumns"
+            sticky
+            :column-pinning="{ left: [], right: ['actions'] }"
+            class="table-fixed text-xs"
+            :ui="{
+              base: 'min-w-[1800px] w-full',
+              th: 'text-[11px] font-semibold uppercase tracking-wide text-muted',
+              td: 'align-middle',
+            }"
+          />
 
           <div v-if="itemRows.length === 0" class="text-center py-6 text-gray-400 text-sm">
             Click "Add Row" to start adding items
@@ -345,7 +166,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, h, resolveComponent } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import { useCorporationStore } from '~/stores/corporations'
@@ -456,6 +277,271 @@ function closeDescriptionEditor() {
 onBeforeUnmount(() => {
   try { descEditor.value?.destroy() } catch { /* no-op */ }
 })
+
+// ── Components resolved for use inside h() render functions ─────────────────
+const _UInput = resolveComponent('UInput')
+const _UTextarea = resolveComponent('UTextarea')
+const _UPopover = resolveComponent('UPopover')
+const _UButton = resolveComponent('UButton')
+const _USwitch = resolveComponent('USwitch')
+const _SharedUOMSelect = resolveComponent('SharedUOMSelect')
+const _SharedCostCodeSelect = resolveComponent('SharedCostCodeSelect')
+const _SharedVendorSelect = resolveComponent('SharedVendorSelect')
+const _SharedLocationSelect = resolveComponent('SharedLocationSelect')
+
+// ── Table column definitions ──────────────────────────────────────────────────
+const tableColumns = computed(() => [
+  {
+    accessorKey: 'item_sequence',
+    header: () => h('span', { class: 'inline-flex items-center gap-1' }, ['Spec ', h('span', { class: 'text-red-500' }, '*')]),
+    enableSorting: false,
+    meta: { class: { th: 'w-[8%] px-3 py-2', td: 'w-[8%] p-2 align-middle' } },
+    cell: ({ row }: any) => h(_UInput, {
+      modelValue: itemRows.value[row.index]?.item_sequence ?? '',
+      size: 'xs',
+      class: 'w-full',
+      placeholder: 'Spec',
+      'onUpdate:modelValue': (v: string) => { if (itemRows.value[row.index]) itemRows.value[row.index].item_sequence = v },
+    }),
+  },
+  {
+    accessorKey: 'item_name',
+    header: () => h('span', { class: 'inline-flex items-center gap-1' }, ['Item Name ', h('span', { class: 'text-red-500' }, '*')]),
+    enableSorting: false,
+    meta: { class: { th: 'w-[13%] px-3 py-2', td: 'w-[13%] p-2 align-middle' } },
+    cell: ({ row }: any) => h(_UTextarea, {
+      modelValue: itemRows.value[row.index]?.item_name ?? '',
+      rows: 2,
+      size: 'xs',
+      class: 'w-full text-xs min-h-[56px] max-h-24 h-14 resize-none overflow-y-auto',
+      placeholder: 'Enter item name',
+      'onUpdate:modelValue': (v: string) => { if (itemRows.value[row.index]) itemRows.value[row.index].item_name = v },
+    }),
+  },
+  {
+    accessorKey: 'description',
+    header: 'Description',
+    enableSorting: false,
+    meta: { class: { th: 'w-[13%] px-3 py-2', td: 'w-[13%] p-2 align-middle' } },
+    cell: ({ row }: any) => {
+      const isOpen = activeDescriptionRow.value === row.index
+      return h(_UPopover, {
+        open: isOpen,
+        'onUpdate:open': (v: boolean) => { if (!v && activeDescriptionRow.value === row.index) closeDescriptionEditor() },
+        content: { side: 'top', align: 'start' },
+        ui: { content: 'w-[600px] p-3' },
+      }, {
+        default: () => h(_UTextarea, {
+          modelValue: plainText(itemRows.value[row.index]?.description ?? ''),
+          rows: 2,
+          size: 'xs',
+          class: 'w-full text-xs min-h-[56px] max-h-24 h-14 resize-none overflow-y-auto cursor-text',
+          placeholder: 'Click to edit description',
+          readonly: true,
+          onClick: () => openDescriptionEditor(row.index),
+        }),
+        content: () => h('div', { class: 'space-y-2' }, [
+          h('div', { class: 'text-xs font-medium text-gray-500' }, 'Rich Text Description'),
+          h('div', { class: 'border border-gray-200 dark:border-gray-700 rounded-md' }, [
+            h('div', { class: 'border-b border-gray-200 dark:border-gray-700 p-2 flex flex-wrap gap-1' }, [
+              h(_UButton, { icon: 'i-lucide-bold', size: 'xs', variant: 'ghost', color: 'neutral', onClick: () => descEditor.value?.chain().focus().toggleBold().run() }),
+              h(_UButton, { icon: 'i-lucide-italic', size: 'xs', variant: 'ghost', color: 'neutral', onClick: () => descEditor.value?.chain().focus().toggleItalic().run() }),
+              h(_UButton, { icon: 'i-lucide-list', size: 'xs', variant: 'ghost', color: 'neutral', onClick: () => descEditor.value?.chain().focus().toggleBulletList().run() }),
+              h(_UButton, { icon: 'i-lucide-list-ordered', size: 'xs', variant: 'ghost', color: 'neutral', onClick: () => descEditor.value?.chain().focus().toggleOrderedList().run() }),
+            ]),
+            h('div', { class: 'p-3 min-h-[160px] max-h-[260px] overflow-y-auto' }, [
+              h(EditorContent, { editor: descEditor.value }),
+            ]),
+          ]),
+          h('div', { class: 'flex justify-end' }, [
+            h(_UButton, { size: 'xs', color: 'primary', label: 'Done', onClick: () => closeDescriptionEditor() }),
+          ]),
+        ]),
+      })
+    },
+  },
+  {
+    accessorKey: 'model_number',
+    header: 'Model #',
+    enableSorting: false,
+    meta: { class: { th: 'w-[7%] px-3 py-2', td: 'w-[7%] p-2 align-middle' } },
+    cell: ({ row }: any) => h(_UInput, {
+      modelValue: itemRows.value[row.index]?.model_number ?? '',
+      size: 'xs',
+      class: 'w-full',
+      placeholder: 'Model #',
+      'onUpdate:modelValue': (v: string) => { if (itemRows.value[row.index]) itemRows.value[row.index].model_number = v },
+    }),
+  },
+  {
+    accessorKey: 'unit_price',
+    header: () => h('span', { class: 'inline-flex items-center gap-1' }, ['Unit Cost ', h('span', { class: 'text-red-500' }, '*')]),
+    enableSorting: false,
+    meta: { class: { th: 'w-[7%] px-3 py-2', td: 'w-[7%] p-2 align-middle' } },
+    cell: ({ row }: any) => h('div', { class: 'relative' }, [
+      h(_UInput, {
+        modelValue: itemRows.value[row.index]?.unit_price ?? '',
+        type: 'number',
+        step: '0.01',
+        min: '0',
+        placeholder: '0.00',
+        size: 'xs',
+        class: 'w-full pl-5',
+        'onUpdate:modelValue': (v: string | number) => { if (itemRows.value[row.index]) itemRows.value[row.index].unit_price = v },
+      }),
+      h('span', { class: 'absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none' }, '$'),
+    ]),
+  },
+  {
+    accessorKey: 'uom_uuid',
+    header: 'UOM',
+    enableSorting: false,
+    meta: { class: { th: 'w-[7%] px-3 py-2', td: 'w-[7%] p-2 align-middle' } },
+    cell: ({ row }: any) => h(_SharedUOMSelect, {
+      modelValue: itemRows.value[row.index]?.uom_uuid ?? '',
+      placeholder: 'Select UOM',
+      size: 'xs',
+      className: 'w-full',
+      'onUpdate:modelValue': (v: string | undefined) => { if (itemRows.value[row.index]) itemRows.value[row.index].uom_uuid = v || '' },
+    }),
+  },
+  {
+    accessorKey: 'location_uuid',
+    header: 'Location',
+    enableSorting: false,
+    meta: { class: { th: 'w-[10%] px-3 py-2', td: 'w-[10%] p-2 align-middle' } },
+    cell: ({ row }: any) => h(_SharedLocationSelect, {
+      modelValue: itemRows.value[row.index]?.location_uuid ?? '',
+      placeholder: 'Select location',
+      size: 'xs',
+      className: 'w-full',
+      'onUpdate:modelValue': (v: string | undefined) => { if (itemRows.value[row.index]) itemRows.value[row.index].location_uuid = v || '' },
+    }),
+  },
+  {
+    accessorKey: 'preferred_vendor_uuid',
+    header: 'Preferred Vendor',
+    enableSorting: false,
+    meta: { class: { th: 'w-[10%] px-3 py-2', td: 'w-[10%] p-2 align-middle' } },
+    cell: ({ row }: any) => h(_SharedVendorSelect, {
+      modelValue: itemRows.value[row.index]?.preferred_vendor_uuid ?? '',
+      placeholder: 'Select vendor',
+      size: 'xs',
+      className: 'w-full',
+      corporationUuid: corpId.value,
+      'onUpdate:modelValue': (v: string | undefined) => { if (itemRows.value[row.index]) itemRows.value[row.index].preferred_vendor_uuid = v || '' },
+    }),
+  },
+  {
+    accessorKey: 'cost_code_configuration_uuid',
+    header: () => h('span', { class: 'inline-flex items-center gap-1' }, ['Cost Code ', h('span', { class: 'text-red-500' }, '*')]),
+    enableSorting: false,
+    meta: { class: { th: 'w-[10%] px-3 py-2', td: 'w-[10%] p-2 align-middle' } },
+    cell: ({ row }: any) => h(_SharedCostCodeSelect, {
+      modelValue: itemRows.value[row.index]?.cost_code_configuration_uuid ?? '',
+      placeholder: 'Select cost code',
+      size: 'xs',
+      corporationUuid: corpId.value,
+      class: 'w-full',
+      onChange: (v: unknown) => {
+        if (itemRows.value[row.index]) {
+          const uuid = typeof v === 'string' ? v : (v as Record<string, string>)?.value ?? ''
+          itemRows.value[row.index].cost_code_configuration_uuid = uuid
+        }
+      },
+    }),
+  },
+  {
+    accessorKey: 'initial_quantity',
+    header: 'Initial QTY',
+    enableSorting: false,
+    meta: { class: { th: 'w-[6%] px-3 py-2', td: 'w-[6%] p-2 align-middle' } },
+    cell: ({ row }: any) => h(_UInput, {
+      modelValue: itemRows.value[row.index]?.initial_quantity ?? '',
+      type: 'number',
+      step: '0.01',
+      min: '0',
+      placeholder: '0',
+      size: 'xs',
+      class: 'w-full',
+      'onUpdate:modelValue': (v: string | number) => { if (itemRows.value[row.index]) itemRows.value[row.index].initial_quantity = v },
+    }),
+  },
+  {
+    accessorKey: 'as_of_date',
+    header: 'As of Date',
+    enableSorting: false,
+    meta: { class: { th: 'w-[7%] px-3 py-2', td: 'w-[7%] p-2 align-middle' } },
+    cell: ({ row }: any) => h(_UInput, {
+      modelValue: localDate(itemRows.value[row.index]?.as_of_date),
+      type: 'date',
+      size: 'xs',
+      class: 'w-full',
+      'onUpdate:modelValue': (v: string) => { if (itemRows.value[row.index]) itemRows.value[row.index].as_of_date = v || '' },
+    }),
+  },
+  {
+    accessorKey: 'reorder_point',
+    header: 'Reorder Pt',
+    enableSorting: false,
+    meta: { class: { th: 'w-[6%] px-3 py-2', td: 'w-[6%] p-2 align-middle' } },
+    cell: ({ row }: any) => h(_UInput, {
+      modelValue: itemRows.value[row.index]?.reorder_point ?? '',
+      type: 'number',
+      step: '0.01',
+      min: '0',
+      placeholder: '0',
+      size: 'xs',
+      class: 'w-full',
+      'onUpdate:modelValue': (v: string | number) => { if (itemRows.value[row.index]) itemRows.value[row.index].reorder_point = v },
+    }),
+  },
+  {
+    accessorKey: 'maximum_limit',
+    header: 'Max Limit',
+    enableSorting: false,
+    meta: { class: { th: 'w-[6%] px-3 py-2', td: 'w-[6%] p-2 align-middle' } },
+    cell: ({ row }: any) => h(_UInput, {
+      modelValue: itemRows.value[row.index]?.maximum_limit ?? '',
+      type: 'number',
+      step: '0.01',
+      min: '0',
+      placeholder: '0',
+      size: 'xs',
+      class: 'w-full',
+      'onUpdate:modelValue': (v: string | number) => { if (itemRows.value[row.index]) itemRows.value[row.index].maximum_limit = v },
+    }),
+  },
+  {
+    accessorKey: 'status',
+    header: 'Status',
+    enableSorting: false,
+    meta: { class: { th: 'w-[80px] px-3 py-2', td: 'w-[80px] p-2 align-middle' } },
+    cell: ({ row }: any) => h('div', { class: 'flex items-center gap-2' }, [
+      h(_USwitch, {
+        modelValue: itemRows.value[row.index]?.status === 'Active',
+        size: 'sm',
+        'onUpdate:modelValue': (v: boolean) => { if (itemRows.value[row.index]) itemRows.value[row.index].status = v ? 'Active' : 'Inactive' },
+      }),
+      h('span', { class: 'text-xs text-gray-500' }, itemRows.value[row.index]?.status ?? 'Active'),
+    ]),
+  },
+  {
+    id: 'actions',
+    header: '',
+    enableSorting: false,
+    meta: { class: { th: 'w-[44px] px-1 py-2 sticky right-0 z-10', td: 'w-[44px] p-1 align-middle sticky right-0 bg-white dark:bg-gray-900' } },
+    cell: ({ row }: any) => h('div', { class: 'flex justify-center' }, [
+      h(_UButton, {
+        icon: 'mingcute:delete-fill',
+        size: 'xs',
+        color: 'error',
+        variant: 'soft',
+        onClick: () => itemRows.value.splice(row.index, 1),
+      }),
+    ]),
+  },
+])
 
 // ── Row helpers ──────────────────────────────────────────────────────────────
 function localDate(iso: string | null | undefined): string {
