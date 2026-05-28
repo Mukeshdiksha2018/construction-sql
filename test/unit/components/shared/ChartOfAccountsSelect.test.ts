@@ -512,16 +512,32 @@ describe('ChartOfAccountsSelect', () => {
 
   describe('modelValue synchronisation', () => {
     it('pre-selects the account matching the modelValue prop', async () => {
-      // Push the account into the store before mounting so the immediate watcher
-      // resolves it on the first render.
+      // Populate the store via fetchAccounts so Vue's reactivity chain is established
+      // before the component mounts and its immediate watch fires.
+      mockFetch.mockResolvedValue({
+        accounts: [
+          {
+            ID: 'pre-sel',
+            Number: '30000.000',
+            Name: '30000.000. Revenue',
+            AccountTypeName: 'Revenue',
+            AccountTypeID: 'type-rev',
+            AccountTypeOrder: 3,
+            AccountStatus: 1,
+            IsAllow: 1,
+            IsAllowAccount: true,
+          },
+        ],
+        total: 1,
+      })
       const store = useChartOfAccountsStore()
-      store.accounts.push(makeAccount({ uuid: 'pre-sel', code: '30000.000', account_name: '30000.000. Revenue' }))
+      await store.fetchAccounts(CORP_UUID)
 
       const wrapper = mountComponent({ modelValue: 'pre-sel' })
       await wrapper.vm.$nextTick()
       await wrapper.vm.$nextTick()
 
-      // Verify via the stub: the USelectMenu's modelValue should be the matching option object.
+      // The USelectMenu stub's modelValue should be the matching option object.
       const selectStub = wrapper.findComponent(USelectMenuStub)
       const received = selectStub.props('modelValue') as any
       expect(received?.value).toBe('pre-sel')
