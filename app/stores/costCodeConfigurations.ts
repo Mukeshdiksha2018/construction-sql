@@ -17,6 +17,7 @@ export interface CostCodeConfiguration {
   is_active: boolean
   created_at?: string
   updated_at?: string
+  preferred_items?: any[]
 }
 
 export const useCostCodeConfigurationsStore = defineStore('costCodeConfigurations', () => {
