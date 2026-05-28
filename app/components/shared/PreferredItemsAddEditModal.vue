@@ -212,15 +212,14 @@
                       @update:model-value="(v: string | undefined) => { row.uom_uuid = v || '' }"
                     />
                   </td>
-                  <!-- Cost Code -->
+                  <!-- Location -->
                   <td class="px-2 py-1.5">
-                    <SharedCostCodeSelect
-                      :model-value="row.cost_code_configuration_uuid"
-                      placeholder="Select cost code"
+                    <SharedLocationSelect
+                      :model-value="row.location_uuid"
+                      placeholder="Select location"
                       size="xs"
-                      :corporation-uuid="corpId"
-                      class="w-full"
-                      @change="(v: unknown) => { const uuid = typeof v === 'string' ? v : (v as Record<string, string>)?.value ?? ''; row.cost_code_configuration_uuid = uuid }"
+                      class-name="w-full"
+                      @update:model-value="(v: string | undefined) => { row.location_uuid = v || '' }"
                     />
                   </td>
                   <!-- Preferred Vendor -->
@@ -234,14 +233,15 @@
                       @update:model-value="(v: string | undefined) => { row.preferred_vendor_uuid = v || '' }"
                     />
                   </td>
-                  <!-- Location -->
+                  <!-- Cost Code -->
                   <td class="px-2 py-1.5">
-                    <SharedLocationSelect
-                      :model-value="row.location_uuid"
-                      placeholder="Select location"
+                    <SharedCostCodeSelect
+                      :model-value="row.cost_code_configuration_uuid"
+                      placeholder="Select cost code"
                       size="xs"
-                      class-name="w-full"
-                      @update:model-value="(v: string | undefined) => { row.location_uuid = v || '' }"
+                      :corporation-uuid="corpId"
+                      class="w-full"
+                      @change="(v: unknown) => { const uuid = typeof v === 'string' ? v : (v as Record<string, string>)?.value ?? ''; row.cost_code_configuration_uuid = uuid }"
                     />
                   </td>
                   <!-- Initial QTY -->
