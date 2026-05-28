@@ -10,7 +10,7 @@
       :size="size"
       :class="className"
       :ui="menuUi"
-      :disabled="disabled || store.loading"
+      :disabled="disabled"
       :loading="store.loading"
       value-key="value"
       @update:model-value="handleSelection"
@@ -28,6 +28,16 @@
               {{ item.account_type }}
             </UBadge>
           </div>
+        </div>
+      </template>
+
+      <template #empty>
+        <div v-if="store.loading" class="flex items-center justify-center gap-2 py-4 text-sm text-gray-400">
+          <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
+          <span>Loading accounts…</span>
+        </div>
+        <div v-else class="py-3 text-center text-sm text-gray-400">
+          No accounts found
         </div>
       </template>
     </USelectMenu>
