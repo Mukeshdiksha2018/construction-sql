@@ -223,6 +223,13 @@ onMounted(async () => {
 
     if (result?.session) {
       authStore.setSession(result.session)
+
+      // Fetch privileges + approvals in the background before navigation
+      const { loadPrivileges } = usePrivilegesFetch()
+      loadPrivileges().catch((err: unknown) => {
+        console.warn('[Privileges] Background load failed after authId exchange:', err)
+      })
+
       const menuRedirect = toMenuRedirect(getPathForMenuId(menuId), corporationId)
       if (menuRedirect) {
         await router.replace(menuRedirect)

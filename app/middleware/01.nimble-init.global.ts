@@ -15,9 +15,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const corporationStore = useCorporationStore()
   const serverSession = await fetchServerSession()
 
+  let sessionChanged = false
+
   if (serverSession?.token) {
     if (!authStore.isAuthenticated || authStore.token !== serverSession.token) {
       authStore.setSession(serverSession)
+      sessionChanged = true
     }
   }
 
@@ -31,6 +34,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
       if (result?.session) {
         authStore.setSession(result.session)
+        sessionChanged = true
       }
     }
     catch {
@@ -50,6 +54,16 @@ export default defineNuxtRouteMiddleware(async (to) => {
     if (hasCorp) {
       corporationStore.setSelectedCorporation(corporationId)
     }
+  }
+
+  // Fetch privileges + approvals after (re-)authentication so the store is
+  // populated for the entire session. Runs in the background — does not block
+  // navigation.
+  if (sessionChanged && authStore.isAuthenticated) {
+    const { loadPrivileges } = usePrivilegesFetch()
+    loadPrivileges().catch((err: unknown) => {
+      console.warn('[Privileges] Background load failed:', err)
+    })
   }
 
   // Nimble always sends the correct page URL — each page handles tab routing
