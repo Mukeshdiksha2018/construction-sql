@@ -110,12 +110,13 @@ describe('usePermissions', () => {
 
     describe('isReady', () => {
       it('is true when user is authenticated', () => {
+        mockIsAuthenticated = true
         const { isReady } = usePermissions()
         expect(isReady.value).toBe(true)
       })
 
       it('is false when user is not authenticated', () => {
-        authStore.clearSession()
+        mockIsAuthenticated = false
         const { isReady } = usePermissions()
         expect(isReady.value).toBe(false)
       })
