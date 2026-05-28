@@ -109,44 +109,44 @@
 
           <!-- Scrollable table wrapper -->
           <div class="overflow-auto border border-gray-200 dark:border-gray-700 rounded-lg">
-            <table class="min-w-[1800px] w-full text-xs">
+            <table class="min-w-[1800px] w-full text-xs table-fixed">
               <thead class="bg-gray-50 dark:bg-gray-800 text-[11px] font-semibold uppercase tracking-wide text-gray-500 sticky top-0 z-10">
                 <tr>
-                  <th class="px-3 py-2 text-left w-24">Spec *</th>
-                  <th class="px-3 py-2 text-left w-40">Item Name *</th>
-                  <th class="px-3 py-2 text-left w-44">Description</th>
-                  <th class="px-3 py-2 text-left w-28">Model #</th>
-                  <th class="px-3 py-2 text-left w-28">Unit Cost *</th>
-                  <th class="px-3 py-2 text-left w-36">UOM</th>
-                  <th class="px-3 py-2 text-left w-40">Location</th>
-                  <th class="px-3 py-2 text-left w-44">Preferred Vendor</th>
-                  <th class="px-3 py-2 text-left w-40">Cost Code</th>
-                  <th class="px-3 py-2 text-left w-24">Initial QTY</th>
-                  <th class="px-3 py-2 text-left w-32">As of Date</th>
-                  <th class="px-3 py-2 text-left w-24">Reorder Pt</th>
-                  <th class="px-3 py-2 text-left w-24">Max Limit</th>
-                  <th class="px-3 py-2 text-left w-28">Status</th>
-                  <th class="px-1 py-2 text-right w-10 sticky right-0 bg-gray-50 dark:bg-gray-800 z-20"></th>
+                  <th class="px-3 py-2 text-left w-[7%]">Spec *</th>
+                  <th class="px-3 py-2 text-left w-[12%]">Item Name *</th>
+                  <th class="px-3 py-2 text-left w-[12%]">Description</th>
+                  <th class="px-3 py-2 text-left w-[7%]">Model #</th>
+                  <th class="px-3 py-2 text-left w-[7%]">Unit Cost *</th>
+                  <th class="px-3 py-2 text-left w-[7%]">UOM</th>
+                  <th class="px-3 py-2 text-left w-[10%]">Location</th>
+                  <th class="px-3 py-2 text-left w-[10%]">Preferred Vendor</th>
+                  <th class="px-3 py-2 text-left w-[10%]">Cost Code</th>
+                  <th class="px-3 py-2 text-left w-[6%]">Initial QTY</th>
+                  <th class="px-3 py-2 text-left w-[7%]">As of Date</th>
+                  <th class="px-3 py-2 text-left w-[6%]">Reorder Pt</th>
+                  <th class="px-3 py-2 text-left w-[6%]">Max Limit</th>
+                  <th class="px-3 py-2 text-left w-[7%]">Status</th>
+                  <th class="px-1 py-2 text-right w-[3%] sticky right-0 bg-gray-50 dark:bg-gray-800 z-20"></th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
-                <tr v-for="(row, idx) in itemRows" :key="idx" class="align-top">
+                <tr v-for="(row, idx) in itemRows" :key="idx" class="align-middle">
                   <!-- Spec -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <UInput v-model="row.item_sequence" size="xs" placeholder="Spec" class="w-full" />
                   </td>
                   <!-- Item Name -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <UTextarea
                       v-model="row.item_name"
                       size="xs"
                       placeholder="Enter item name"
                       :rows="2"
-                      class="w-full text-xs resize-none"
+                      class="w-full text-xs min-h-[56px] max-h-24 h-14 resize-none overflow-y-auto"
                     />
                   </td>
                   <!-- Description (TipTap popover) -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <UPopover
                       :open="activeDescriptionRow === idx"
                       :content="{ side: 'top', align: 'start' }"
@@ -158,7 +158,7 @@
                         size="xs"
                         placeholder="Click to edit description"
                         :rows="2"
-                        class="w-full text-xs resize-none cursor-text"
+                        class="w-full text-xs min-h-[56px] max-h-24 h-14 resize-none overflow-y-auto cursor-text"
                         readonly
                         @click="openDescriptionEditor(idx)"
                       />
@@ -184,11 +184,11 @@
                     </UPopover>
                   </td>
                   <!-- Model # -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <UInput v-model="row.model_number" size="xs" placeholder="Model #" class="w-full" />
                   </td>
                   <!-- Unit Cost -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <div class="relative">
                       <UInput
                         v-model="row.unit_price"
@@ -203,7 +203,7 @@
                     </div>
                   </td>
                   <!-- UOM -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <SharedUOMSelect
                       :model-value="row.uom_uuid"
                       placeholder="Select UOM"
@@ -213,7 +213,7 @@
                     />
                   </td>
                   <!-- Location -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <SharedLocationSelect
                       :model-value="row.location_uuid"
                       placeholder="Select location"
@@ -223,7 +223,7 @@
                     />
                   </td>
                   <!-- Preferred Vendor -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <SharedVendorSelect
                       :model-value="row.preferred_vendor_uuid"
                       placeholder="Select vendor"
@@ -234,7 +234,7 @@
                     />
                   </td>
                   <!-- Cost Code -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <SharedCostCodeSelect
                       :model-value="row.cost_code_configuration_uuid"
                       placeholder="Select cost code"
@@ -245,7 +245,7 @@
                     />
                   </td>
                   <!-- Initial QTY -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <UInput
                       v-model="row.initial_quantity"
                       type="number"
@@ -257,7 +257,7 @@
                     />
                   </td>
                   <!-- As of Date -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <UInput
                       :model-value="localDate(row.as_of_date)"
                       type="date"
@@ -267,15 +267,15 @@
                     />
                   </td>
                   <!-- Reorder Point -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <UInput v-model="row.reorder_point" type="number" step="0.01" min="0" placeholder="0" size="xs" class="w-full" />
                   </td>
                   <!-- Max Limit -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <UInput v-model="row.maximum_limit" type="number" step="0.01" min="0" placeholder="0" size="xs" class="w-full" />
                   </td>
                   <!-- Status -->
-                  <td class="px-2 py-1.5">
+                  <td class="px-2 py-1.5 align-middle">
                     <div class="flex items-center gap-2">
                       <USwitch
                         :model-value="row.status === 'Active'"
@@ -286,7 +286,7 @@
                     </div>
                   </td>
                   <!-- Delete -->
-                  <td class="px-1 py-1.5 text-right sticky right-0 bg-white dark:bg-gray-900 z-10">
+                  <td class="px-1 py-1.5 align-middle text-right sticky right-0 bg-white dark:bg-gray-900 z-10">
                     <UButton
                       icon="mingcute:delete-fill"
                       size="xs"
