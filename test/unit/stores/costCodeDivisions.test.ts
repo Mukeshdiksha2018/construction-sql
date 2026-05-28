@@ -271,6 +271,42 @@ describe('useCostCodeDivisionsStore', () => {
     })
   })
 
+  // ── Case-insensitive corporation UUID matching ─────────────────────────────
+  describe('case-insensitive corporation UUID matching', () => {
+    it('getDivisionsByCorporation matches uppercase against lowercase-stored data', async () => {
+      mockFetch.mockResolvedValue({ data: [makeDivision({ corporation_uuid: 'corp-1' })] })
+      const store = useCostCodeDivisionsStore()
+      await store.fetchDivisions('corp-1')
+
+      expect(store.getDivisionsByCorporation('CORP-1')).toHaveLength(1)
+    })
+
+    it('getActiveDivisions matches uppercase corporation UUID', async () => {
+      mockFetch.mockResolvedValue({ data: [makeDivision({ corporation_uuid: 'corp-abc' })] })
+      const store = useCostCodeDivisionsStore()
+      await store.fetchDivisions('corp-abc')
+
+      expect(store.getActiveDivisions('CORP-ABC')).toHaveLength(1)
+    })
+
+    it('getDivisionCountByCorporation is case-insensitive', async () => {
+      mockFetch.mockResolvedValue({ data: [makeDivision({ corporation_uuid: 'corp-x' })] })
+      const store = useCostCodeDivisionsStore()
+      await store.fetchDivisions('corp-x')
+
+      expect(store.getDivisionCountByCorporation('CORP-X')).toBe(1)
+    })
+
+    it('deduplicates cache between uppercase and lowercase calls', async () => {
+      mockFetch.mockResolvedValue({ data: [makeDivision()] })
+      const store = useCostCodeDivisionsStore()
+      await store.fetchDivisions('CORP-1')
+      await store.fetchDivisions('corp-1')
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+  })
+
   // ── clearDivisions ──────────────────────────────────────────────────────────
   describe('clearDivisions', () => {
     it('resets all state', async () => {

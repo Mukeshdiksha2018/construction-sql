@@ -241,6 +241,43 @@ describe('useCostCodeConfigurationsStore', () => {
     })
   })
 
+  // ── Case-insensitive corporation UUID matching ─────────────────────────────
+  describe('case-insensitive corporation UUID matching', () => {
+    it('getConfigurationsByCorporation matches uppercase against lowercase-stored data', async () => {
+      mockFetch.mockResolvedValue({ data: [makeConfig({ corporation_uuid: 'corp-1' })] })
+      const store = useCostCodeConfigurationsStore()
+      await store.fetchConfigurations('corp-1')
+
+      // Nimble API may return uppercase UUIDs; getters must still match
+      expect(store.getConfigurationsByCorporation('CORP-1')).toHaveLength(1)
+    })
+
+    it('getActiveConfigurations matches uppercase corporation UUID', async () => {
+      mockFetch.mockResolvedValue({ data: [makeConfig({ corporation_uuid: 'corp-abc' })] })
+      const store = useCostCodeConfigurationsStore()
+      await store.fetchConfigurations('corp-abc')
+
+      expect(store.getActiveConfigurations('CORP-ABC')).toHaveLength(1)
+    })
+
+    it('getConfigurationCountByCorporation is case-insensitive', async () => {
+      mockFetch.mockResolvedValue({ data: [makeConfig({ corporation_uuid: 'corp-x' })] })
+      const store = useCostCodeConfigurationsStore()
+      await store.fetchConfigurations('corp-x')
+
+      expect(store.getConfigurationCountByCorporation('CORP-X')).toBe(1)
+    })
+
+    it('deduplicates cache between uppercase and lowercase calls', async () => {
+      mockFetch.mockResolvedValue({ data: [makeConfig()] })
+      const store = useCostCodeConfigurationsStore()
+      await store.fetchConfigurations('CORP-1')
+      await store.fetchConfigurations('corp-1') // same after normalisation — should not re-fetch
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+  })
+
   // ── clearConfigurations ─────────────────────────────────────────────────────
   describe('clearConfigurations', () => {
     it('resets all state', async () => {
