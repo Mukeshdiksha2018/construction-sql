@@ -398,7 +398,7 @@ async function insertLineItems(
           quantity: qty,
           uom_uuid: m.uom_uuid ?? null,
           total_amount: up * qty,
-          sequence: m.sequence ?? idx + 1,
+          sequence: typeof m.sequence === 'number' ? Math.round(m.sequence) : (parseInt(String(m.sequence ?? '')) || idx + 1),
           metadata: stringifyJson(m.metadata ?? {}),
           is_active: true,
         }
@@ -421,7 +421,7 @@ async function insertLineItems(
         amount_per_room: toNum(r.amount_per_room),
         hourly_wage: toNum(r.hourly_wage),
         amount: toNum(r.amount),
-        sequence: r.sequence ?? idx + 1,
+        sequence: typeof r.sequence === 'number' ? Math.round(r.sequence) : (parseInt(String(r.sequence ?? '')) || idx + 1),
       }))
       await prisma.estimateLocationWiseLabor.createMany({ data: lwRows })
     }
@@ -610,7 +610,7 @@ export async function deleteEstimate(uuid: string) {
   const row = await prisma.estimate.findFirst({ where: { uuid, is_active: true } })
   if (!row) return null
   await prisma.estimate.update({ where: { uuid }, data: { is_active: false } })
-  return row
+  return mapEstimateRow(row)
 }
 
 export async function getEstimateLineItems(
