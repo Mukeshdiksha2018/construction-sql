@@ -4,9 +4,14 @@ import { usePrivilegesStore } from '~/stores/privileges'
 /**
  * Permission facade used across PO / Estimate / Project components.
  *
- * When Nimble privileges have been loaded (after login), delegates to the
- * privileges store. Until they load, defaults to `true` so the UI never
- * incorrectly locks out users during the initial load window.
+ * Rules (mirrors Nimble's access model):
+ *  - `create`  → show Add / New buttons
+ *  - `view`    → show View button  (also true when user has `edit`)
+ *  - `edit`    → show Edit button
+ *  - `delete`  → show Delete button
+ *
+ * When Nimble integration is off, or privileges have not loaded yet,
+ * all checks return `true` so the UI never incorrectly locks out users.
  */
 export function usePermissions() {
   const authStore = useAuthStore()
@@ -17,18 +22,24 @@ export function usePermissions() {
     String(runtimeConfig.public.nimbleIntegrations || '').toLowerCase() === 'true',
   )
 
-  /** True once both auth and privileges are resolved. */
+  /** True once both auth is resolved. */
   const isReady = computed(() => authStore.isAuthenticated)
 
   /**
    * Check whether the current user has a named permission.
    *
-   * When Nimble integration is off, or privileges have not loaded yet,
-   * always returns true (open access). Once loaded with Nimble on,
-   * delegates to the privileges store.
+   * Special rule: a `_view` permission is also granted when the user has the
+   * corresponding `_edit` privilege — you must be able to see a record to edit it.
    */
   const hasPermission = (permission: string): boolean => {
     if (!nimbleOn.value) return true
+
+    // _view is implicitly granted when _edit is granted
+    if (permission.endsWith('_view')) {
+      const editKey = permission.replace(/_view$/, '_edit')
+      return privilegesStore.hasPrivilege(permission) || privilegesStore.hasPrivilege(editKey)
+    }
+
     return privilegesStore.hasPrivilege(permission)
   }
 

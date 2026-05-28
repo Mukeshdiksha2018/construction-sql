@@ -40,11 +40,28 @@ const PERMISSION_MAP: Record<string, { menuId: string; action: 'create' | 'view'
   project_edit: { menuId: '0x010000000000000000000000000000011137', action: 'update' },
   project_delete: { menuId: '0x010000000000000000000000000000011137', action: 'delete' },
 
-  // Estimates
+  // Estimates (all aliases used across the codebase)
   estimate_create: { menuId: '0x010000000000000000000000000000011140', action: 'create' },
   estimate_view: { menuId: '0x010000000000000000000000000000011140', action: 'view' },
   estimate_edit: { menuId: '0x010000000000000000000000000000011140', action: 'update' },
   estimate_delete: { menuId: '0x010000000000000000000000000000011140', action: 'delete' },
+  // Aliases used in Estimates.vue
+  project_estimates_create: { menuId: '0x010000000000000000000000000000011140', action: 'create' },
+  project_estimates_view: { menuId: '0x010000000000000000000000000000011140', action: 'view' },
+  project_estimates_edit: { menuId: '0x010000000000000000000000000000011140', action: 'update' },
+  project_estimates_delete: { menuId: '0x010000000000000000000000000000011140', action: 'delete' },
+
+  // Project Items (Items tab under Projects)
+  project_items_create: { menuId: '0x010000000000000000000000000000011138', action: 'create' },
+  project_items_view: { menuId: '0x010000000000000000000000000000011138', action: 'view' },
+  project_items_edit: { menuId: '0x010000000000000000000000000000011138', action: 'update' },
+  project_items_delete: { menuId: '0x010000000000000000000000000000011138', action: 'delete' },
+
+  // Project Cost Codes
+  project_cost_codes_create: { menuId: '0x010000000000000000000000000000011139', action: 'create' },
+  project_cost_codes_view: { menuId: '0x010000000000000000000000000000011139', action: 'view' },
+  project_cost_codes_edit: { menuId: '0x010000000000000000000000000000011139', action: 'update' },
+  project_cost_codes_delete: { menuId: '0x010000000000000000000000000000011139', action: 'delete' },
 
   // Configurations
   config_create: { menuId: '0x010000000000000000000000000000011134', action: 'create' },
@@ -57,6 +74,12 @@ const PERMISSION_MAP: Record<string, { menuId: string; action: 'create' | 'view'
   vendor_invoice_view: { menuId: '0x010000000000000000000000000000011133', action: 'view' },
   vendor_invoice_edit: { menuId: '0x010000000000000000000000000000011133', action: 'update' },
   vendor_invoice_delete: { menuId: '0x010000000000000000000000000000011133', action: 'delete' },
+
+  // Reasons (shared component; no dedicated menu — uses Projects privilege as fallback)
+  reasons_create: { menuId: '0x010000000000000000000000000000011137', action: 'create' },
+  reasons_view: { menuId: '0x010000000000000000000000000000011137', action: 'view' },
+  reasons_edit: { menuId: '0x010000000000000000000000000000011137', action: 'update' },
+  reasons_delete: { menuId: '0x010000000000000000000000000000011137', action: 'delete' },
 }
 
 export const usePrivilegesStore = defineStore('privileges', () => {
@@ -76,21 +99,28 @@ export const usePrivilegesStore = defineStore('privileges', () => {
 
   /**
    * Check if the current user has a specific internal permission key.
-   * Falls back to `true` when privileges haven't been loaded yet (safe default
-   * so the UI doesn't lock out users during initial load).
+   *
+   * Allow-by-default rules (fail-open, never locks out accidentally):
+   *  1. Not loaded yet → allow (loading window)
+   *  2. Map is empty (fetch failed or returned nothing) → allow
+   *  3. Unknown permission key → allow (no restriction defined)
+   *  4. MenuId not returned by Nimble → allow (no restriction = full access)
+   *  5. MenuId present in Nimble response → use the explicit flag
    */
   const hasPrivilege = (permissionKey: string): boolean => {
     if (!loaded.value) return true
 
+    // If the fetch succeeded but Nimble returned no data, allow everything
+    if (privilegeMap.value.size === 0) return true
+
     const mapping = PERMISSION_MAP[permissionKey]
-    if (!mapping) {
-      // Unknown permission key — deny when privileges are loaded
-      return false
-    }
+    // Unknown key — no restriction defined, allow
+    if (!mapping) return true
 
     const normalized = normalizeMenuId(mapping.menuId)
     const priv = privilegeMap.value.get(normalized)
-    if (!priv) return false
+    // MenuId not in Nimble response — no restriction configured, allow
+    if (!priv) return true
 
     return priv[mapping.action]
   }
@@ -123,8 +153,9 @@ export const usePrivilegesStore = defineStore('privileges', () => {
 
   /**
    * Fetch privileges from Nimble for all known construction menu IDs.
+   * Returns true if the fetch was successful (even if empty), false on error.
    */
-  const fetchPrivileges = async (): Promise<void> => {
+  const fetchPrivileges = async (): Promise<boolean> => {
     const menuIds = NIMBLE_MENU_ENTRIES.map((e) => e.menuId)
 
     try {
@@ -138,9 +169,11 @@ export const usePrivilegesStore = defineStore('privileges', () => {
         newMap.set(normalizeMenuId(detail.menuId), detail)
       }
       privilegeMap.value = newMap
+      return true
     }
     catch (err: any) {
       console.warn('[Privileges] Failed to fetch privileges:', err?.message ?? err)
+      return false
     }
   }
 
@@ -174,11 +207,16 @@ export const usePrivilegesStore = defineStore('privileges', () => {
     error.value = null
 
     try {
-      await fetchPrivileges()
+      const privilegesOk = await fetchPrivileges()
       if (corporationIds.length) {
         await fetchApprovals(corporationIds)
       }
-      loaded.value = true
+      // Only mark as loaded when we got a real response from Nimble.
+      // If the fetch failed (no config, API down, etc.) leave loaded=false so
+      // the fail-open "not loaded → allow" path in hasPrivilege stays active.
+      if (privilegesOk) {
+        loaded.value = true
+      }
     }
     catch (err: any) {
       error.value = err?.message ?? 'Failed to load privileges'
