@@ -224,7 +224,7 @@ export const usePurchaseOrderResourcesStore = defineStore('purchaseOrderResource
     return state.estimates
   }
 
-  const getEstimateItems = async ({ corporationUuid, projectUuid, estimateUuid, force = false }: EnsureArgs): Promise<{ poItems: any[]; rawItems: any[] }> => {
+  const fetchEstimateItems = async ({ corporationUuid, projectUuid, estimateUuid, force = false }: EnsureArgs): Promise<{ poItems: any[]; rawItems: any[] }> => {
     if (!corporationUuid || !estimateUuid) return { poItems: [], rawItems: [] }
 
     const state = getOrCreateProjectState(corporationUuid, projectUuid ?? '')
@@ -249,7 +249,7 @@ export const usePurchaseOrderResourcesStore = defineStore('purchaseOrderResource
     try {
       const [lineItemsResp, preferredItems] = await Promise.all([
         $fetch<any>('/api/estimate-line-items', { query: { estimate_uuid: estimateUuid } }),
-        ensurePreferredItems({ corporationUuid, projectUuid, force }),
+        ensurePreferredItems({ corporationUuid, projectUuid }),
       ])
 
       const lineItems = Array.isArray(lineItemsResp?.data) ? lineItemsResp.data : []
@@ -273,7 +273,7 @@ export const usePurchaseOrderResourcesStore = defineStore('purchaseOrderResource
       itemState.fetchedAt = Date.now()
     } catch (err: any) {
       itemState.error = err?.message || 'Failed to load estimate items'
-      console.error('[PO Resources] getEstimateItems error:', err)
+      console.error('[PO Resources] fetchEstimateItems error:', err)
     } finally {
       itemState.loading = false
     }
@@ -349,12 +349,91 @@ export const usePurchaseOrderResourcesStore = defineStore('purchaseOrderResource
     Object.keys(projectResources).forEach(key => delete projectResources[key])
   }
 
+  // ── Reactive helpers for estimate items state (used by PurchaseOrderForm computed props) ──
+
+  const getEstimateItemsLoading = (
+    corporationUuid?: Nullable<string>,
+    projectUuid?: Nullable<string>,
+    estimateUuid?: Nullable<string>,
+  ): boolean => {
+    if (!corporationUuid || !estimateUuid) return false
+    const state = getOrCreateProjectState(corporationUuid, projectUuid ?? '')
+    const key = estimateKey(corporationUuid, projectUuid, estimateUuid)
+    return state.estimateItemsMap[key]?.loading ?? false
+  }
+
+  const getEstimateItemsError = (
+    corporationUuid?: Nullable<string>,
+    projectUuid?: Nullable<string>,
+    estimateUuid?: Nullable<string>,
+  ): string | null => {
+    if (!corporationUuid || !estimateUuid) return null
+    const state = getOrCreateProjectState(corporationUuid, projectUuid ?? '')
+    const key = estimateKey(corporationUuid, projectUuid, estimateUuid)
+    return state.estimateItemsMap[key]?.error ?? null
+  }
+
+  /**
+   * Synchronous read of cached estimate items (poItems array).
+   * Used by PurchaseOrderForm computed `estimatePoItems`.
+   */
+  const getEstimateItems = (
+    corporationUuid?: Nullable<string>,
+    projectUuid?: Nullable<string>,
+    estimateUuid?: Nullable<string>,
+  ): any[] => {
+    if (!corporationUuid || !estimateUuid) return []
+    const state = getOrCreateProjectState(corporationUuid, projectUuid ?? '')
+    const key = estimateKey(corporationUuid, projectUuid, estimateUuid)
+    return state.estimateItemsMap[key]?.poItems ?? []
+  }
+
+  /**
+   * Async: fetch + cache estimate items. Returns { poItems, rawItems }.
+   * Called as `ensureEstimateItems` from PurchaseOrderForm event handlers.
+   */
+  const ensureEstimateItems = fetchEstimateItems
+
+  /**
+   * Convenience: ensure item-types, cost-code-configurations, preferred-items,
+   * and (optionally) estimate items for a given project scope.
+   */
+  const ensureProjectResources = async ({
+    corporationUuid,
+    projectUuid,
+    estimateUuid,
+    force = false,
+  }: EnsureArgs) => {
+    if (!corporationUuid) return
+    await Promise.allSettled([
+      ensureItemTypes({ corporationUuid, projectUuid, force }),
+      ensureCostCodeConfigurations({ corporationUuid, projectUuid, force }),
+      ensurePreferredItems({ corporationUuid, projectUuid, force }),
+      estimateUuid
+        ? fetchEstimateItems({ corporationUuid, projectUuid, estimateUuid, force })
+        : Promise.resolve(),
+    ])
+  }
+
+  /** Sync read of estimates for a project (same data as getEstimates getter). */
+  const getEstimatesByProject = (
+    corporationUuid?: Nullable<string>,
+    projectUuid?: Nullable<string>,
+  ): any[] => {
+    return getProjectState.value(corporationUuid, projectUuid)?.estimates ?? []
+  }
+
   return {
     ensureItemTypes,
     ensurePreferredItems,
     ensureEstimates,
-    getEstimateItems,
+    ensureEstimateItems,
+    ensureProjectResources,
     ensureCostCodeConfigurations,
+    getEstimateItems,
+    getEstimatesByProject,
+    getEstimateItemsLoading,
+    getEstimateItemsError,
     getProjectState,
     getItemTypes,
     getPreferredItems,
