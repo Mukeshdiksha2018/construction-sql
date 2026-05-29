@@ -266,22 +266,29 @@ async function loadLineItemsForEstimate(estimateUuid: string) {
     }),
   ])
 
-  // Load preferred items for material items that have item_uuid
-  const itemUuids = [...new Set(materialItems.map(m => m.item_uuid).filter(Boolean) as string[])]
+  // Load preferred items for material items that have item_uuid.
+  // Normalize all UUIDs to lowercase so the JS map lookup is case-insensitive
+  // (CostCodePreferredItem.uuid is always lowercase from the DB default, but
+  //  EstimateMaterialItem.item_uuid may have been saved with mixed case from the UI).
+  const itemUuids = [...new Set(
+    materialItems.map(m => m.item_uuid ? String(m.item_uuid).toLowerCase() : null).filter(Boolean) as string[],
+  )]
   const preferredItemsMap: Record<string, any> = {}
   if (itemUuids.length > 0) {
     const preferredItems = await prisma.costCodePreferredItem.findMany({
       where: { uuid: { in: itemUuids } },
       select: { uuid: true, item_name: true, item_sequence: true, model_number: true, unit_price: true, uom_uuid: true, description: true },
     })
-    for (const pi of preferredItems) preferredItemsMap[pi.uuid] = pi
+    // Key by lowercase uuid so lookup always succeeds regardless of stored case
+    for (const pi of preferredItems) preferredItemsMap[pi.uuid.toLowerCase()] = pi
   }
 
   const materialItemsByLi: Record<string, any[]> = {}
   for (const m of materialItems) {
     const li = m.estimate_line_item_uuid
     if (!materialItemsByLi[li]) materialItemsByLi[li] = []
-    const pi = m.item_uuid ? preferredItemsMap[m.item_uuid] : undefined
+    // Normalize item_uuid to lowercase before map lookup
+    const pi = m.item_uuid ? preferredItemsMap[String(m.item_uuid).toLowerCase()] : undefined
     materialItemsByLi[li].push(mapMaterialItemRow(m, pi))
   }
 
@@ -385,9 +392,9 @@ async function insertLineItems(
           estimate_uuid: estimateUuid,
           cost_code_uuid: item.cost_code_uuid,
           estimate_line_item_uuid: lineItemUuid,
-          item_type_uuid: m.item_type_uuid ?? null,
-          item_uuid: m.item_uuid ?? null,
-          preferred_vendor_uuid: m.preferred_vendor_uuid ?? null,
+          item_type_uuid: m.item_type_uuid ? String(m.item_type_uuid).toLowerCase() : null,
+          item_uuid: m.item_uuid ? String(m.item_uuid).toLowerCase() : null,
+          preferred_vendor_uuid: m.preferred_vendor_uuid ? String(m.preferred_vendor_uuid).toLowerCase() : null,
           item_division_uuid: m.item_division_uuid ?? null,
           location_uuid: m.location_uuid ?? null,
           category: m.category ?? null,
@@ -640,21 +647,25 @@ export async function getEstimateLineItems(
     }),
   ])
 
-  const itemUuids = [...new Set(materialItems.map(m => m.item_uuid).filter(Boolean) as string[])]
+  // Normalize item_uuid to lowercase for case-insensitive preferred-item lookup
+  // (CostCodePreferredItem.uuid is always lowercase; item_uuid in estimates may be mixed case)
+  const itemUuids = [...new Set(
+    materialItems.map(m => m.item_uuid ? String(m.item_uuid).toLowerCase() : null).filter(Boolean) as string[],
+  )]
   const preferredItemsMap: Record<string, any> = {}
   if (itemUuids.length > 0) {
     const pis = await prisma.costCodePreferredItem.findMany({
       where: { uuid: { in: itemUuids } },
       select: { uuid: true, item_name: true, item_sequence: true, model_number: true, unit_price: true, uom_uuid: true, description: true },
     })
-    for (const pi of pis) preferredItemsMap[pi.uuid] = pi
+    for (const pi of pis) preferredItemsMap[pi.uuid.toLowerCase()] = pi
   }
 
   const materialItemsByLi: Record<string, any[]> = {}
   for (const m of materialItems) {
     const li = m.estimate_line_item_uuid
     if (!materialItemsByLi[li]) materialItemsByLi[li] = []
-    const pi = m.item_uuid ? preferredItemsMap[m.item_uuid] : undefined
+    const pi = m.item_uuid ? preferredItemsMap[String(m.item_uuid).toLowerCase()] : undefined
     materialItemsByLi[li].push(mapMaterialItemRow(m, pi))
   }
 

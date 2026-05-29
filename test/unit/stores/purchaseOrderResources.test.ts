@@ -369,10 +369,11 @@ describe('usePurchaseOrderResourcesStore', () => {
         corporation_uuid: 'corp-1',
       })
 
-      expect(result).toHaveProperty('poItems')
-      expect(result).toHaveProperty('rawItems')
-      expect(result.rawItems).toHaveLength(1)
-      expect(result.rawItems[0].cost_code_uuid).toBe('cc-1')
+      // ensureEstimateItems now returns the poItems array directly
+      expect(Array.isArray(result)).toBe(true)
+      expect(result).toHaveLength(1)
+      // The poItems are transformed from rawItems; verify the cost_code_uuid is carried over
+      expect(result[0].cost_code_uuid).toBe('cc-1')
     })
 
     it('does NOT make separate /api/estimate-material-items calls (uses embedded material_items)', async () => {
@@ -415,18 +416,79 @@ describe('usePurchaseOrderResourcesStore', () => {
       const store = await getStore()
       const result = await store.ensureEstimateItems({ corporationUuid: 'corp-1', projectUuid: 'proj-1', estimateUuid: 'est-1' })
 
-      expect(result.rawItems).toHaveLength(3)
-      expect(result.rawItems[0].cost_code_uuid).toBe('cc-1')
-      expect(result.rawItems[1].cost_code_uuid).toBe('cc-2')
-      expect(result.rawItems[2].cost_code_uuid).toBe('cc-2')
-      expect(result.poItems).toHaveLength(3)
+      // Returns poItems array directly; cost_code_uuid is carried through transform
+      expect(result).toHaveLength(3)
+      expect(result[0].cost_code_uuid).toBe('cc-1')
+      expect(result[1].cost_code_uuid).toBe('cc-2')
+      expect(result[2].cost_code_uuid).toBe('cc-2')
     })
 
-    it('returns empty arrays for missing inputs', async () => {
+    it('returns empty array for missing inputs', async () => {
       const store = await getStore()
       const result = await store.ensureEstimateItems({ corporationUuid: '', estimateUuid: '' })
-      expect(result.poItems).toEqual([])
-      expect(result.rawItems).toEqual([])
+      // Returns empty array directly (no poItems/rawItems wrapper)
+      expect(Array.isArray(result)).toBe(true)
+      expect(result).toEqual([])
+    })
+
+    it('caches result so second call with same key skips the API', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('cost-code-configurations')) return Promise.resolve({ data: [] })
+        if (url === '/api/estimate-line-items') return Promise.resolve({ data: [{ uuid: 'li-1', cost_code_uuid: 'cc-1', material_items: [] }] })
+        return Promise.resolve({ data: [] })
+      })
+      const store = await getStore()
+      const args = { corporationUuid: 'corp-1', projectUuid: 'proj-1', estimateUuid: 'est-1' }
+
+      await store.ensureEstimateItems(args)
+      const callCount = mockFetch.mock.calls.length
+      await store.ensureEstimateItems(args) // second call — should use cache
+
+      expect(mockFetch.mock.calls.length).toBe(callCount) // no new calls
+    })
+
+    it('re-fetches when force=true', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('cost-code-configurations')) return Promise.resolve({ data: [] })
+        if (url === '/api/estimate-line-items') return Promise.resolve({ data: [] })
+        return Promise.resolve({ data: [] })
+      })
+      const store = await getStore()
+      const args = { corporationUuid: 'corp-1', projectUuid: 'proj-1', estimateUuid: 'est-1' }
+
+      await store.ensureEstimateItems(args)
+      const firstCount = mockFetch.mock.calls.length
+      await store.ensureEstimateItems({ ...args, force: true })
+
+      expect(mockFetch.mock.calls.length).toBeGreaterThan(firstCount)
+    })
+
+    // ── Timing regression: after ensureEstimates resolves, calling ensureEstimateItems ──
+    // ── directly (as the dedicated watcher does) should populate getEstimateItems cache ──
+
+    it('getEstimateItems returns items after ensureEstimateItems is called (watcher timing fix)', async () => {
+      const matItem = { uuid: 'mat-1', item_uuid: 'item-1', item_name: 'Brick', unit_price: '50', quantity: '10' }
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('cost-code-configurations')) return Promise.resolve({ data: [] })
+        if (url === '/api/estimate-line-items') {
+          return Promise.resolve({
+            data: [{ uuid: 'li-1', cost_code_uuid: 'cc-1', cost_code_number: '03000', material_items: [matItem] }],
+          })
+        }
+        return Promise.resolve({ data: [] })
+      })
+      const store = await getStore()
+
+      // Simulate the timing: items are empty before the fetch
+      expect(store.getEstimateItems('corp-1', 'proj-1', 'est-1')).toEqual([])
+
+      // The dedicated watcher calls ensureEstimateItems when effectiveEstimateUuid resolves
+      await store.ensureEstimateItems({ corporationUuid: 'corp-1', projectUuid: 'proj-1', estimateUuid: 'est-1' })
+
+      // Now getEstimateItems should return the cached items
+      const cached = store.getEstimateItems('corp-1', 'proj-1', 'est-1')
+      expect(cached).toHaveLength(1)
+      expect(cached[0].cost_code_uuid).toBe('cc-1')
     })
   })
 })
