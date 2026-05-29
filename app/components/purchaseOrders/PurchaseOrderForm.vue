@@ -3836,13 +3836,11 @@ const hasImportedEstimateItems = computed(
 
 const latestEstimateUuid = computed(() => latestProjectEstimate.value?.uuid || null);
 
-// Use the PO's actual estimate_uuid when editing, otherwise fall back to latest estimate
+// Use explicit estimate on the PO when set, otherwise latest approved estimate for the project
 const effectiveEstimateUuid = computed(() => {
-  // If editing a PO that was created from a specific estimate, use that estimate
-  if (props.editingPurchaseOrder && props.form.estimate_uuid) {
+  if (props.form.estimate_uuid) {
     return props.form.estimate_uuid;
   }
-  // Otherwise use the latest estimate for the project
   return latestEstimateUuid.value;
 });
 
