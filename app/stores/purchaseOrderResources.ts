@@ -248,25 +248,35 @@ export const usePurchaseOrderResourcesStore = defineStore('purchaseOrderResource
 
     try {
       const [lineItemsResp, preferredItems] = await Promise.all([
-        $fetch<any>('/api/estimate-line-items', { query: { estimate_uuid: estimateUuid } }),
+        $fetch<any>('/api/estimate-line-items', {
+          query: {
+            estimate_uuid: estimateUuid,
+            project_uuid: projectUuid ?? '',
+            corporation_uuid: corporationUuid,
+          },
+        }),
         ensurePreferredItems({ corporationUuid, projectUuid }),
       ])
 
+      // The API returns { data: [...lineItems with embedded material_items...] }
       const lineItems = Array.isArray(lineItemsResp?.data) ? lineItemsResp.data : []
 
-      // Fetch material items for each line item
+      // Flatten material_items already embedded in each line item response
+      // (avoids separate /api/estimate-material-items calls which need extra params)
       const allMaterialItems: any[] = []
-      await Promise.all(lineItems.map(async (lineItem: any) => {
-        try {
-          const resp = await $fetch<any>('/api/estimate-material-items', {
-            query: { estimate_uuid: estimateUuid, cost_code_uuid: lineItem.cost_code_uuid },
+      for (const lineItem of lineItems) {
+        const matItems = Array.isArray(lineItem.material_items) ? lineItem.material_items : []
+        for (const item of matItems) {
+          allMaterialItems.push({
+            ...item,
+            cost_code_uuid: lineItem.cost_code_uuid,
+            cost_code_label: lineItem.cost_code_label ?? '',
+            cost_code_number: lineItem.cost_code_number ?? '',
+            cost_code_name: lineItem.cost_code_name ?? '',
+            division_name: lineItem.division_name ?? '',
           })
-          const items = Array.isArray(resp?.data) ? resp.data : []
-          for (const item of items) {
-            allMaterialItems.push({ ...item, cost_code_uuid: lineItem.cost_code_uuid, cost_code_label: lineItem.cost_code_label, cost_code_number: lineItem.cost_code_number, cost_code_name: lineItem.cost_code_name, division_name: lineItem.division_name })
-          }
-        } catch {}
-      }))
+        }
+      }
 
       itemState.rawItems = allMaterialItems
       itemState.poItems = transformEstimateMaterialItemsToPoItems(allMaterialItems, preferredItems)

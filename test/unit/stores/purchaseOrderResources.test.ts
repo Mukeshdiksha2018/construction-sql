@@ -332,11 +332,26 @@ describe('usePurchaseOrderResourcesStore', () => {
   })
 
   describe('ensureEstimateItems (async)', () => {
-    it('fetches estimate line items and material items', async () => {
-      mockFetch
-        .mockResolvedValueOnce({ data: [{ uuid: 'pref-1' }] }) // preferred items (cost-code-configurations)
-        .mockResolvedValueOnce({ data: [{ uuid: 'li-1', cost_code_uuid: 'cc-1' }] }) // line items
-        .mockResolvedValueOnce({ data: [{ uuid: 'mat-1', item_name: 'Steel Beam' }] }) // material items
+    it('calls /api/estimate-line-items with all three required params', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        // preferred items (cost-code-configurations/project-filtered)
+        if (url.includes('cost-code-configurations')) return Promise.resolve({ data: [] })
+        // line items — material_items already embedded in response
+        if (url === '/api/estimate-line-items') {
+          return Promise.resolve({
+            data: [{
+              uuid: 'li-1',
+              cost_code_uuid: 'cc-1',
+              cost_code_label: 'Concrete',
+              cost_code_number: '03000',
+              cost_code_name: 'Concrete',
+              division_name: 'Division 3',
+              material_items: [{ uuid: 'mat-1', item_uuid: 'item-1', item_name: 'Steel Beam', unit_price: '100', quantity: '2' }],
+            }],
+          })
+        }
+        return Promise.resolve({ data: [] })
+      })
 
       const store = await getStore()
       const result = await store.ensureEstimateItems({
@@ -345,8 +360,66 @@ describe('usePurchaseOrderResourcesStore', () => {
         estimateUuid: 'est-1',
       })
 
+      // Verify the API was called with all required query params
+      const lineItemsCall = mockFetch.mock.calls.find((c: any[]) => c[0] === '/api/estimate-line-items')
+      expect(lineItemsCall).toBeDefined()
+      expect(lineItemsCall![1]?.query).toMatchObject({
+        estimate_uuid: 'est-1',
+        project_uuid: 'proj-1',
+        corporation_uuid: 'corp-1',
+      })
+
       expect(result).toHaveProperty('poItems')
       expect(result).toHaveProperty('rawItems')
+      expect(result.rawItems).toHaveLength(1)
+      expect(result.rawItems[0].cost_code_uuid).toBe('cc-1')
+    })
+
+    it('does NOT make separate /api/estimate-material-items calls (uses embedded material_items)', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('cost-code-configurations')) return Promise.resolve({ data: [] })
+        if (url === '/api/estimate-line-items') {
+          return Promise.resolve({
+            data: [{ uuid: 'li-1', cost_code_uuid: 'cc-1', material_items: [] }],
+          })
+        }
+        return Promise.resolve({ data: [] })
+      })
+
+      const store = await getStore()
+      await store.ensureEstimateItems({ corporationUuid: 'corp-1', projectUuid: 'proj-1', estimateUuid: 'est-1' })
+
+      const urls = mockFetch.mock.calls.map((c: any[]) => c[0] as string)
+      expect(urls).not.toContain('/api/estimate-material-items')
+    })
+
+    it('flattens material_items from multiple line items, tagging each with cost_code info', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('cost-code-configurations')) return Promise.resolve({ data: [] })
+        if (url === '/api/estimate-line-items') {
+          return Promise.resolve({
+            data: [
+              { uuid: 'li-1', cost_code_uuid: 'cc-1', cost_code_number: '03000', material_items: [
+                { uuid: 'mat-1', item_uuid: 'i1', item_name: 'Beam', unit_price: '100', quantity: '1' },
+              ]},
+              { uuid: 'li-2', cost_code_uuid: 'cc-2', cost_code_number: '04000', material_items: [
+                { uuid: 'mat-2', item_uuid: 'i2', item_name: 'Block', unit_price: '50',  quantity: '3' },
+                { uuid: 'mat-3', item_uuid: 'i3', item_name: 'Mortar', unit_price: '10', quantity: '5' },
+              ]},
+            ],
+          })
+        }
+        return Promise.resolve({ data: [] })
+      })
+
+      const store = await getStore()
+      const result = await store.ensureEstimateItems({ corporationUuid: 'corp-1', projectUuid: 'proj-1', estimateUuid: 'est-1' })
+
+      expect(result.rawItems).toHaveLength(3)
+      expect(result.rawItems[0].cost_code_uuid).toBe('cc-1')
+      expect(result.rawItems[1].cost_code_uuid).toBe('cc-2')
+      expect(result.rawItems[2].cost_code_uuid).toBe('cc-2')
+      expect(result.poItems).toHaveLength(3)
     })
 
     it('returns empty arrays for missing inputs', async () => {
