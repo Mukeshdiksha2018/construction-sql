@@ -27,6 +27,23 @@ function toNum(val: unknown): number | null {
   return isNaN(n) ? null : n
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function looksLikeUuid(value: unknown): boolean {
+  return typeof value === 'string' && UUID_REGEX.test(value.trim())
+}
+
+/** PO form stores the master-record UUID in `terms_and_conditions` (no separate uuid column). */
+function resolveTermsAndConditionsForStorage(input: any): string | null {
+  const fromUuid = input?.terms_and_conditions_uuid
+  if (fromUuid !== null && fromUuid !== undefined && String(fromUuid).trim() !== '') {
+    return String(fromUuid).trim()
+  }
+  const legacy = input?.terms_and_conditions
+  if (legacy === null || legacy === undefined || String(legacy).trim() === '') return null
+  return String(legacy).trim()
+}
+
 // ─── Row Mappers ──────────────────────────────────────────────────────────────
 
 function mapPORow(row: any): any {
@@ -53,6 +70,9 @@ function mapPORow(row: any): any {
     include_items: row.include_items ?? null,
     quote_reference: row.quote_reference ?? null,
     terms_and_conditions: row.terms_and_conditions ?? null,
+    terms_and_conditions_uuid: looksLikeUuid(row.terms_and_conditions)
+      ? String(row.terms_and_conditions).trim()
+      : null,
     item_total: toNum(row.item_total),
     charges_total: toNum(row.charges_total),
     tax_total: toNum(row.tax_total),
@@ -455,7 +475,7 @@ export async function createPurchaseOrder(input: any) {
     estimated_delivery_date: parseDate(input.estimated_delivery_date),
     include_items: input.include_items ?? null,
     quote_reference: input.quote_reference ?? null,
-    terms_and_conditions: input.terms_and_conditions ?? null,
+    terms_and_conditions: resolveTermsAndConditionsForStorage(input),
     item_total: toNum(input.item_total),
     charges_total: toNum(input.charges_total),
     tax_total: toNum(input.tax_total),
@@ -488,7 +508,7 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
   const updateData: any = {}
   const fields = [
     'po_number', 'credit_days', 'credit_days_id',
-    'shipping_instructions', 'include_items', 'quote_reference', 'terms_and_conditions',
+    'shipping_instructions', 'include_items', 'quote_reference',
     'vendor_uuid', 'billing_address_uuid', 'shipping_address_uuid', 'status',
     'prepared_by', 'approved_by', 'print_include_approved_by_vendor',
     'print_use_entity_name', 'special_instruction_uuid', 'project_uuid',
@@ -503,6 +523,9 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
   }
   if ('freight_uuid' in input || 'freight' in input) {
     updateData.freight = input.freight_uuid || input.freight || null
+  }
+  if ('terms_and_conditions_uuid' in input || 'terms_and_conditions' in input) {
+    updateData.terms_and_conditions = resolveTermsAndConditionsForStorage(input)
   }
   const numericFields = ['item_total', 'charges_total', 'tax_total', 'total_po_amount']
   for (const f of numericFields) {

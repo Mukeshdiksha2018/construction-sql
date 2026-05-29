@@ -53,6 +53,7 @@ export interface PurchaseOrder {
   include_items?: string | null
   quote_reference?: string | null
   terms_and_conditions?: string | null
+  terms_and_conditions_uuid?: string | null
   item_total?: number | null
   freight_charges_percentage?: number | null
   freight_charges_amount?: number | null

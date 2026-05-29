@@ -59,8 +59,19 @@ const storeStub = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 })
 
+const termsAndConditionsStoreStub = {
+  termsAndConditions: [
+    { uuid: 'tc-uuid-1', name: 'Standard Terms', content: '<p>Standard terms content</p>', isActive: true },
+  ],
+  fetchTermsAndConditions: vi.fn().mockResolvedValue(undefined),
+  getTermsAndConditionById: (id: string) =>
+    termsAndConditionsStoreStub.termsAndConditions.find(
+      (tc) => tc.uuid === id || String(tc.uuid) === id,
+    ) || null,
+}
+
 vi.mock('~/stores/corporations', () => ({ useCorporationStore: () => storeStub() }))
-vi.mock('~/stores/termsAndConditions', () => ({ useTermsAndConditionsStore: () => storeStub() }))
+vi.mock('~/stores/termsAndConditions', () => ({ useTermsAndConditionsStore: () => termsAndConditionsStoreStub }))
 vi.mock('~/stores/specialInstructions', () => ({ useSpecialInstructionsStore: () => storeStub() }))
 vi.mock('~/stores/freightGlobal', () => ({ useFreightStore: () => storeStub() }))
 vi.mock('~/stores/freight', () => ({ useShipViaStore: () => storeStub() }))
@@ -258,5 +269,39 @@ describe('PurchaseOrderPreview print preview loading', () => {
     expect(mockFetchCorporations).toHaveBeenCalled()
     expect(mockFetchShipVia).toHaveBeenCalled()
     expect(mockFetchUOM).toHaveBeenCalled()
+  })
+})
+
+describe('PurchaseOrderPreview terms and conditions', () => {
+  async function mountPreviewWithPo(overrides: Record<string, unknown> = {}) {
+    const component = (await import('~/components/purchaseOrders/PurchaseOrderPreview.vue')).default
+    return mount(component, {
+      props: {
+        purchaseOrder: makeLaborPo({
+          terms_and_conditions_uuid: 'tc-uuid-1',
+          ...overrides,
+        }),
+      },
+      global: { stubs: { UAlert: UAlertStub } },
+    })
+  }
+
+  it('renders terms and conditions content when terms_and_conditions_uuid is set', async () => {
+    const wrapper = await mountPreviewWithPo()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('TERMS AND CONDITIONS')
+    expect(wrapper.text()).toContain('Standard terms content')
+  })
+
+  it('renders inline terms when only terms_and_conditions text is stored (legacy)', async () => {
+    const wrapper = await mountPreviewWithPo({
+      terms_and_conditions_uuid: undefined,
+      terms_and_conditions: '<p>Legacy inline terms</p>',
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('TERMS AND CONDITIONS')
+    expect(wrapper.text()).toContain('Legacy inline terms')
   })
 })

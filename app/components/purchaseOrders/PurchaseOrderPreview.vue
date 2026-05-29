@@ -665,6 +665,7 @@ import {
   resolveFreightDisplayLabel,
   resolveFreightUuidFromPo,
   resolveShipViaUuidFromPo,
+  looksLikeUuid,
   trimDisplayStr,
 } from '~/utils/purchaseOrderPreviewDisplay'
 import { useUOMStore } from '~/stores/uom'
@@ -1685,8 +1686,23 @@ const formatPrintDescription = (value: any): string => {
 
 // Selected terms and conditions for preview
 const selectedTermsAndCondition = computed(() => {
-  if (!purchaseOrderDetail.value?.terms_and_conditions_uuid) return null
-  return termsAndConditionsStore.getTermsAndConditionById(purchaseOrderDetail.value.terms_and_conditions_uuid) || null
+  const po = purchaseOrderDetail.value
+  if (!po) return null
+
+  const uuid =
+    po.terms_and_conditions_uuid ||
+    (looksLikeUuid(po.terms_and_conditions) ? String(po.terms_and_conditions).trim() : null)
+
+  if (uuid) {
+    return termsAndConditionsStore.getTermsAndConditionById(uuid) || null
+  }
+
+  const raw = String(po.terms_and_conditions || '').trim()
+  if (raw) {
+    return { name: '', content: raw }
+  }
+
+  return null
 })
 
 /** Resolved special instruction for print preview (list loaded in loadRelatedData). */
