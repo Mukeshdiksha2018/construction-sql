@@ -1164,6 +1164,7 @@ import {
   lineItemsShareSingleEstimateVendor,
   transformCreatePoLineItems,
 } from '~/utils/transformCreatePoLineItems'
+import { normalizeUsedQuantitiesByItem } from '~/utils/normalizeUsedQuantitiesByItem'
 import { useAppSettingsStore } from '~/stores/corporationSettings'
 import { useAuthStore } from '~/stores/auth'
 
@@ -3797,14 +3798,7 @@ const fetchUsedQuantities = async () => {
     })
 
     // Normalize keys to lowercase to match lookup in POItemsTableWithEstimates
-    const normalizedData: Record<string, number> = {}
-    if (response?.data && typeof response.data === 'object') {
-      Object.keys(response.data).forEach((key) => {
-        const normalizedKey = String(key).toLowerCase()
-        normalizedData[normalizedKey] = response.data[key]
-      })
-    }
-    usedQuantitiesByItem.value = normalizedData
+    usedQuantitiesByItem.value = normalizeUsedQuantitiesByItem(response?.data)
   } catch (error: any) {
     console.error("Failed to fetch used quantities:", error)
     usedQuantitiesByItem.value = {}

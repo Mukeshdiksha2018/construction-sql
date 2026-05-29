@@ -1606,6 +1606,7 @@ import { useProjectAddressesStore, type ProjectAddress } from "~/stores/projectA
 import { useVendorStore } from "~/stores/vendors";
 import { useUTCDateFormat } from '~/composables/useUTCDateFormat';
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat';
+import { normalizeUsedQuantitiesByItem } from '~/utils/normalizeUsedQuantitiesByItem';
 import { useShipViaStore } from '~/stores/freight';
 import { useFreightStore } from '~/stores/freightGlobal';
 // NOTE: We use purchaseOrderResourcesStore for all data fetching to avoid affecting global stores
@@ -3942,15 +3943,7 @@ const fetchUsedQuantities = async () => {
       },
     });
 
-    // Normalize keys to lowercase to match lookup in POItemsTableWithEstimates
-    const normalizedData: Record<string, number> = {};
-    if (response?.data && typeof response.data === 'object') {
-      Object.keys(response.data).forEach((key) => {
-        const normalizedKey = String(key).toLowerCase();
-        normalizedData[normalizedKey] = response.data[key];
-      });
-    }
-    usedQuantitiesByItem.value = normalizedData;
+    usedQuantitiesByItem.value = normalizeUsedQuantitiesByItem(response?.data);
   } catch (error: any) {
     console.error("Failed to fetch used quantities:", error);
     usedQuantitiesByItem.value = {};

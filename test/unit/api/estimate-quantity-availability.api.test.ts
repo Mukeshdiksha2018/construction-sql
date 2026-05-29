@@ -67,4 +67,41 @@ describe('GET /api/estimate-quantity-availability', () => {
       expect.objectContaining({ excludePoUuid: 'po-current' }),
     )
   })
+
+  it('rejects when estimate_uuid is missing', async () => {
+    mockGetQuery.mockReturnValue({
+      corporation_uuid: 'corp-1',
+      project_uuid: 'proj-1',
+      estimate_uuid: '',
+    })
+    const handler = await loadHandler()
+    await expect(handler(mockEvent)).rejects.toMatchObject({ statusCode: 400 })
+    expect(mockBuild).not.toHaveBeenCalled()
+  })
+
+  it('rejects when project_uuid is missing', async () => {
+    mockGetQuery.mockReturnValue({
+      corporation_uuid: 'corp-1',
+      project_uuid: '   ',
+      estimate_uuid: 'est-1',
+    })
+    const handler = await loadHandler()
+    await expect(handler(mockEvent)).rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('returns empty data when builder finds no used quantities', async () => {
+    mockBuild.mockResolvedValue({})
+    const handler = await loadHandler()
+    const result = await handler(mockEvent)
+    expect(result.data).toEqual({})
+  })
+
+  it('surfaces builder failures as 500', async () => {
+    mockBuild.mockRejectedValue(new Error('database unavailable'))
+    const handler = await loadHandler()
+    await expect(handler(mockEvent)).rejects.toMatchObject({
+      statusCode: 500,
+      statusMessage: 'database unavailable',
+    })
+  })
 })
