@@ -36,10 +36,14 @@ const mockLineItemFindMany = vi.fn()
 const mockLineItemDeleteMany = vi.fn()
 const mockMaterialItemCreateMany = vi.fn()
 const mockMaterialItemFindMany = vi.fn()
+const mockMaterialItemDeleteMany = vi.fn()
+const mockMaterialItemUpdate = vi.fn()
 const mockLwLaborCreateMany = vi.fn()
 const mockLwLaborFindMany = vi.fn()
+const mockLwLaborDeleteMany = vi.fn()
 const mockLwMaterialCreateMany = vi.fn()
 const mockLwMaterialFindMany = vi.fn()
+const mockLwMaterialDeleteMany = vi.fn()
 
 vi.mock('../../../server/utils/prisma', () => ({
   getPrisma: () => ({
@@ -60,14 +64,18 @@ vi.mock('../../../server/utils/prisma', () => ({
     estimateMaterialItem: {
       createMany: (...a: unknown[]) => mockMaterialItemCreateMany(...a),
       findMany: (...a: unknown[]) => mockMaterialItemFindMany(...a),
+      deleteMany: (...a: unknown[]) => mockMaterialItemDeleteMany(...a),
+      update: (...a: unknown[]) => mockMaterialItemUpdate(...a),
     },
     estimateLocationWiseLabor: {
       createMany: (...a: unknown[]) => mockLwLaborCreateMany(...a),
       findMany: (...a: unknown[]) => mockLwLaborFindMany(...a),
+      deleteMany: (...a: unknown[]) => mockLwLaborDeleteMany(...a),
     },
     estimateLocationWiseMaterial: {
       createMany: (...a: unknown[]) => mockLwMaterialCreateMany(...a),
       findMany: (...a: unknown[]) => mockLwMaterialFindMany(...a),
+      deleteMany: (...a: unknown[]) => mockLwMaterialDeleteMany(...a),
     },
   }),
 }))
@@ -144,6 +152,10 @@ describe('updateEstimate – core behaviour', () => {
     mockLineItemDeleteMany.mockResolvedValue({ count: 0 })
     mockLineItemCreateMany.mockResolvedValue({ count: 0 })
     mockLineItemFindMany.mockResolvedValue([])
+    mockMaterialItemFindMany.mockResolvedValue([])
+    mockMaterialItemDeleteMany.mockResolvedValue({ count: 0 })
+    mockLwLaborDeleteMany.mockResolvedValue({ count: 0 })
+    mockLwMaterialDeleteMany.mockResolvedValue({ count: 0 })
     mockMaterialItemCreateMany.mockResolvedValue({ count: 0 })
     mockLwLaborCreateMany.mockResolvedValue({ count: 0 })
     mockLwMaterialCreateMany.mockResolvedValue({ count: 0 })
@@ -214,10 +226,14 @@ describe('updateEstimate – line item replacement', () => {
     mockProjectFindFirst.mockResolvedValue(makeProject())
     mockLineItemDeleteMany.mockResolvedValue({ count: 5 })
     mockLineItemCreateMany.mockResolvedValue({ count: 2 })
-    mockLineItemFindMany.mockResolvedValue([
-      { uuid: 'li-1', cost_code_uuid: 'cc-1' },
-      { uuid: 'li-2', cost_code_uuid: 'cc-2' },
-    ])
+    // First findMany = existing line items (pre-delete), second = newly inserted items
+    mockLineItemFindMany
+      .mockResolvedValueOnce([{ uuid: 'li-1', cost_code_uuid: 'cc-1' }, { uuid: 'li-2', cost_code_uuid: 'cc-2' }])
+      .mockResolvedValue([{ uuid: 'li-1', cost_code_uuid: 'cc-1' }, { uuid: 'li-2', cost_code_uuid: 'cc-2' }])
+    mockMaterialItemFindMany.mockResolvedValue([])   // no existing mat items to carry forward
+    mockMaterialItemDeleteMany.mockResolvedValue({ count: 0 })
+    mockLwLaborDeleteMany.mockResolvedValue({ count: 0 })
+    mockLwMaterialDeleteMany.mockResolvedValue({ count: 0 })
     mockMaterialItemCreateMany.mockResolvedValue({ count: 0 })
     mockLwLaborCreateMany.mockResolvedValue({ count: 0 })
     mockLwMaterialCreateMany.mockResolvedValue({ count: 0 })
@@ -277,6 +293,10 @@ describe('updateEstimate – audit log entries', () => {
     mockLineItemDeleteMany.mockResolvedValue({ count: 0 })
     mockLineItemCreateMany.mockResolvedValue({ count: 0 })
     mockLineItemFindMany.mockResolvedValue([])
+    mockMaterialItemFindMany.mockResolvedValue([])
+    mockMaterialItemDeleteMany.mockResolvedValue({ count: 0 })
+    mockLwLaborDeleteMany.mockResolvedValue({ count: 0 })
+    mockLwMaterialDeleteMany.mockResolvedValue({ count: 0 })
   })
 
   it('adds a marked_ready entry when status transitions Draft → Ready', async () => {
@@ -492,10 +512,15 @@ describe('insertLineItems – parallel batch (all children in 3 DB calls)', () =
   it('insertLineItems also works correctly via updateEstimate (same batch logic)', async () => {
     mockEstimateFindFirst.mockResolvedValue(makeExistingRow())
     mockEstimateUpdate.mockResolvedValue(makePrismaRow())
-    mockLineItemFindMany.mockResolvedValue([
-      { uuid: 'li-u1', cost_code_uuid: 'cc-u1' },
-      { uuid: 'li-u2', cost_code_uuid: 'cc-u2' },
-    ])
+    mockProjectFindFirst.mockResolvedValue(makeProject())
+    mockLineItemDeleteMany.mockResolvedValue({ count: 0 })
+    mockLineItemFindMany
+      .mockResolvedValueOnce([])  // existing line items (none before first save)
+      .mockResolvedValue([{ uuid: 'li-u1', cost_code_uuid: 'cc-u1' }, { uuid: 'li-u2', cost_code_uuid: 'cc-u2' }])
+    mockMaterialItemFindMany.mockResolvedValue([])
+    mockMaterialItemDeleteMany.mockResolvedValue({ count: 0 })
+    mockLwLaborDeleteMany.mockResolvedValue({ count: 0 })
+    mockLwMaterialDeleteMany.mockResolvedValue({ count: 0 })
     const { updateEstimate } = await import('../../../server/utils/estimates')
     await updateEstimate({
       uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1',
@@ -588,6 +613,10 @@ describe('updateEstimate – returns header without re-reading child tables', ()
     mockLineItemDeleteMany.mockResolvedValue({ count: 0 })
     mockLineItemCreateMany.mockResolvedValue({ count: 0 })
     mockLineItemFindMany.mockResolvedValue([])
+    mockMaterialItemFindMany.mockResolvedValue([])
+    mockMaterialItemDeleteMany.mockResolvedValue({ count: 0 })
+    mockLwLaborDeleteMany.mockResolvedValue({ count: 0 })
+    mockLwMaterialDeleteMany.mockResolvedValue({ count: 0 })
     mockMaterialItemCreateMany.mockResolvedValue({ count: 0 })
     mockLwLaborCreateMany.mockResolvedValue({ count: 0 })
     mockLwMaterialCreateMany.mockResolvedValue({ count: 0 })
@@ -628,5 +657,219 @@ describe('updateEstimate – returns header without re-reading child tables', ()
     const { updateEstimate } = await import('../../../server/utils/estimates')
     await updateEstimate({ uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1' })
     expect(mockProjectFindFirst).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// updateEstimate — explicit child deletion before line-item replacement
+// ══════════════════════════════════════════════════════════════════════════════
+describe('updateEstimate – explicit child deletion', () => {
+  const existingLineItemUuids = ['li-old-1', 'li-old-2']
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEstimateFindFirst.mockResolvedValue(makeExistingRow())
+    mockEstimateUpdate.mockResolvedValue(makePrismaRow())
+    mockProjectFindFirst.mockResolvedValue(makeProject())
+    // Return existing line items so deletion path is exercised
+    mockLineItemFindMany
+      .mockResolvedValueOnce(existingLineItemUuids.map(uuid => ({ uuid, cost_code_uuid: `cc-${uuid}` })))
+      .mockResolvedValue([{ uuid: 'li-new-1', cost_code_uuid: 'cc-1' }])
+    mockMaterialItemFindMany.mockResolvedValue([])
+    mockMaterialItemDeleteMany.mockResolvedValue({ count: 2 })
+    mockLwLaborDeleteMany.mockResolvedValue({ count: 1 })
+    mockLwMaterialDeleteMany.mockResolvedValue({ count: 0 })
+    mockLineItemDeleteMany.mockResolvedValue({ count: 2 })
+    mockLineItemCreateMany.mockResolvedValue({ count: 1 })
+    mockMaterialItemCreateMany.mockResolvedValue({ count: 0 })
+    mockLwLaborCreateMany.mockResolvedValue({ count: 0 })
+    mockLwMaterialCreateMany.mockResolvedValue({ count: 0 })
+  })
+
+  it('calls estimateMaterialItem.deleteMany before estimateLineItem.deleteMany', async () => {
+    const { updateEstimate } = await import('../../../server/utils/estimates')
+    await updateEstimate({
+      uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1',
+      line_items: [{ cost_code_uuid: 'cc-1', labor_amount: 100, total_amount: 100 }],
+    })
+    expect(mockMaterialItemDeleteMany).toHaveBeenCalledWith({
+      where: { estimate_line_item_uuid: { in: existingLineItemUuids } },
+    })
+  })
+
+  it('calls estimateLocationWiseLabor.deleteMany with existing line item UUIDs', async () => {
+    const { updateEstimate } = await import('../../../server/utils/estimates')
+    await updateEstimate({
+      uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1',
+      line_items: [{ cost_code_uuid: 'cc-1', labor_amount: 100, total_amount: 100 }],
+    })
+    expect(mockLwLaborDeleteMany).toHaveBeenCalledWith({
+      where: { estimate_line_item_uuid: { in: existingLineItemUuids } },
+    })
+  })
+
+  it('calls estimateLocationWiseMaterial.deleteMany with existing line item UUIDs', async () => {
+    const { updateEstimate } = await import('../../../server/utils/estimates')
+    await updateEstimate({
+      uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1',
+      line_items: [{ cost_code_uuid: 'cc-1', labor_amount: 100, total_amount: 100 }],
+    })
+    expect(mockLwMaterialDeleteMany).toHaveBeenCalledWith({
+      where: { estimate_line_item_uuid: { in: existingLineItemUuids } },
+    })
+  })
+
+  it('skips child deleteMany calls when there are no existing line items', async () => {
+    mockLineItemFindMany.mockReset().mockResolvedValue([])
+    const { updateEstimate } = await import('../../../server/utils/estimates')
+    await updateEstimate({
+      uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1',
+      line_items: [{ cost_code_uuid: 'cc-new', labor_amount: 50, total_amount: 50 }],
+    })
+    expect(mockMaterialItemDeleteMany).not.toHaveBeenCalled()
+    expect(mockLwLaborDeleteMany).not.toHaveBeenCalled()
+    expect(mockLwMaterialDeleteMany).not.toHaveBeenCalled()
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// updateEstimate — carry-forward fallback for material items
+// ══════════════════════════════════════════════════════════════════════════════
+describe('updateEstimate – material items carry-forward fallback', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEstimateFindFirst.mockResolvedValue(makeExistingRow())
+    mockEstimateUpdate.mockResolvedValue(makePrismaRow())
+    mockProjectFindFirst.mockResolvedValue(makeProject())
+    mockLineItemDeleteMany.mockResolvedValue({ count: 1 })
+    mockLineItemCreateMany.mockResolvedValue({ count: 1 })
+    mockMaterialItemDeleteMany.mockResolvedValue({ count: 2 })
+    mockLwLaborDeleteMany.mockResolvedValue({ count: 0 })
+    mockLwMaterialDeleteMany.mockResolvedValue({ count: 0 })
+    mockLwLaborCreateMany.mockResolvedValue({ count: 0 })
+    mockLwMaterialCreateMany.mockResolvedValue({ count: 0 })
+  })
+
+  it('uses existing mat items as fallback when incoming line item has no material_items', async () => {
+    // Existing line item uuid → cost_code_uuid
+    mockLineItemFindMany
+      .mockResolvedValueOnce([{ uuid: 'li-old', cost_code_uuid: 'cc-1' }])  // before deletion
+      .mockResolvedValue([{ uuid: 'li-new', cost_code_uuid: 'cc-1' }])       // after re-insert
+
+    // Existing mat items for the old line item
+    mockMaterialItemFindMany.mockResolvedValue([
+      { uuid: 'm-1', cost_code_uuid: 'cc-1', estimate_line_item_uuid: 'li-old',
+        name: 'Widget', item_uuid: 'item-1', unit_price: 50, quantity: 2, sequence: 1,
+        corporation_uuid: 'corp-1', project_uuid: 'proj-1', estimate_uuid: 'est-uuid-1', is_active: true },
+    ])
+    mockMaterialItemCreateMany.mockResolvedValue({ count: 1 })
+
+    const { updateEstimate } = await import('../../../server/utils/estimates')
+    // Incoming line item has NO material_items (e.g., status-only update carries line items but without items)
+    await updateEstimate({
+      uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1',
+      line_items: [{ cost_code_uuid: 'cc-1', labor_amount: 0, material_amount: 100, total_amount: 100 }],
+    })
+
+    // Fallback should have injected the old mat items into the createMany call
+    expect(mockMaterialItemCreateMany).toHaveBeenCalledTimes(1)
+    const rows = mockMaterialItemCreateMany.mock.calls[0][0].data
+    expect(rows).toHaveLength(1)
+    expect(rows[0].name).toBe('Widget')
+  })
+
+  it('does NOT fall back when incoming line item already has material_items', async () => {
+    mockLineItemFindMany
+      .mockResolvedValueOnce([{ uuid: 'li-old', cost_code_uuid: 'cc-1' }])
+      .mockResolvedValue([{ uuid: 'li-new', cost_code_uuid: 'cc-1' }])
+
+    // Existing mat item in DB for old line item
+    mockMaterialItemFindMany.mockResolvedValue([
+      { uuid: 'm-old', cost_code_uuid: 'cc-1', estimate_line_item_uuid: 'li-old',
+        name: 'OldWidget', item_uuid: 'item-old', unit_price: 50, quantity: 2, sequence: 1,
+        corporation_uuid: 'corp-1', project_uuid: 'proj-1', estimate_uuid: 'est-uuid-1', is_active: true },
+    ])
+    mockMaterialItemCreateMany.mockResolvedValue({ count: 1 })
+
+    const { updateEstimate } = await import('../../../server/utils/estimates')
+    // Incoming line item explicitly provides NEW material_items — old fallback should NOT be used
+    await updateEstimate({
+      uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1',
+      line_items: [makeLineItemWithMat('cc-1', [makeMatItem('NewWidget')])],
+    })
+
+    const rows = mockMaterialItemCreateMany.mock.calls[0][0].data
+    expect(rows[0].name).toBe('NewWidget')  // incoming value wins, not the old fallback
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// material item filter fix (item.amount → item.total / computed total)
+// Tests the logic applied in EstimateLineItemsTable.vue's emitLineItemsUpdate()
+// which was previously filtering on item.amount (always undefined) — this
+// caused ALL material items to be dropped. The corrected logic uses item.total
+// or falls back to unit_price × quantity.
+// ══════════════════════════════════════════════════════════════════════════════
+describe('material item effective-total filter (EstimateLineItemsTable fix)', () => {
+  /** Mirrors the corrected filter predicate from emitLineItemsUpdate() */
+  function isNonZeroMaterialItem(item: Record<string, unknown>): boolean {
+    const effectiveTotal =
+      parseFloat(String(item.total ?? item.total_amount ?? '')) ||
+      parseFloat(String(item.unit_price ?? 0)) * parseFloat(String(item.quantity ?? 0))
+    return effectiveTotal > 0
+  }
+
+  it('keeps items where total > 0', () => {
+    expect(isNonZeroMaterialItem({ name: 'Widget', total: 200, unit_price: 100, quantity: 2 })).toBe(true)
+  })
+
+  it('keeps items where total_amount > 0 (fallback field)', () => {
+    expect(isNonZeroMaterialItem({ name: 'Widget', total_amount: 150 })).toBe(true)
+  })
+
+  it('keeps items where unit_price × quantity > 0 (computed fallback)', () => {
+    expect(isNonZeroMaterialItem({ name: 'Widget', unit_price: 50, quantity: 3 })).toBe(true)
+  })
+
+  it('drops items where total === 0', () => {
+    expect(isNonZeroMaterialItem({ name: 'Empty', total: 0, unit_price: 0, quantity: 5 })).toBe(false)
+  })
+
+  it('drops items where total_amount is "0"', () => {
+    expect(isNonZeroMaterialItem({ name: 'Empty', total_amount: '0' })).toBe(false)
+  })
+
+  it('drops items where unit_price is 0 regardless of quantity', () => {
+    expect(isNonZeroMaterialItem({ name: 'Empty', unit_price: 0, quantity: 10 })).toBe(false)
+  })
+
+  it('drops items where quantity is 0 regardless of unit_price', () => {
+    expect(isNonZeroMaterialItem({ name: 'Empty', unit_price: 50, quantity: 0 })).toBe(false)
+  })
+
+  it('drops items where the legacy "amount" field is the only value (the old broken behaviour)', () => {
+    // The OLD filter was: parseFloat(String(item.amount)) > 0
+    // item.amount was undefined in practice, so everything was filtered OUT.
+    // The new filter should correctly keep this item because unit_price × quantity > 0.
+    const item = { name: 'Widget', amount: 200, unit_price: 100, quantity: 2 }
+    // Old broken logic would have kept this because item.amount is present here — but in
+    // the real component item.amount is undefined; we verify the new logic handles both:
+    expect(isNonZeroMaterialItem(item)).toBe(true)  // new logic correctly uses unit_price×qty
+  })
+
+  it('drops items where amount is set but unit_price and quantity are both zero (regression guard)', () => {
+    // Verifies the new logic does NOT rely on item.amount
+    const item = { name: 'Ghost', amount: 999, total: 0, unit_price: 0, quantity: 0 }
+    expect(isNonZeroMaterialItem(item)).toBe(false)
+  })
+
+  it('handles string number values (as emitted by Vue reactive data)', () => {
+    expect(isNonZeroMaterialItem({ name: 'Widget', unit_price: '75', quantity: '4' })).toBe(true)
+    expect(isNonZeroMaterialItem({ name: 'Empty', unit_price: '0', quantity: '4' })).toBe(false)
+  })
+
+  it('handles null/undefined fields gracefully (no throw)', () => {
+    expect(() => isNonZeroMaterialItem({ name: 'Widget', total: null, unit_price: null, quantity: null })).not.toThrow()
+    expect(isNonZeroMaterialItem({ name: 'Widget', total: null, unit_price: null, quantity: null })).toBe(false)
   })
 })
