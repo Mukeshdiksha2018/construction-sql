@@ -2669,9 +2669,10 @@ watch(
       corpUuid &&
       projectUuid
     ) {
-      // Fetch estimates - scoped to purchaseOrderResources store only
+      // Fetch estimates scoped to the current project
       await purchaseOrderResourcesStore.ensureEstimates({
         corporationUuid: corpUuid,
+        projectUuid,
         force: true,
       });
     }
@@ -5425,9 +5426,9 @@ watch(
         
         // Ensure estimates are fetched when switching to estimate import
         if (corpUuid && projectUuid) {
-          // Fetch estimates - scoped to purchaseOrderResources store only
           await purchaseOrderResourcesStore.ensureEstimates({
             corporationUuid: corpUuid,
+            projectUuid,
             force: true,
           });
         }
@@ -7608,11 +7609,14 @@ watch(() => props.form.corporation_uuid, async (newCorpUuid, oldCorpUuid) => {
       projectUuid: projectUuid,
       force: corporationChanged, // Force refresh if corporation changed
     }),
-    // Fetch estimates - scoped to purchaseOrderResources store only
-    purchaseOrderResourcesStore.ensureEstimates({
-      corporationUuid: newCorpUuid,
-      force: true,
-    }),
+    // Fetch estimates scoped to the current project
+    projectUuid
+      ? purchaseOrderResourcesStore.ensureEstimates({
+          corporationUuid: newCorpUuid,
+          projectUuid,
+          force: true,
+        })
+      : Promise.resolve(),
   ]);
 });
 
@@ -7625,9 +7629,10 @@ watch(() => props.form.project_uuid, async (newProjectUuid) => {
     await Promise.allSettled([
       projectAddressesStore.fetchAddresses(newProjectUuid),
       ensureItemTypesLoaded(corpUuid, newProjectUuid),
-      // Fetch estimates - scoped to purchaseOrderResources store only
+      // Fetch estimates scoped to the selected project
       purchaseOrderResourcesStore.ensureEstimates({
         corporationUuid: corpUuid,
+        projectUuid: newProjectUuid,
         force: true,
       }),
       // Ensure cost code configurations are loaded for the project
@@ -7706,6 +7711,7 @@ onMounted(async () => {
       props.form.project_uuid && String(props.form.include_items || '').toUpperCase() === 'IMPORT_ITEMS_FROM_ESTIMATE'
         ? purchaseOrderResourcesStore.ensureEstimates({
             corporationUuid: corpUuid,
+            projectUuid: props.form.project_uuid,
             force: false,
           })
         : Promise.resolve(),

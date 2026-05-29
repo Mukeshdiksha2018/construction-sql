@@ -409,6 +409,10 @@ export const usePurchaseOrderResourcesStore = defineStore('purchaseOrderResource
       ensureItemTypes({ corporationUuid, projectUuid, force }),
       ensureCostCodeConfigurations({ corporationUuid, projectUuid, force }),
       ensurePreferredItems({ corporationUuid, projectUuid, force }),
+      // Always fetch estimates for the project so latestProjectEstimate resolves
+      projectUuid
+        ? ensureEstimates({ corporationUuid, projectUuid, force })
+        : Promise.resolve(),
       estimateUuid
         ? fetchEstimateItems({ corporationUuid, projectUuid, estimateUuid, force })
         : Promise.resolve(),
