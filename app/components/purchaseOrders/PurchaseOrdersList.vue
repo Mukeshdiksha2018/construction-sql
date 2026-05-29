@@ -1770,7 +1770,7 @@ const selectedCorporationId = computed(() => corporationStore.selectedCorporatio
 // Server-side pagination support
 const serverPaginationInfo = computed(() => {
   if (!selectedCorporationId.value) return null
-  return purchaseOrdersStore.getPaginationInfo(selectedCorporationId.value)
+  return purchaseOrdersStore.paginationInfo[selectedCorporationId.value] ?? null
 })
 
 // Check if any filters are active
@@ -1877,10 +1877,7 @@ const handleServerPageChange = async (newPage: number) => {
       while (neededCount > loadedCount && paginationInfo.hasMore && currentApiPage <= paginationInfo.totalPages) {
         await purchaseOrdersStore.fetchPurchaseOrders(
           selectedCorporationId.value,
-          false,
-          currentApiPage,
-          apiPageSize,
-          buildPoApiListFilters(),
+          { force: false, filters: { ...buildPoApiListFilters(), page: currentApiPage, page_size: apiPageSize } },
         )
         const newLoadedCount = purchaseOrders.value.filter((po: any) => 
           String(po.corporation_uuid) === String(selectedCorporationId.value)
@@ -1922,6 +1919,25 @@ const shipViaNameByUuid = computed<Record<string, string>>(() => {
     if (sv?.uuid) {
       map[sv.uuid] = sv.ship_via || sv.uuid
     }
+  })
+  return map
+})
+
+const freightNameByUuid = computed<Record<string, string>>(() => {
+  const list = freightStore.getAllFreight || []
+  const map: Record<string, string> = {}
+  list.forEach((f: any) => {
+    if (f?.uuid) map[f.uuid] = f.freight_name || f.uuid
+  })
+  return map
+})
+
+const vendorNameByUuid = computed<Record<string, string>>(() => {
+  const corpUuid = selectedCorporationId.value || ''
+  const list: any[] = corpUuid ? vendorStore.getVendorsForCorporation(corpUuid) : []
+  const map: Record<string, string> = {}
+  list.forEach((v: any) => {
+    if (v?.uuid) map[v.uuid.toLowerCase()] = v.vendor_name || v.uuid
   })
   return map
 })
@@ -2326,7 +2342,7 @@ const handleShowResults = async () => {
 
   const corporationUuid = appliedFilters.value.corporation || selectedCorporationId.value;
   if (corporationUuid) {
-    await purchaseOrdersStore.fetchPurchaseOrders(corporationUuid, true, 1, 100, apiFilters);
+    await purchaseOrdersStore.fetchPurchaseOrders(corporationUuid, { force: true, filters: { ...apiFilters, page: 1, page_size: 100 } });
   }
   
   // Fetch projects for the selected corporation if not already loaded
@@ -2411,7 +2427,7 @@ const handleClearFilters = () => {
   // Fetch all purchase orders for the preserved corporation when filters are cleared
   const corporationUuid = preservedCorporationUuid
   if (corporationUuid) {
-    purchaseOrdersStore.fetchPurchaseOrders(corporationUuid, true, 1, 100)
+    purchaseOrdersStore.fetchPurchaseOrders(corporationUuid, { force: true })
   }
 
   // Clear status filter (return to summary view) only when not on "ToBeRaised"
@@ -3206,7 +3222,11 @@ const columns: TableColumn<any>[] = [
     header: 'Vendor Name',
     enableSorting: false,
     meta: { class: { th: 'text-left', td: 'text-left' } },
-    cell: ({ row }: { row: { original: any } }) => h('div', row.original.vendor_name || 'N/A')
+    cell: ({ row }: { row: { original: any } }) => {
+      const uuid = (row.original.vendor_uuid || '').toLowerCase()
+      const name = (uuid && vendorNameByUuid.value[uuid]) || row.original.vendor_name || 'N/A'
+      return h('div', name)
+    }
   },
   {
     accessorKey: 'entry_date',
@@ -3216,13 +3236,13 @@ const columns: TableColumn<any>[] = [
     cell: ({ row }: { row: { original: any } }) => h('div', formatDate(row.original.entry_date))
   },
   {
-    accessorKey: 'ship_via_uuid',
+    accessorKey: 'ship_via',
     header: 'Shipped Via',
     enableSorting: false,
     meta: { class: { th: 'text-left', td: 'text-left' } },
     cell: ({ row }: { row: { original: any } }) => {
-      const uuid = row.original.ship_via_uuid
-      const label = uuid ? (shipViaNameByUuid.value[uuid] || row.original.ship_via || 'N/A') : (row.original.ship_via || 'N/A')
+      const uuid = row.original.ship_via
+      const label = uuid ? (shipViaNameByUuid.value[uuid] || uuid) : 'N/A'
       return h('div', label)
     }
   },
@@ -3460,7 +3480,7 @@ const clearStatusFilter = () => {
   // Fetch all purchase orders for the preserved corporation when filters are cleared
   const corporationUuid = preservedCorporation || selectedCorporationId.value
   if (corporationUuid) {
-    purchaseOrdersStore.fetchPurchaseOrders(corporationUuid, true, 1, 100)
+    purchaseOrdersStore.fetchPurchaseOrders(corporationUuid, { force: true })
   }
   
   // Clear to be raised items
@@ -3712,10 +3732,8 @@ const switchToEditMode = () => {
 
 const closeFormModal = () => {
   purchaseOrderResourcesStore.clear()
-  if (nimbleIntegrationsEnabled) {
-    shipViaStore.clearShipVia()
-    freightStore.clearFreight()
-  }
+  // Do NOT clear shipVia/freight here — the list needs them to resolve display names.
+  // They will be force-refreshed next time the form opens via refreshFreightAndShipViaForNimble().
   showFormModal.value = false
   isViewMode.value = false
   poForm.value = {
@@ -4244,10 +4262,22 @@ const savePurchaseOrder = async (skipModalClose = false): Promise<any | null> =>
         corporation_uuid: corporationUuid, // Explicitly set to ensure correct corporation
         raise_against: poForm.value.raise_against || null, // Explicitly include raise_against
       }
+      // Capture items BEFORE the API call — the server response returns po_items:[] and would overwrite them
+      const poItemsToSave = Array.isArray(poForm.value.po_items) ? [...poForm.value.po_items] : []
+      const laborItemsToSave = Array.isArray(poForm.value.labor_po_items) ? [...poForm.value.labor_po_items] : []
+      const lwMaterialToSave = Array.isArray(poForm.value.location_wise_material) ? [...poForm.value.location_wise_material] : []
+
       result = await purchaseOrdersStore.updatePurchaseOrder(payload)
-      // Update the form with the returned PO data to ensure it's in sync
+      // Save items in parallel — must happen BEFORE poForm is overwritten by server response
       if (result && result.uuid) {
-        poForm.value = { ...poForm.value, ...result }
+        const projUuid = (result.project_uuid || poForm.value.project_uuid) ?? undefined
+        await Promise.all([
+          purchaseOrdersStore.savePOItems(result.uuid, poItemsToSave, { corporation_uuid: corporationUuid, project_uuid: projUuid }),
+          purchaseOrdersStore.saveLaborPOItems(result.uuid, laborItemsToSave, { corporation_uuid: corporationUuid, project_uuid: projUuid }),
+          purchaseOrdersStore.saveLocationWiseMaterial(result.uuid, lwMaterialToSave, { corporation_uuid: corporationUuid, project_uuid: projUuid }),
+        ])
+        // Now merge server response (po_items:[] from server is fine — local items already saved)
+        poForm.value = { ...poForm.value, ...result, po_items: poItemsToSave, labor_po_items: laborItemsToSave, location_wise_material: lwMaterialToSave }
         // Clear cache for this PO to ensure fresh data is fetched when row is expanded
         clearPOItemsCache(result.uuid)
       }
@@ -4282,11 +4312,22 @@ const savePurchaseOrder = async (skipModalClose = false): Promise<any | null> =>
         corporation_uuid: corporationUuid, // Use form's corporation_uuid, not TopBar's
         raise_against: poForm.value.raise_against || null, // Explicitly include raise_against
       }
+      // Capture items BEFORE the API call — the server response returns po_items:[] and would overwrite them
+      const poItemsToSave = Array.isArray(poForm.value.po_items) ? [...poForm.value.po_items] : []
+      const laborItemsToSave = Array.isArray(poForm.value.labor_po_items) ? [...poForm.value.labor_po_items] : []
+      const lwMaterialToSave = Array.isArray(poForm.value.location_wise_material) ? [...poForm.value.location_wise_material] : []
+
       result = await purchaseOrdersStore.createPurchaseOrder(payload)
-      // Update the form with the returned PO data (including UUID) so subsequent validations work correctly
+      // Save items — must happen BEFORE poForm is overwritten by server response
       if (result && result.uuid) {
-        poForm.value.uuid = result.uuid
-        poForm.value = { ...poForm.value, ...result }
+        const projUuid = (result.project_uuid || poForm.value.project_uuid) ?? undefined
+        await Promise.all([
+          purchaseOrdersStore.savePOItems(result.uuid, poItemsToSave, { corporation_uuid: corporationUuid, project_uuid: projUuid }),
+          purchaseOrdersStore.saveLaborPOItems(result.uuid, laborItemsToSave, { corporation_uuid: corporationUuid, project_uuid: projUuid }),
+          purchaseOrdersStore.saveLocationWiseMaterial(result.uuid, lwMaterialToSave, { corporation_uuid: corporationUuid, project_uuid: projUuid }),
+        ])
+        // Merge server response and keep local items (server returns po_items:[] by design)
+        poForm.value = { ...poForm.value, ...result, uuid: result.uuid, po_items: poItemsToSave, labor_po_items: laborItemsToSave, location_wise_material: lwMaterialToSave }
         // Clear cache for this PO to ensure fresh data is fetched when row is expanded
         clearPOItemsCache(result.uuid)
       }
@@ -5807,10 +5848,8 @@ watch(showFormModal, (isOpen, wasOpen) => {
   // If modal just closed, ensure cleanup happens
   if (wasOpen && !isOpen) {
     purchaseOrderResourcesStore.clear()
-    if (nimbleIntegrationsEnabled) {
-      shipViaStore.clearShipVia()
-      freightStore.clearFreight()
-    }
+    // Do NOT clear shipVia/freight — the list needs them for display name resolution.
+    // They are force-refreshed next time the form opens via refreshFreightAndShipViaForNimble().
     isViewMode.value = false
     poForm.value = {
       po_items: [],
@@ -5915,10 +5954,11 @@ watch(
 // Load ship via data and locations on mount
 onMounted(async () => {
   try {
-    await shipViaStore.fetchShipVia(nimbleIntegrationsEnabled)
-    if (nimbleIntegrationsEnabled) {
-      await freightStore.fetchFreight(true)
-    }
+    // Always fetch both so uuid→name lookups work regardless of Nimble flag
+    await Promise.allSettled([
+      shipViaStore.fetchShipVia(nimbleIntegrationsEnabled),
+      freightStore.fetchFreight(),
+    ])
   } catch (error) {
     console.error('Error fetching ship via/freight:', error)
   }
@@ -5926,7 +5966,12 @@ onMounted(async () => {
   if (!locationsStore.getAll || locationsStore.getAll.length === 0) {
     locationsStore.fetchLocations().catch(() => {})
   }
-  
+
+  // Pre-fetch vendor names so the Vendor Name column can resolve uuid → name
+  if (selectedCorporationId.value) {
+    vendorStore.fetchVendors(selectedCorporationId.value).catch(() => {})
+  }
+
   // Initialize filterCorporation with selected corporation if not already set
   if (!filterCorporation.value && selectedCorporationId.value) {
     filterCorporation.value = selectedCorporationId.value
@@ -5946,6 +5991,10 @@ watch(selectedCorporationId, (newId) => {
   if (!filterCorporation.value && newId) {
     filterCorporation.value = newId
   }
+  // Re-fetch vendors whenever the corporation changes so vendor names resolve correctly
+  if (newId) {
+    vendorStore.fetchVendors(newId).catch(() => {})
+  }
 })
 
 // When corporation is set (e.g. by TopBar or by useNimbleFromRoute when Nimble is on), fetch first page
@@ -5954,7 +6003,7 @@ watch(
   selectedCorporationId,
   async (newCorpId) => {
     if (newCorpId) {
-      await purchaseOrdersStore.fetchPurchaseOrders(newCorpId, false, 1, 100, buildPoApiListFilters())
+      await purchaseOrdersStore.fetchPurchaseOrders(newCorpId, { force: false, filters: { ...buildPoApiListFilters(), page: 1, page_size: 100 } })
     }
   },
   { immediate: true }

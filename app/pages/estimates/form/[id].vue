@@ -34,6 +34,20 @@
       </div>
 
       <div class="flex items-center gap-3">
+        <!-- Revise button — reverts Approved/Ready back to Draft (mirrors PO "Revise" pattern) -->
+        <UButton
+          v-if="showReviseButton"
+          color="warning"
+          variant="soft"
+          icon="i-heroicons-arrow-uturn-left"
+          size="sm"
+          :disabled="saving"
+          :loading="saving"
+          @click="reviseEstimate"
+        >
+          Revise
+        </UButton>
+
         <!-- Lock reason banner -->
         <UTooltip v-if="lockReason" :text="lockReason">
           <UBadge color="warning" variant="soft" icon="i-heroicons-lock-closed" size="sm">
@@ -202,10 +216,28 @@ const {
   showActionButtons,
   canEdit,
   lockReason,
+  currentUserApprovalType,
+  APPROVAL_TYPE_VERIFY,
+  APPROVAL_TYPE_APPROVE,
 } = useEstimateApproval(
   computed(() => form.value.status || 'Draft'),
   computed(() => !editingEstimate.value),
 )
+
+/**
+ * Revise button — mirrors the PO "Revise" pattern.
+ * Approve-level users can revert Approved → Draft.
+ * Verify-level (and above) users can revert Ready → Draft.
+ * Not shown when the user is explicitly in ?mode=view (they'd use Edit first).
+ */
+const showReviseButton = computed(() => {
+  if (!editingEstimate.value || isViewMode.value) return false
+  const s = form.value.status
+  const type = currentUserApprovalType.value
+  if (s === 'Approved') return type >= APPROVAL_TYPE_APPROVE
+  if (s === 'Ready') return type >= APPROVAL_TYPE_VERIFY
+  return false
+})
 
 /**
  * The form is effectively read-only when:
@@ -373,7 +405,9 @@ const saveEstimate = async (afterSave: 'new' | 'close' = 'close', newStatus: 'Dr
       const actionName = newStatus === 'Approved' ? 'approved' : newStatus === 'Ready' ? 'verified' : (editingEstimate.value ? 'updated' : 'created')
       const toast = useToast()
       toast.add({ title: 'Success', description: `Estimate ${actionName} successfully`, color: 'success', icon: 'i-heroicons-check-circle' })
-      await estimatesStore.fetchEstimates(corpUuid)
+      // The store already received and patched the updated row from the PUT/POST response.
+      // Fire a background refresh so the list stays accurate, but don't block navigation on it.
+      estimatesStore.fetchEstimates(corpUuid).catch(() => {})
       if (!editingEstimate.value) estimateCreationStore.clearStore()
 
       if (afterSave === 'new') {
@@ -418,6 +452,44 @@ const saveEstimate = async (afterSave: 'new' | 'close' = 'close', newStatus: 'Dr
 // Handlers — each passes the correct target status from the approval composable
 const handleActionAndClose = () => saveEstimate('close', targetStatus.value)
 const handleActionAndNew = () => saveEstimate('new', targetStatus.value)
+
+/**
+ * Revise — reverts an Approved/Ready estimate back to Draft so it can be edited again.
+ * Mirrors PurchaseOrdersList `handleSaveAsDraft` / `handleRejectToDraft`.
+ * Skips form-validation so the locked form's validity state doesn't block the action.
+ */
+const reviseEstimate = async () => {
+  saving.value = true
+  try {
+    const corpUuid = form.value.corporation_uuid || corporationStore.selectedCorporation?.uuid
+    if (!corpUuid) throw new Error('Corporation is required to revise estimate')
+
+    const payload = {
+      ...form.value,
+      corporation_uuid: corpUuid,
+      estimate_date: toUTCString(form.value.estimate_date) as any,
+      status: 'Draft' as const,
+    }
+
+    const success = await estimatesStore.updateEstimate({ uuid: estimateId.value, ...payload })
+    if (success) {
+      const toast = useToast()
+      toast.add({ title: 'Revise', description: 'Estimate has been reverted to Draft and is now editable.', color: 'info', icon: 'i-heroicons-arrow-uturn-left' })
+      estimatesStore.fetchEstimates(corpUuid).catch(() => {})
+      await loadEstimate()
+    }
+    else {
+      throw new Error('Failed to revise estimate')
+    }
+  }
+  catch (err: any) {
+    const toast = useToast()
+    toast.add({ title: 'Error', description: err.message || 'Failed to revise estimate', color: 'error', icon: 'i-heroicons-x-circle' })
+  }
+  finally {
+    saving.value = false
+  }
+}
 
 // Sync corporation from TopBar if creating new
 watch(() => corporationStore.selectedCorporationId, (id) => {

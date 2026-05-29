@@ -659,7 +659,16 @@ import {
 import { sanitizePrintAuditPersonLabel } from '~/utils/printAuditDisplay'
 import { resolvePrintUomDisplay } from '~/utils/printUomDisplay'
 import { normalizeVendorAddresses, getVendorAddressByType } from '~/utils/vendorAddresses'
+import {
+  getPoFinancialValue,
+  normalizeLocationWiseMaterialItems,
+  resolveFreightDisplayLabel,
+  resolveFreightUuidFromPo,
+  resolveShipViaUuidFromPo,
+  trimDisplayStr,
+} from '~/utils/purchaseOrderPreviewDisplay'
 import { useUOMStore } from '~/stores/uom'
+import { resolveAuthToken, waitForAuthReady } from '~/utils/authToken'
 
 interface Props {
   purchaseOrder?: any
@@ -700,6 +709,21 @@ const masterSpecByTypeAndName = ref<Map<string, string>>(new Map())
 const normalizeText = (value: unknown) => String(value || '').trim().toLowerCase()
 const buildTypeNameKey = (itemTypeUuid: unknown, itemName: unknown) =>
   `${normalizeText(itemTypeUuid)}::${normalizeText(itemName)}`
+
+/** Nimble proxy endpoints require a Bearer token; skip quietly on unauthenticated print tabs. */
+async function fetchNimbleMasterDataIfAuthenticated(
+  fetchFn: () => Promise<void>,
+  label: string,
+): Promise<void> {
+  await waitForAuthReady()
+  if (!resolveAuthToken()) return
+  try {
+    await fetchFn()
+  }
+  catch (e) {
+    console.error(`Failed to load ${label}:`, e)
+  }
+}
 
 const load = async () => {
   error.value = null
@@ -924,13 +948,11 @@ const loadRelatedData = async () => {
 
   const poType = (po.po_type || '').toUpperCase()
   if (poType !== 'LABOR' && po.corporation_uuid) {
-    try {
+    await fetchNimbleMasterDataIfAuthenticated(async () => {
       if (uomStore.uom.length === 0) {
         await uomStore.fetchUOM(po.corporation_uuid)
       }
-    } catch (e) {
-      console.error('Failed to load UOM for print:', e)
-    }
+    }, 'UOM for print')
   }
 
   // Same `location` table as Location Management — force API so UUID → location_name works for every user (not IndexedDB cache).
@@ -950,21 +972,21 @@ const loadRelatedData = async () => {
     console.error('Failed to load approval checks from API for print:', e)
   }
 
-  // Freight / ship-via labels for the summary table: UUID-only rows need a fresh API load when cache is empty (same pattern as PO form).
+  // Freight / ship-via labels for the summary table: UUID-only rows need a fresh API load when cache is empty.
   if (poType !== 'LABOR') {
-    if (po.freight_uuid && !freightStore.getFreightByUuid(String(po.freight_uuid))) {
+    const freightUuid = resolveFreightUuidFromPo(po)
+    if (freightUuid && !freightStore.getFreightByUuid(freightUuid)) {
       try {
-        await freightStore.fetchFreight(true)
+        await freightStore.fetchFreight()
       } catch (e) {
         console.error('Failed to refresh freight for print:', e)
       }
     }
-    if (po.ship_via_uuid && !shipViaStore.getShipViaByUuid(String(po.ship_via_uuid))) {
-      try {
-        await shipViaStore.fetchShipVia(true)
-      } catch (e) {
-        console.error('Failed to refresh ship via for print:', e)
-      }
+    const shipViaUuid = resolveShipViaUuidFromPo(po)
+    if (shipViaUuid && !shipViaStore.getShipViaByUuid(shipViaUuid)) {
+      await fetchNimbleMasterDataIfAuthenticated(async () => {
+        await shipViaStore.fetchShipVia()
+      }, 'ship via for print')
     }
   }
 
@@ -1315,10 +1337,7 @@ const showLocationColumns = computed(() => {
 const showLaborLocationColumn = computed(() => showLocationColumns.value)
 
 const locationWiseMaterialItems = computed(() => {
-  if (!purchaseOrderDetail.value) return []
-  return Array.isArray(purchaseOrderDetail.value.po_location_wise_material_items)
-    ? purchaseOrderDetail.value.po_location_wise_material_items
-    : []
+  return normalizeLocationWiseMaterialItems(purchaseOrderDetail.value)
 })
 
 const hasLocationWiseMaterialItems = computed(() => {
@@ -1355,7 +1374,7 @@ function collectLocationUuidsFromPo(po: any): string[] {
     }
   }
   addFrom(po?.po_items)
-  addFrom(po?.po_location_wise_material_items)
+  addFrom(normalizeLocationWiseMaterialItems(po))
   addFrom(po?.labor_po_items)
   return [...out]
 }
@@ -1448,23 +1467,8 @@ const laborTotal = computed(() => {
 })
 
 // Helper to get value from financial_breakdown or direct field
-const getFinancialValue = (path: string, fallbackPath?: string): number => {
-  const po = purchaseOrderDetail.value
-  if (!po) return 0
-  
-  // Try financial_breakdown first
-  const breakdown = po.financial_breakdown
-  if (breakdown && typeof breakdown === 'object') {
-    const value = path.split('.').reduce((obj: any, key: string) => obj?.[key], breakdown)
-    if (value !== null && value !== undefined) {
-      return parseFloat(value) || 0
-    }
-  }
-  
-  // Fallback to direct field
-  const directValue = fallbackPath ? po[fallbackPath] : po[path]
-  return parseFloat(directValue) || 0
-}
+const getFinancialValue = (path: string, fallbackPath?: string): number =>
+  getPoFinancialValue(purchaseOrderDetail.value, path, fallbackPath)
 
 // Individual charge amounts
 const freightChargesAmount = computed(() => {
@@ -1553,39 +1557,14 @@ const poTotal = computed(() => {
   return calculatedPOTotal.value
 })
 
-function trimDisplayStr(v: unknown): string {
-  if (v === null || v === undefined) return ''
-  const s = String(v).trim()
-  return s
-}
-
 // Freight/Terms/Shipping Instructions/Delivery Date/Currency display
-const freightDisplay = computed(() => {
-  const po = purchaseOrderDetail.value
-  if (!po) return ''
-
-  const freightText = trimDisplayStr(po.freight)
-  if (freightText) return freightText
-
-  if (po.freight_uuid) {
-    const freightRecord = freightStore.getFreightByUuid(String(po.freight_uuid))
-    const via = trimDisplayStr(freightRecord?.ship_via)
-    if (via) return via
-    if (freightRecord?.description) return trimDisplayStr(freightRecord.description)
-  }
-
-  const shipViaText = trimDisplayStr(po.ship_via)
-  if (shipViaText) return shipViaText
-
-  if (po.ship_via_uuid) {
-    const sv = shipViaStore.getShipViaByUuid(String(po.ship_via_uuid))
-    const via = trimDisplayStr(sv?.ship_via)
-    if (via) return via
-    if (sv?.description) return trimDisplayStr(sv.description)
-  }
-
-  return ''
-})
+const freightDisplay = computed(() =>
+  resolveFreightDisplayLabel(
+    purchaseOrderDetail.value,
+    (uuid) => freightStore.getFreightByUuid(uuid),
+    (uuid) => shipViaStore.getShipViaByUuid(uuid),
+  )
+)
 
 const termsDisplay = computed(() => {
   const po = purchaseOrderDetail.value
@@ -1823,13 +1802,11 @@ onMounted(async () => {
       console.error('Failed to load freight data:', e)
     }
   }
-  if (shipViaStore.shipVia.length === 0) {
-    try {
+  await fetchNimbleMasterDataIfAuthenticated(async () => {
+    if (shipViaStore.shipVia.length === 0) {
       await shipViaStore.fetchShipVia()
-    } catch (e) {
-      console.error('Failed to load ship via data:', e)
     }
-  }
+  }, 'ship via data')
   
   // Ensure user profiles are loaded for resolving user names
   if ([].length === 0) {
@@ -1848,13 +1825,11 @@ onMounted(async () => {
     }
   }
 
-  if (corporationStore.corporations.length === 0) {
-    try {
+  await fetchNimbleMasterDataIfAuthenticated(async () => {
+    if (corporationStore.corporations.length === 0) {
       await corporationStore.fetchCorporations()
-    } catch (e) {
-      // Silent failure — fallback to selectedCorporation if available
     }
-  }
+  }, 'corporations')
 
   if (termsAndConditionsStore.termsAndConditions.length === 0) {
     try {

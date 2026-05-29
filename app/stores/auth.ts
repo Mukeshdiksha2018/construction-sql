@@ -28,11 +28,20 @@ export const useAuthStore = defineStore('auth', {
       this.session = session
       this.isInitialized = true
     },
+    syncAuthState(session: NimbleSession | null) {
+      this.session = session
+      this.isInitialized = true
+    },
     clear() {
       this.session = null
       this.isInitialized = false
     },
   },
 
-  persist: true,
+  persist: import.meta.client
+    ? {
+        storage: localStorage,
+        pick: ['session', 'isInitialized'],
+      }
+    : false,
 })

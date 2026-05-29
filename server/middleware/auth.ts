@@ -1,10 +1,11 @@
 import { getRequestURL } from 'h3'
-import { isPublicApiRoute } from '../utils/api-auth-routes'
+import { isPublicApiRoute, requiresAuthForMethod } from '../utils/api-auth-routes'
 import { getSessionFromEvent } from '../utils/auth-session'
 
 /**
- * Protects /api/* routes (except public auth endpoints).
- * Sets event.context.auth when a valid session cookie is present.
+ * Protects mutating /api/* routes (POST/PUT/PATCH/DELETE).
+ * GET requests are allowed through — same pattern as construction-management print preview.
+ * Handlers that need a user token can call requireAuthSession() themselves.
  */
 export default defineEventHandler((event) => {
   const { pathname } = getRequestURL(event)
@@ -14,6 +15,10 @@ export default defineEventHandler((event) => {
   }
 
   const method = event.method || 'GET'
+  if (!requiresAuthForMethod(method)) {
+    return
+  }
+
   if (isPublicApiRoute(pathname, method)) {
     return
   }

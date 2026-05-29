@@ -320,4 +320,73 @@ describe('useEstimateApproval', () => {
       expect(c.showActionButtons.value).toBe(false)
     })
   })
+
+  // ── Revise eligibility (drives the "Revise" button in estimates/form/[id].vue) ─
+
+  describe('revise eligibility – composable values that power the Revise button', () => {
+    beforeEach(() => { mockPrivilegesLoaded.value = true })
+
+    // Approved → Draft (Revise) requires APPROVAL_TYPE_APPROVE (3)
+    it('Approve user: currentUserApprovalType ≥ 3 for Approved estimate', async () => {
+      mockApprovals.value = [makeApproval(3)]
+      const c = await getComposable('Approved')
+      expect(c.currentUserApprovalType.value).toBeGreaterThanOrEqual(c.APPROVAL_TYPE_APPROVE)
+    })
+
+    it('Verify user: currentUserApprovalType < 3 — cannot revise Approved estimate', async () => {
+      mockApprovals.value = [makeApproval(2)]
+      const c = await getComposable('Approved')
+      expect(c.currentUserApprovalType.value).toBeLessThan(c.APPROVAL_TYPE_APPROVE)
+    })
+
+    it('Entry user: currentUserApprovalType < 3 — cannot revise Approved estimate', async () => {
+      mockApprovals.value = [makeApproval(1)]
+      const c = await getComposable('Approved')
+      expect(c.currentUserApprovalType.value).toBeLessThan(c.APPROVAL_TYPE_APPROVE)
+    })
+
+    // Ready → Draft (Revise) requires APPROVAL_TYPE_VERIFY (2) or higher
+    it('Verify user: currentUserApprovalType ≥ 2 for Ready estimate', async () => {
+      mockApprovals.value = [makeApproval(2)]
+      const c = await getComposable('Ready')
+      expect(c.currentUserApprovalType.value).toBeGreaterThanOrEqual(c.APPROVAL_TYPE_VERIFY)
+    })
+
+    it('Approve user: currentUserApprovalType ≥ 2 for Ready estimate', async () => {
+      mockApprovals.value = [makeApproval(3)]
+      const c = await getComposable('Ready')
+      expect(c.currentUserApprovalType.value).toBeGreaterThanOrEqual(c.APPROVAL_TYPE_VERIFY)
+    })
+
+    it('Entry user: currentUserApprovalType < 2 — cannot revise Ready estimate', async () => {
+      mockApprovals.value = [makeApproval(1)]
+      const c = await getComposable('Ready')
+      expect(c.currentUserApprovalType.value).toBeLessThan(c.APPROVAL_TYPE_VERIFY)
+    })
+
+    // After a Revise (Approved/Ready → Draft), canEdit must be true
+    it('canEdit is true on Draft estimate (post-Revise state) for all user types', async () => {
+      for (const type of [1, 2, 3]) {
+        mockApprovals.value = [makeApproval(type)]
+        const c = await getComposable('Draft')
+        expect(c.canEdit.value).toBe(true)
+      }
+    })
+
+    // APPROVAL_TYPE_APPROVE and APPROVAL_TYPE_VERIFY constants must match expected values
+    it('APPROVAL_TYPE_VERIFY is 2 and APPROVAL_TYPE_APPROVE is 3', async () => {
+      const c = await getComposable('Draft')
+      expect(c.APPROVAL_TYPE_VERIFY).toBe(2)
+      expect(c.APPROVAL_TYPE_APPROVE).toBe(3)
+    })
+
+    // lockReason is null on Draft after revise — no stale lock message
+    it('lockReason is null for Draft estimate regardless of user type', async () => {
+      for (const type of [1, 2, 3]) {
+        mockApprovals.value = [makeApproval(type)]
+        const c = await getComposable('Draft')
+        expect(c.lockReason.value).toBeNull()
+      }
+    })
+  })
 })

@@ -1,7 +1,6 @@
 <template>
   <div class="space-y-6">
-    <!-- When Nimble is on and only one tab: hide tab bar, show content only -->
-    <ClientOnly v-if="nimbleIntegrations && visibleTabs.length === 1">
+    <ClientOnly>
       <section>
         <PurchaseOrdersList v-if="activeTab === 'purchase-orders'" />
         <ReceiptNoteList v-else-if="activeTab === 'stock-receipt-note'" />
@@ -16,42 +15,10 @@
         </div>
       </template>
     </ClientOnly>
-    <ClientOnly v-else>
-      <UTabs
-        :items="tabItems"
-        :model-value="activeTab"
-        @update:model-value="handleTabChange"
-        class="w-full"
-        color="primary"
-        size="sm"
-      >
-        <template #content="{ item }">
-          <section v-if="item.value === 'purchase-orders'">
-            <PurchaseOrdersList />
-          </section>
-          <section v-else-if="item.value === 'stock-receipt-note'">
-            <ReceiptNoteList />
-          </section>
-          <section v-else-if="item.value === 'stock-returns'">
-            <StockReturnsList />
-          </section>
-          <p v-else>This is the {{ item.label }} tab.</p>
-        </template>
-      </UTabs>
-      <template #fallback>
-        <div class="flex items-center justify-center h-64">
-          <div class="text-center">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-            <p class="text-gray-600">Loading purchase orders...</p>
-          </div>
-        </div>
-      </template>
-    </ClientOnly>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { TabsItem } from '@nuxt/ui'
 import PurchaseOrdersList from '~/components/purchaseOrders/PurchaseOrdersList.vue'
 import ReceiptNoteList from '~/components/purchaseOrders/ReceiptNoteList.vue'
 import StockReturnsList from '~/components/purchaseOrders/StockReturnsList.vue'
@@ -80,7 +47,7 @@ const {
 const route = useRoute()
 const router = useRouter()
 const config = useRuntimeConfig()
-const nimbleIntegrations = computed(() => !!config.public.nimbleIntegrations)
+const nimbleIntegrations = computed(() => String(config.public.nimbleIntegrations || '').toLowerCase() === 'true')
 const { setFromRoute } = useNimbleContext()
 
 onMounted(() => {
@@ -128,39 +95,15 @@ const visibleTabs = computed(() =>
   )
 )
 
-const tabItems = computed<TabsItem[]>(() =>
-  visibleTabs.value.map(tab => ({
-    label: tab.label,
-    icon: tab.icon,
-    value: tab.value,
-  }))
-)
-
 const activeTab = computed(() => {
-  const visible = visibleTabs.value
-  if (nimbleIntegrations.value && visible.length === 1) return visible[0]!.name
+  const visible = visibleTabs.value.length ? visibleTabs.value : extendedTabs.value
+  if (nimbleIntegrations.value && visible.length > 0) return visible[0]!.name
   const tabFromUrl = route.query.tab as string | undefined
   if (tabFromUrl === 'stock-returns') return tabFromUrl
   const cur = currentTab.value
   const firstVisible = visible[0]
   return visible.some(t => t.name === cur) ? cur : (firstVisible?.name ?? currentTab.value)
 })
-
-const handleTabChange = (tab: string | number) => {
-  const tabString = String(tab)
-  const validTab = visibleTabs.value.find(t => t.value === tabString)
-  if (validTab) {
-    if (validTab.name === 'stock-returns') {
-      router.push({ query: { ...route.query, tab: validTab.name } })
-    } else if (nimbleIntegrations.value && NIMBLE_MENU_IDS_BY_PURCHASE_ORDERS_TAB[validTab.name]) {
-      router.push({
-        query: { ...route.query, tab: validTab.name, menuId: NIMBLE_MENU_IDS_BY_PURCHASE_ORDERS_TAB[validTab.name] },
-      })
-    } else {
-      navigateToTab(validTab.name)
-    }
-  }
-}
 
 function syncTabFromMenuId() {
   if (!nimbleIntegrations.value) return

@@ -59,16 +59,18 @@ const normalizeNumber = (value: any, fallback = 0) => {
 }
 
 const transformEstimateMaterialItemsToPoItems = (flattened: any[], preferredItems: any[] = []) => {
+  // Key by lowercase uuid — CostCodePreferredItem.uuid is always lowercase,
+  // but item_uuid on material items may be mixed case from the frontend.
   const preferredItemsByUuid = new Map()
   preferredItems.forEach(item => {
-    if (item.item_uuid) preferredItemsByUuid.set(item.item_uuid, item)
+    if (item.item_uuid) preferredItemsByUuid.set(String(item.item_uuid).toLowerCase(), item)
   })
 
   return flattened.map((entry: any, index: number) => {
     const unitPrice = normalizeNumber(entry.unit_price, 0)
     const quantity = normalizeNumber(entry.quantity, 0)
 
-    const pref = entry.item_uuid ? preferredItemsByUuid.get(entry.item_uuid) : null
+    const pref = entry.item_uuid ? preferredItemsByUuid.get(String(entry.item_uuid).toLowerCase()) : null
     const unitUuid = entry.uom_uuid || entry.unit_uuid || pref?.uom_uuid || null
     const unitLabel = entry.uom_label || entry.unit_label || entry.unit || pref?.uom_label || null
 
@@ -224,61 +226,75 @@ export const usePurchaseOrderResourcesStore = defineStore('purchaseOrderResource
     return state.estimates
   }
 
-  const fetchEstimateItems = async ({ corporationUuid, projectUuid, estimateUuid, force = false }: EnsureArgs): Promise<{ poItems: any[]; rawItems: any[] }> => {
-    if (!corporationUuid || !estimateUuid) return { poItems: [], rawItems: [] }
+  const fetchEstimateItems = async ({ corporationUuid, projectUuid, estimateUuid, force = false }: EnsureArgs): Promise<any[]> => {
+    if (!corporationUuid || !estimateUuid || !projectUuid) return []
 
-    const state = getOrCreateProjectState(corporationUuid, projectUuid ?? '')
+    const state = getOrCreateProjectState(corporationUuid, projectUuid)
     const key = estimateKey(corporationUuid, projectUuid, estimateUuid)
     const existingState = state.estimateItemsMap[key]
 
     if (existingState && existingState.fetchedAt && !force) {
-      return { poItems: existingState.poItems, rawItems: existingState.rawItems }
+      return existingState.poItems
     }
 
-    if (!state.estimateItemsMap[key]) {
-      state.estimateItemsMap[key] = {
-        key, estimateUuid: estimateUuid ?? '',
-        poItems: [], rawItems: [],
-        loading: false, error: null, fetchedAt: null,
-      }
-    }
-    const itemState = state.estimateItemsMap[key]
-    itemState.loading = true
-    itemState.error = null
+    // Create or reuse the state entry, then set loading=true via replacement to trigger reactivity
+    const workingState: EstimateItemsState = existingState
+      ? { ...existingState, loading: true, error: null }
+      : { key, estimateUuid, poItems: [], rawItems: [], loading: true, error: null, fetchedAt: null }
+    state.estimateItemsMap[key] = workingState
 
     try {
       const [lineItemsResp, preferredItems] = await Promise.all([
-        $fetch<any>('/api/estimate-line-items', { query: { estimate_uuid: estimateUuid } }),
+        $fetch<any>('/api/estimate-line-items', {
+          query: {
+            estimate_uuid: estimateUuid,
+            project_uuid: projectUuid,
+            corporation_uuid: corporationUuid,
+          },
+        }),
         ensurePreferredItems({ corporationUuid, projectUuid }),
       ])
 
-      const lineItems = Array.isArray(lineItemsResp?.data) ? lineItemsResp.data : []
+      // The API returns { data: [...lineItems with embedded material_items...] }
+      // When there are no line items, returns [] directly (no .data wrapper)
+      const lineItems = Array.isArray(lineItemsResp?.data)
+        ? lineItemsResp.data
+        : Array.isArray(lineItemsResp) ? lineItemsResp : []
 
-      // Fetch material items for each line item
+      // Flatten material_items already embedded in each line item response
       const allMaterialItems: any[] = []
-      await Promise.all(lineItems.map(async (lineItem: any) => {
-        try {
-          const resp = await $fetch<any>('/api/estimate-material-items', {
-            query: { estimate_uuid: estimateUuid, cost_code_uuid: lineItem.cost_code_uuid },
+      for (const lineItem of lineItems) {
+        const matItems = Array.isArray(lineItem.material_items) ? lineItem.material_items : []
+        for (const item of matItems) {
+          allMaterialItems.push({
+            ...item,
+            cost_code_uuid: lineItem.cost_code_uuid,
+            cost_code_label: lineItem.cost_code_label ?? '',
+            cost_code_number: lineItem.cost_code_number ?? '',
+            cost_code_name: lineItem.cost_code_name ?? '',
+            division_name: lineItem.division_name ?? '',
           })
-          const items = Array.isArray(resp?.data) ? resp.data : []
-          for (const item of items) {
-            allMaterialItems.push({ ...item, cost_code_uuid: lineItem.cost_code_uuid, cost_code_label: lineItem.cost_code_label, cost_code_number: lineItem.cost_code_number, cost_code_name: lineItem.cost_code_name, division_name: lineItem.division_name })
-          }
-        } catch {}
-      }))
+        }
+      }
 
-      itemState.rawItems = allMaterialItems
-      itemState.poItems = transformEstimateMaterialItemsToPoItems(allMaterialItems, preferredItems)
-      itemState.fetchedAt = Date.now()
+      // Replace entire map entry with spread to guarantee Vue reactivity triggers
+      state.estimateItemsMap[key] = {
+        ...workingState,
+        rawItems: allMaterialItems,
+        poItems: transformEstimateMaterialItemsToPoItems(allMaterialItems, preferredItems),
+        fetchedAt: Date.now(),
+        loading: false,
+      }
     } catch (err: any) {
-      itemState.error = err?.message || 'Failed to load estimate items'
       console.error('[PO Resources] fetchEstimateItems error:', err)
-    } finally {
-      itemState.loading = false
+      state.estimateItemsMap[key] = {
+        ...workingState,
+        error: err?.data?.statusMessage || err?.message || 'Failed to load estimate items',
+        loading: false,
+      }
     }
 
-    return { poItems: itemState.poItems, rawItems: itemState.rawItems }
+    return state.estimateItemsMap[key].poItems
   }
 
   const ensureCostCodeConfigurations = async ({ corporationUuid, projectUuid, force = false }: EnsureArgs): Promise<any[]> => {
@@ -389,7 +405,7 @@ export const usePurchaseOrderResourcesStore = defineStore('purchaseOrderResource
   }
 
   /**
-   * Async: fetch + cache estimate items. Returns { poItems, rawItems }.
+   * Async: fetch + cache estimate items. Returns the poItems array.
    * Called as `ensureEstimateItems` from PurchaseOrderForm event handlers.
    */
   const ensureEstimateItems = fetchEstimateItems
@@ -409,6 +425,10 @@ export const usePurchaseOrderResourcesStore = defineStore('purchaseOrderResource
       ensureItemTypes({ corporationUuid, projectUuid, force }),
       ensureCostCodeConfigurations({ corporationUuid, projectUuid, force }),
       ensurePreferredItems({ corporationUuid, projectUuid, force }),
+      // Always fetch estimates for the project so latestProjectEstimate resolves
+      projectUuid
+        ? ensureEstimates({ corporationUuid, projectUuid, force })
+        : Promise.resolve(),
       estimateUuid
         ? fetchEstimateItems({ corporationUuid, projectUuid, estimateUuid, force })
         : Promise.resolve(),

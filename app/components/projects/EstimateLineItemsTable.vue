@@ -5240,10 +5240,17 @@ const emitLineItemsUpdate = () => {
       }
     }
     
-    // Emit if there's a value, or if location-wise labor has rows (to ensure breakup is saved)
-    const hasLocationWiseLabor = Array.isArray(costCode.location_wise_labor) && costCode.location_wise_labor.length > 0
-    const hasLocationWiseMaterial = Array.isArray(costCode.location_wise_material) && costCode.location_wise_material.length > 0
-    if (laborAmount > 0 || materialAmount > 0 || calculatedTotal > 0 || hasLocationWiseLabor || hasLocationWiseMaterial) {
+    // Emit if there's a value, or if location-wise labor / material items have non-zero rows
+    const nonZeroLaborRows = (costCode.location_wise_labor ?? []).filter((r: any) => (parseFloat(String(r.amount)) || 0) > 0)
+    const nonZeroMaterialRows = (costCode.location_wise_material ?? []).filter((r: any) => (parseFloat(String(r.amount)) || 0) > 0)
+    const nonZeroMaterialItems = (costCode.material_items ?? []).filter((item: any) => {
+      const effectiveTotal = parseFloat(String(item.total ?? item.total_amount)) || (parseFloat(String(item.unit_price || 0)) * parseFloat(String(item.quantity || 0)))
+      return effectiveTotal > 0
+    })
+    const hasLocationWiseLabor = nonZeroLaborRows.length > 0
+    const hasLocationWiseMaterial = nonZeroMaterialRows.length > 0
+    const hasMaterialItems = nonZeroMaterialItems.length > 0
+    if (laborAmount > 0 || materialAmount > 0 || calculatedTotal > 0 || hasLocationWiseLabor || hasLocationWiseMaterial || hasMaterialItems) {
       lineItems.push({
         cost_code_uuid: costCode.uuid,
         cost_code_number: costCode.cost_code_number,
@@ -5260,9 +5267,9 @@ const emitLineItemsUpdate = () => {
         labor_sq_ft_count: costCode.labor_sq_ft_count || (currentProject.value?.area_sq_ft || 0),
         labor_number_of_hours: costCode.labor_number_of_hours ?? 0,
         labor_hourly_wage: costCode.labor_hourly_wage ?? 0,
-        location_wise_labor: costCode.location_wise_labor ?? [],
-        location_wise_material: costCode.location_wise_material ?? [],
-        material_items: costCode.material_items || [],
+        location_wise_labor: nonZeroLaborRows,
+        location_wise_material: nonZeroMaterialRows,
+        material_items: nonZeroMaterialItems,
         metadata: {
           ...(costCode.metadata || {}),
           contingency_enabled: costCode.contingency_enabled === true,
@@ -5291,9 +5298,16 @@ const emitLineItemsUpdate = () => {
               const calculatedTotal = showOnlyTotal.value
                 ? (parseFloat(subSubCostCode.total_amount) || 0)
                 : (laborAmount + materialAmount)
-              const hasSubSubLocationWise = Array.isArray(subSubCostCode.location_wise_labor) && subSubCostCode.location_wise_labor.length > 0
-              const hasSubSubLocationWiseMaterial = Array.isArray(subSubCostCode.location_wise_material) && subSubCostCode.location_wise_material.length > 0
-              if (laborAmount > 0 || materialAmount > 0 || calculatedTotal > 0 || hasSubSubLocationWise || hasSubSubLocationWiseMaterial) {
+              const nonZeroSubSubLaborRows = (subSubCostCode.location_wise_labor ?? []).filter((r: any) => (parseFloat(String(r.amount)) || 0) > 0)
+              const nonZeroSubSubMaterialRows = (subSubCostCode.location_wise_material ?? []).filter((r: any) => (parseFloat(String(r.amount)) || 0) > 0)
+              const nonZeroSubSubMaterialItems = (subSubCostCode.material_items ?? []).filter((item: any) => {
+                const effectiveTotal = parseFloat(String(item.total ?? item.total_amount)) || (parseFloat(String(item.unit_price || 0)) * parseFloat(String(item.quantity || 0)))
+                return effectiveTotal > 0
+              })
+              const hasSubSubLocationWise = nonZeroSubSubLaborRows.length > 0
+              const hasSubSubLocationWiseMaterial = nonZeroSubSubMaterialRows.length > 0
+              const hasSubSubMaterialItems = nonZeroSubSubMaterialItems.length > 0
+              if (laborAmount > 0 || materialAmount > 0 || calculatedTotal > 0 || hasSubSubLocationWise || hasSubSubLocationWiseMaterial || hasSubSubMaterialItems) {
                 lineItems.push({
                   cost_code_uuid: subSubCostCode.uuid,
                   cost_code_number: subSubCostCode.cost_code_number,
@@ -5310,9 +5324,9 @@ const emitLineItemsUpdate = () => {
                   labor_sq_ft_count: subSubCostCode.labor_sq_ft_count || (currentProject.value?.area_sq_ft || 0),
                   labor_number_of_hours: subSubCostCode.labor_number_of_hours ?? 0,
                   labor_hourly_wage: subSubCostCode.labor_hourly_wage ?? 0,
-                  location_wise_labor: subSubCostCode.location_wise_labor ?? [],
-                  location_wise_material: subSubCostCode.location_wise_material ?? [],
-                  material_items: subSubCostCode.material_items || [],
+                  location_wise_labor: nonZeroSubSubLaborRows,
+                  location_wise_material: nonZeroSubSubMaterialRows,
+                  material_items: nonZeroSubSubMaterialItems,
                   metadata: {
                     ...(subSubCostCode.metadata || {}),
                     contingency_enabled: subSubCostCode.contingency_enabled === true,
@@ -5825,12 +5839,62 @@ watch(() => materialEstimateType.value, (newType) => {
   }
 })
 
-// Watch for changes to materialItems and sync to selectedCostCode.material_items
+// Watch for changes to materialItems and sync to selectedCostCode.material_items.
+// Also update the hierarchy node directly (guards against detached selectedCostCode references)
+// and emit so the parent form.line_items stays in sync without requiring an explicit Apply click.
 watch(() => materialItems.value, (newItems) => {
-  if (selectedCostCode.value && materialEstimateType.value === 'item-wise') {
-    const normalizedItems = newItems.map((item) => normalizeMaterialItem(item))
-    selectedCostCode.value.material_items = normalizedItems
+  if (!selectedCostCode.value || materialEstimateType.value !== 'item-wise') return
+  const normalizedItems = newItems.map((item) => normalizeMaterialItem(item))
+  // Always update the live copy
+  selectedCostCode.value.material_items = normalizedItems
+  // Also update the hierarchy node by UUID so detached copies don't silently lose data
+  const targetUuid = selectedCostCode.value.uuid
+  for (const division of hierarchicalDataRef.value) {
+    for (const cc of division.costCodes) {
+      if (cc.uuid === targetUuid) { cc.material_items = normalizedItems; break }
+      for (const sub of (cc.subCostCodes || [])) {
+        if (sub.uuid === targetUuid) { sub.material_items = normalizedItems; break }
+        for (const subsub of (sub.subSubCostCodes || [])) {
+          if (subsub.uuid === targetUuid) { subsub.material_items = normalizedItems; break }
+        }
+      }
+    }
   }
+  emitLineItemsUpdate()
+}, { deep: true })
+
+// Watch for changes to location-wise labor rows and sync to hierarchy so the parent form stays
+// in sync without requiring an explicit Apply click.
+watch(() => laborLocationWiseRows.value, (newRows) => {
+  if (!selectedCostCode.value || !isLocationWiseProject.value) return
+  const targetUuid = selectedCostCode.value.uuid
+  const mappedRows = newRows.map((r) => ({
+    breakdown_uuid: r.breakdown_uuid,
+    location_uuid: r.location_uuid,
+    area_sq_ft: parseFloat(String(r.area_sq_ft)) || 0,
+    no_of_rooms: parseFloat(String(r.no_of_rooms)) || 0,
+    num_hours: parseFloat(String(r.num_hours)) || 0,
+    amount_per_sqft: parseFloat(String(r.amount_per_sqft)) || 0,
+    amount_per_room: parseFloat(String(r.amount_per_room)) || 0,
+    hourly_wage: parseFloat(String(r.hourly_wage)) || 0,
+    manual_amount: parseFloat(String(r.manual_amount)) || 0,
+    amount: getLocationWiseRowAmount(r)
+  }))
+  // Update live copy
+  selectedCostCode.value.location_wise_labor = mappedRows
+  // Update hierarchy node by UUID
+  for (const division of hierarchicalDataRef.value) {
+    for (const cc of division.costCodes) {
+      if (cc.uuid === targetUuid) { cc.location_wise_labor = mappedRows; break }
+      for (const sub of (cc.subCostCodes || [])) {
+        if (sub.uuid === targetUuid) { sub.location_wise_labor = mappedRows; break }
+        for (const subsub of (sub.subSubCostCodes || [])) {
+          if (subsub.uuid === targetUuid) { subsub.location_wise_labor = mappedRows; break }
+        }
+      }
+    }
+  }
+  emitLineItemsUpdate()
 }, { deep: true })
 
 // Watch for active tab changes: enforce material type when switching to material tab, and load preferred items

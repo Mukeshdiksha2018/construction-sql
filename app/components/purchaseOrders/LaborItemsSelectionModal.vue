@@ -134,7 +134,6 @@ const getItemId = (item: LaborItem, index: number): string => {
 
 // Select items when modal opens
 watch(() => props.open, (newValue) => {
-  console.log('[LaborItemsModal] Modal open changed:', newValue, 'Items count:', props.items.length);
   if (newValue && props.items.length > 0) {
     // If preselectedItems are provided, use those; otherwise select all
     if (props.preselectedItems && props.preselectedItems.length > 0) {
@@ -159,20 +158,11 @@ watch(() => props.open, (newValue) => {
     } else {
       // Select all items by default
       const itemIds = props.items.map((item, index) => getItemId(item, index));
-      console.log('[LaborItemsModal] Selecting all items:', itemIds);
       selectedItems.value = new Set(itemIds);
     }
   }
 }, { immediate: true })
 
-// Watch items prop changes
-watch(() => props.items, (newItems) => {
-  console.log('[LaborItemsModal] Items changed:', newItems.length, 'items');
-  if (newItems.length > 0 && newItems[0]) {
-    console.log('[LaborItemsModal] First item:', newItems[0]);
-    console.log('[LaborItemsModal] First item keys:', Object.keys(newItems[0]));
-  }
-}, { immediate: true, deep: true })
 
 const selectedLineItemsCount = computed(() => {
   return props.items.reduce((count, item, index) => {
@@ -251,7 +241,6 @@ const handleConfirm = () => {
   const selected = props.items.filter((item, index) => 
     selectedItems.value.has(getItemId(item, index))
   )
-  console.log('[LaborItemsModal] Confirming selection:', selected.length, 'items');
   emit('confirm', selected)
   isOpen.value = false
 }

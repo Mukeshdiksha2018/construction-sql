@@ -99,6 +99,63 @@ describe('usePurchaseOrderResourcesStore', () => {
       const store = await getStore()
       expect(store.getEstimatesByProject(undefined, undefined)).toEqual([])
     })
+
+    // ── Root-cause regression: estimates must be stored under corp::project key ──
+
+    it('returns estimates after ensureEstimates is called WITH projectUuid', async () => {
+      mockFetch.mockResolvedValue({ data: [{ uuid: 'est-abc', estimate_number: 'E-001' }] })
+      const store = await getStore()
+
+      await store.ensureEstimates({ corporationUuid: 'corp-1', projectUuid: 'proj-1' })
+
+      const result = store.getEstimatesByProject('corp-1', 'proj-1')
+      expect(result).toHaveLength(1)
+      expect(result[0].uuid).toBe('est-abc')
+    })
+
+    it('returns empty when ensureEstimates was called WITHOUT projectUuid (old bug reproduction)', async () => {
+      // Old bug: ensureEstimates called without projectUuid stores under key corp::
+      // getEstimatesByProject looks under corp::proj-1 → never finds them
+      mockFetch.mockResolvedValue({ data: [{ uuid: 'est-abc' }] })
+      const store = await getStore()
+
+      // Intentionally omit projectUuid (simulates the old broken call sites)
+      await store.ensureEstimates({ corporationUuid: 'corp-1' })
+
+      // Under the project-scoped key the estimates should NOT be visible
+      expect(store.getEstimatesByProject('corp-1', 'proj-1')).toEqual([])
+      // But they ARE visible under the unscoped key (no project)
+      expect(store.getEstimatesByProject('corp-1', undefined)).toHaveLength(1)
+    })
+
+    it('does not bleed estimates across different projects', async () => {
+      mockFetch
+        .mockResolvedValueOnce({ data: [{ uuid: 'est-p1', estimate_number: 'E-P1' }] })
+        .mockResolvedValueOnce({ data: [{ uuid: 'est-p2', estimate_number: 'E-P2' }] })
+      const store = await getStore()
+
+      await store.ensureEstimates({ corporationUuid: 'corp-1', projectUuid: 'proj-1' })
+      await store.ensureEstimates({ corporationUuid: 'corp-1', projectUuid: 'proj-2' })
+
+      expect(store.getEstimatesByProject('corp-1', 'proj-1')[0].uuid).toBe('est-p1')
+      expect(store.getEstimatesByProject('corp-1', 'proj-2')[0].uuid).toBe('est-p2')
+      // No cross-contamination
+      expect(store.getEstimatesByProject('corp-1', 'proj-1')).toHaveLength(1)
+      expect(store.getEstimatesByProject('corp-1', 'proj-2')).toHaveLength(1)
+    })
+
+    it('does not bleed estimates across different corporations', async () => {
+      mockFetch
+        .mockResolvedValueOnce({ data: [{ uuid: 'est-c1' }] })
+        .mockResolvedValueOnce({ data: [{ uuid: 'est-c2' }] })
+      const store = await getStore()
+
+      await store.ensureEstimates({ corporationUuid: 'corp-1', projectUuid: 'proj-1' })
+      await store.ensureEstimates({ corporationUuid: 'corp-2', projectUuid: 'proj-1' })
+
+      expect(store.getEstimatesByProject('corp-1', 'proj-1')[0].uuid).toBe('est-c1')
+      expect(store.getEstimatesByProject('corp-2', 'proj-1')[0].uuid).toBe('est-c2')
+    })
   })
 
   // ── Async actions ──────────────────────────────────────────────────────────
@@ -209,14 +266,92 @@ describe('usePurchaseOrderResourcesStore', () => {
       await store.ensureProjectResources({ corporationUuid: '' })
       expect(mockFetch).not.toHaveBeenCalled()
     })
+
+    // ── Regression: ensureProjectResources must also fetch estimates ──────────
+
+    it('fetches /api/estimates as part of the resource batch when projectUuid is given', async () => {
+      mockFetch.mockResolvedValue({ data: [] })
+      const store = await getStore()
+
+      await store.ensureProjectResources({ corporationUuid: 'corp-1', projectUuid: 'proj-1' })
+
+      const urls = mockFetch.mock.calls.map((c: any[]) => c[0] as string)
+      expect(urls).toContain('/api/estimates')
+    })
+
+    it('passes projectUuid to /api/estimates so results land in the project-scoped cache slot', async () => {
+      mockFetch.mockImplementation((url: string, opts: any) => {
+        if (url === '/api/estimates') {
+          return Promise.resolve({ data: [{ uuid: 'est-from-resources', estimate_number: 'E-001' }] })
+        }
+        return Promise.resolve({ data: [] })
+      })
+      const store = await getStore()
+
+      await store.ensureProjectResources({ corporationUuid: 'corp-1', projectUuid: 'proj-1' })
+
+      // Verify the estimates API was called with the project UUID
+      const estimatesCall = mockFetch.mock.calls.find((c: any[]) => c[0] === '/api/estimates')
+      expect(estimatesCall).toBeDefined()
+      expect(estimatesCall![1]?.query?.project_uuid).toBe('proj-1')
+
+      // Verify the estimates are retrievable via getEstimatesByProject after the call
+      const cached = store.getEstimatesByProject('corp-1', 'proj-1')
+      expect(cached).toHaveLength(1)
+      expect(cached[0].uuid).toBe('est-from-resources')
+    })
+
+    it('skips /api/estimates when no projectUuid is provided', async () => {
+      mockFetch.mockResolvedValue({ data: [] })
+      const store = await getStore()
+
+      await store.ensureProjectResources({ corporationUuid: 'corp-1' })
+
+      const urls = mockFetch.mock.calls.map((c: any[]) => c[0] as string)
+      // Should NOT call estimates endpoint without a project scope
+      expect(urls).not.toContain('/api/estimates')
+    })
+
+    it('full round-trip: after ensureProjectResources, getEstimatesByProject returns project estimates', async () => {
+      const fakeEstimates = [
+        { uuid: 'est-001', estimate_number: 'E-001', status: 'Approved', estimate_date: '2026-01-15' },
+        { uuid: 'est-002', estimate_number: 'E-002', status: 'Draft',    estimate_date: '2026-02-20' },
+      ]
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/estimates') return Promise.resolve({ data: fakeEstimates })
+        return Promise.resolve({ data: [] })
+      })
+      const store = await getStore()
+
+      await store.ensureProjectResources({ corporationUuid: 'corp-1', projectUuid: 'proj-1' })
+
+      const estimates = store.getEstimatesByProject('corp-1', 'proj-1')
+      expect(estimates).toHaveLength(2)
+      expect(estimates.map((e: any) => e.uuid)).toEqual(expect.arrayContaining(['est-001', 'est-002']))
+    })
   })
 
   describe('ensureEstimateItems (async)', () => {
-    it('fetches estimate line items and material items', async () => {
-      mockFetch
-        .mockResolvedValueOnce({ data: [{ uuid: 'pref-1' }] }) // preferred items (cost-code-configurations)
-        .mockResolvedValueOnce({ data: [{ uuid: 'li-1', cost_code_uuid: 'cc-1' }] }) // line items
-        .mockResolvedValueOnce({ data: [{ uuid: 'mat-1', item_name: 'Steel Beam' }] }) // material items
+    it('calls /api/estimate-line-items with all three required params', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        // preferred items (cost-code-configurations/project-filtered)
+        if (url.includes('cost-code-configurations')) return Promise.resolve({ data: [] })
+        // line items — material_items already embedded in response
+        if (url === '/api/estimate-line-items') {
+          return Promise.resolve({
+            data: [{
+              uuid: 'li-1',
+              cost_code_uuid: 'cc-1',
+              cost_code_label: 'Concrete',
+              cost_code_number: '03000',
+              cost_code_name: 'Concrete',
+              division_name: 'Division 3',
+              material_items: [{ uuid: 'mat-1', item_uuid: 'item-1', item_name: 'Steel Beam', unit_price: '100', quantity: '2' }],
+            }],
+          })
+        }
+        return Promise.resolve({ data: [] })
+      })
 
       const store = await getStore()
       const result = await store.ensureEstimateItems({
@@ -225,15 +360,135 @@ describe('usePurchaseOrderResourcesStore', () => {
         estimateUuid: 'est-1',
       })
 
-      expect(result).toHaveProperty('poItems')
-      expect(result).toHaveProperty('rawItems')
+      // Verify the API was called with all required query params
+      const lineItemsCall = mockFetch.mock.calls.find((c: any[]) => c[0] === '/api/estimate-line-items')
+      expect(lineItemsCall).toBeDefined()
+      expect(lineItemsCall![1]?.query).toMatchObject({
+        estimate_uuid: 'est-1',
+        project_uuid: 'proj-1',
+        corporation_uuid: 'corp-1',
+      })
+
+      // ensureEstimateItems now returns the poItems array directly
+      expect(Array.isArray(result)).toBe(true)
+      expect(result).toHaveLength(1)
+      // The poItems are transformed from rawItems; verify the cost_code_uuid is carried over
+      expect(result[0].cost_code_uuid).toBe('cc-1')
     })
 
-    it('returns empty arrays for missing inputs', async () => {
+    it('does NOT make separate /api/estimate-material-items calls (uses embedded material_items)', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('cost-code-configurations')) return Promise.resolve({ data: [] })
+        if (url === '/api/estimate-line-items') {
+          return Promise.resolve({
+            data: [{ uuid: 'li-1', cost_code_uuid: 'cc-1', material_items: [] }],
+          })
+        }
+        return Promise.resolve({ data: [] })
+      })
+
+      const store = await getStore()
+      await store.ensureEstimateItems({ corporationUuid: 'corp-1', projectUuid: 'proj-1', estimateUuid: 'est-1' })
+
+      const urls = mockFetch.mock.calls.map((c: any[]) => c[0] as string)
+      expect(urls).not.toContain('/api/estimate-material-items')
+    })
+
+    it('flattens material_items from multiple line items, tagging each with cost_code info', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('cost-code-configurations')) return Promise.resolve({ data: [] })
+        if (url === '/api/estimate-line-items') {
+          return Promise.resolve({
+            data: [
+              { uuid: 'li-1', cost_code_uuid: 'cc-1', cost_code_number: '03000', material_items: [
+                { uuid: 'mat-1', item_uuid: 'i1', item_name: 'Beam', unit_price: '100', quantity: '1' },
+              ]},
+              { uuid: 'li-2', cost_code_uuid: 'cc-2', cost_code_number: '04000', material_items: [
+                { uuid: 'mat-2', item_uuid: 'i2', item_name: 'Block', unit_price: '50',  quantity: '3' },
+                { uuid: 'mat-3', item_uuid: 'i3', item_name: 'Mortar', unit_price: '10', quantity: '5' },
+              ]},
+            ],
+          })
+        }
+        return Promise.resolve({ data: [] })
+      })
+
+      const store = await getStore()
+      const result = await store.ensureEstimateItems({ corporationUuid: 'corp-1', projectUuid: 'proj-1', estimateUuid: 'est-1' })
+
+      // Returns poItems array directly; cost_code_uuid is carried through transform
+      expect(result).toHaveLength(3)
+      expect(result[0].cost_code_uuid).toBe('cc-1')
+      expect(result[1].cost_code_uuid).toBe('cc-2')
+      expect(result[2].cost_code_uuid).toBe('cc-2')
+    })
+
+    it('returns empty array for missing inputs', async () => {
       const store = await getStore()
       const result = await store.ensureEstimateItems({ corporationUuid: '', estimateUuid: '' })
-      expect(result.poItems).toEqual([])
-      expect(result.rawItems).toEqual([])
+      // Returns empty array directly (no poItems/rawItems wrapper)
+      expect(Array.isArray(result)).toBe(true)
+      expect(result).toEqual([])
+    })
+
+    it('caches result so second call with same key skips the API', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('cost-code-configurations')) return Promise.resolve({ data: [] })
+        if (url === '/api/estimate-line-items') return Promise.resolve({ data: [{ uuid: 'li-1', cost_code_uuid: 'cc-1', material_items: [] }] })
+        return Promise.resolve({ data: [] })
+      })
+      const store = await getStore()
+      const args = { corporationUuid: 'corp-1', projectUuid: 'proj-1', estimateUuid: 'est-1' }
+
+      await store.ensureEstimateItems(args)
+      const callCount = mockFetch.mock.calls.length
+      await store.ensureEstimateItems(args) // second call — should use cache
+
+      expect(mockFetch.mock.calls.length).toBe(callCount) // no new calls
+    })
+
+    it('re-fetches when force=true', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('cost-code-configurations')) return Promise.resolve({ data: [] })
+        if (url === '/api/estimate-line-items') return Promise.resolve({ data: [] })
+        return Promise.resolve({ data: [] })
+      })
+      const store = await getStore()
+      const args = { corporationUuid: 'corp-1', projectUuid: 'proj-1', estimateUuid: 'est-1' }
+
+      await store.ensureEstimateItems(args)
+      const firstCount = mockFetch.mock.calls.length
+      await store.ensureEstimateItems({ ...args, force: true })
+
+      expect(mockFetch.mock.calls.length).toBeGreaterThan(firstCount)
+    })
+
+    // ── Timing regression: after ensureEstimates resolves, calling ensureEstimateItems ──
+    // ── directly (as the dedicated watcher does) should populate getEstimateItems cache ──
+
+    it('getEstimateItems returns items after ensureEstimateItems is called (watcher timing fix)', async () => {
+      const matItem = { uuid: 'mat-1', item_uuid: 'item-1', item_name: 'Brick', unit_price: '50', quantity: '10' }
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('cost-code-configurations')) return Promise.resolve({ data: [] })
+        if (url === '/api/estimate-line-items') {
+          return Promise.resolve({
+            data: [{ uuid: 'li-1', cost_code_uuid: 'cc-1', cost_code_number: '03000', material_items: [matItem] }],
+          })
+        }
+        return Promise.resolve({ data: [] })
+      })
+      const store = await getStore()
+
+      // Simulate the timing: items are empty before the fetch
+      expect(store.getEstimateItems('corp-1', 'proj-1', 'est-1')).toEqual([])
+
+      // The dedicated watcher calls ensureEstimateItems when effectiveEstimateUuid resolves
+      await store.ensureEstimateItems({ corporationUuid: 'corp-1', projectUuid: 'proj-1', estimateUuid: 'est-1' })
+
+      // Now getEstimateItems should return the cached items
+      const cached = store.getEstimateItems('corp-1', 'proj-1', 'est-1')
+      expect(cached).toHaveLength(1)
+      expect(cached[0].cost_code_uuid).toBe('cc-1')
     })
   })
 })

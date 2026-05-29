@@ -1045,15 +1045,6 @@ const props = withDefaults(defineProps<{
   estimateItems: () => [],
 })
 
-// Debug log - fires immediately when component is created
-console.log('[POItemsTableWithEstimates] Component created with props:', {
-  hasScopedCostCodeConfigurations: !!props.scopedCostCodeConfigurations,
-  scopedCostCodeConfigurationsCount: props.scopedCostCodeConfigurations?.length || 0,
-  sampleConfigs: props.scopedCostCodeConfigurations?.slice(0, 2).map((c: any) => ({
-    uuid: c?.uuid,
-    cost_code_number: c?.cost_code_number,
-  })),
-});
 
 const hasItems = computed(() => Array.isArray(props.items) && props.items.length > 0)
 const corporationUuid = computed(() => props.corporationUuid)
@@ -1064,10 +1055,6 @@ const itemColumnWidthClass = computed(() => props.itemColumnWidthClass || 'w-1/1
 
 // Computed properties for scoped data to pass to child components
 const scopedCostCodeConfigurations = computed(() => {
-  console.log('[POItemsTableWithEstimates] scopedCostCodeConfigurations computed:', {
-    hasValue: !!props.scopedCostCodeConfigurations,
-    count: props.scopedCostCodeConfigurations?.length || 0,
-  });
   return props.scopedCostCodeConfigurations || [];
 });
 
@@ -1090,21 +1077,6 @@ const scopedLocationsWithSelected = computed(() => {
   return base;
 });
 
-// Debug log for scoped cost code configurations
-watch(
-  () => props.scopedCostCodeConfigurations,
-  (newValue) => {
-    console.log('[POItemsTableWithEstimates] scopedCostCodeConfigurations watcher fired:', {
-      hasValue: !!newValue,
-      count: newValue?.length || 0,
-      sample: newValue?.slice(0, 2).map((c: any) => ({
-        uuid: c?.uuid,
-        cost_code_number: c?.cost_code_number,
-      })),
-    });
-  },
-  { immediate: true }
-)
 
 // When showing invoice values, PO fields (cost code, item type, sequence, item name, description) should be readonly
 const arePOFieldsDisabled = computed(() => props.readonly || showInvoiceValues.value)
