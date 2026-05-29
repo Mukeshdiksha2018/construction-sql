@@ -27,6 +27,28 @@ function toNum(val: unknown): number | null {
   return isNaN(n) ? null : n
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function looksLikeUuid(value: unknown): boolean {
+  return typeof value === 'string' && UUID_REGEX.test(value.trim())
+}
+
+/** PO form stores the master-record UUID in `terms_and_conditions` (no separate uuid column). */
+function normalizePrintBooleanFlag(value: unknown): boolean | null {
+  if (value === null || value === undefined) return null
+  return Boolean(value)
+}
+
+function resolveTermsAndConditionsForStorage(input: any): string | null {
+  const fromUuid = input?.terms_and_conditions_uuid
+  if (fromUuid !== null && fromUuid !== undefined && String(fromUuid).trim() !== '') {
+    return String(fromUuid).trim()
+  }
+  const legacy = input?.terms_and_conditions
+  if (legacy === null || legacy === undefined || String(legacy).trim() === '') return null
+  return String(legacy).trim()
+}
+
 // ─── Row Mappers ──────────────────────────────────────────────────────────────
 
 function mapPORow(row: any): any {
@@ -53,6 +75,9 @@ function mapPORow(row: any): any {
     include_items: row.include_items ?? null,
     quote_reference: row.quote_reference ?? null,
     terms_and_conditions: row.terms_and_conditions ?? null,
+    terms_and_conditions_uuid: looksLikeUuid(row.terms_and_conditions)
+      ? String(row.terms_and_conditions).trim()
+      : null,
     item_total: toNum(row.item_total),
     charges_total: toNum(row.charges_total),
     tax_total: toNum(row.tax_total),
@@ -106,6 +131,13 @@ function mapPORow(row: any): any {
 }
 
 function mapPOItem(row: any): any {
+  const meta = parseJson(row.metadata, {})
+  const itemSequence =
+    meta?.item_sequence ?? meta?.sequence ?? null
+  const unitLabel = String(
+    row.unit_label ?? meta?.unit_label ?? meta?.uom_label ?? meta?.uom ?? meta?.unit ?? '',
+  ).trim()
+  const unitUuid = row.unit_uuid ?? meta?.unit_uuid ?? meta?.uom_uuid ?? null
   return {
     id: String(row.id),
     uuid: row.uuid,
@@ -131,9 +163,14 @@ function mapPOItem(row: any): any {
     location_uuid: row.location_uuid ?? null,
     location_label: row.location_label ?? '',
     location: row.location_label ?? '',
-    unit_uuid: row.unit_uuid ?? null,
-    unit_label: row.unit_label ?? '',
-    unit: row.unit_label ?? '',
+    unit_uuid: unitUuid,
+    uom_uuid: unitUuid,
+    unit_label: unitLabel,
+    uom_label: unitLabel,
+    unit: unitLabel,
+    uom: unitLabel,
+    item_sequence: itemSequence,
+    sequence: itemSequence,
     quantity: toNum(row.quantity),
     unit_price: toNum(row.unit_price),
     po_quantity: toNum(row.po_quantity),
@@ -143,7 +180,7 @@ function mapPOItem(row: any): any {
     approval_checks_uuids: parseJson(row.approval_checks_uuids, []),
     approval_checks: parseJson(row.approval_checks_uuids, []),
     configuration_name: row.configuration_name ?? null,
-    metadata: parseJson(row.metadata, {}),
+    metadata: meta,
     is_active: row.is_active,
   }
 }
@@ -455,7 +492,7 @@ export async function createPurchaseOrder(input: any) {
     estimated_delivery_date: parseDate(input.estimated_delivery_date),
     include_items: input.include_items ?? null,
     quote_reference: input.quote_reference ?? null,
-    terms_and_conditions: input.terms_and_conditions ?? null,
+    terms_and_conditions: resolveTermsAndConditionsForStorage(input),
     item_total: toNum(input.item_total),
     charges_total: toNum(input.charges_total),
     tax_total: toNum(input.tax_total),
@@ -471,8 +508,8 @@ export async function createPurchaseOrder(input: any) {
     prepared_by: input.prepared_by ?? null,
     approved_by: input.approved_by ?? null,
     approved_at: parseDate(input.approved_at),
-    print_include_approved_by_vendor: input.print_include_approved_by_vendor ?? null,
-    print_use_entity_name: input.print_use_entity_name ?? null,
+    print_include_approved_by_vendor: normalizePrintBooleanFlag(input.print_include_approved_by_vendor),
+    print_use_entity_name: normalizePrintBooleanFlag(input.print_use_entity_name),
     special_instruction_uuid: input.special_instruction_uuid ?? null,
     is_active: true,
   }
@@ -488,13 +525,19 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
   const updateData: any = {}
   const fields = [
     'po_number', 'credit_days', 'credit_days_id',
-    'shipping_instructions', 'include_items', 'quote_reference', 'terms_and_conditions',
+    'shipping_instructions', 'include_items', 'quote_reference',
     'vendor_uuid', 'billing_address_uuid', 'shipping_address_uuid', 'status',
     'prepared_by', 'approved_by', 'print_include_approved_by_vendor',
     'print_use_entity_name', 'special_instruction_uuid', 'project_uuid',
   ]
   for (const f of fields) {
-    if (f in input) updateData[f] = input[f] ?? null
+    if (!(f in input)) continue
+    if (f === 'print_include_approved_by_vendor' || f === 'print_use_entity_name') {
+      updateData[f] = normalizePrintBooleanFlag(input[f])
+    }
+    else {
+      updateData[f] = input[f] ?? null
+    }
   }
   // Prefer UUID over display name — store the master-table UUID so the client
   // can always resolve it to a name via the ship-via / freight master tables.
@@ -503,6 +546,9 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
   }
   if ('freight_uuid' in input || 'freight' in input) {
     updateData.freight = input.freight_uuid || input.freight || null
+  }
+  if ('terms_and_conditions_uuid' in input || 'terms_and_conditions' in input) {
+    updateData.terms_and_conditions = resolveTermsAndConditionsForStorage(input)
   }
   const numericFields = ['item_total', 'charges_total', 'tax_total', 'total_po_amount']
   for (const f of numericFields) {
@@ -551,9 +597,52 @@ export async function replacePurchaseOrderItems(
 
   const rows = items.map((item, index) => {
     const meta = { ...(item?.metadata || {}) }
+    const display =
+      item?.display_metadata && typeof item.display_metadata === 'object'
+        ? item.display_metadata
+        : {}
     if ('preferred_vendor_uuid' in (item || {})) {
       const v = item.preferred_vendor_uuid
       meta.preferred_vendor_uuid = v === null || v === undefined || String(v).trim() === '' ? null : String(v).trim()
+    }
+    const unitLabel = String(
+      item?.uom_label ??
+        item?.unit_label ??
+        meta?.unit_label ??
+        meta?.uom_label ??
+        display?.unit_label ??
+        display?.uom ??
+        '',
+    ).trim()
+    if (unitLabel) {
+      meta.unit_label = unitLabel
+      meta.uom_label = unitLabel
+      meta.uom = unitLabel
+      meta.unit = unitLabel
+    }
+    const unitUuid =
+      item?.uom_uuid ??
+      item?.unit_uuid ??
+      meta?.unit_uuid ??
+      meta?.uom_uuid ??
+      display?.unit_uuid ??
+      null
+    if (unitUuid) {
+      meta.unit_uuid = String(unitUuid)
+      meta.uom_uuid = String(unitUuid)
+    }
+    const sequenceRaw =
+      item?.item_sequence ??
+      item?.sequence ??
+      meta?.item_sequence ??
+      meta?.sequence ??
+      (item?.display_metadata && typeof item.display_metadata === 'object'
+        ? (item.display_metadata as Record<string, unknown>).sequence
+        : null)
+    if (sequenceRaw != null && String(sequenceRaw).trim() !== '') {
+      const seq = String(sequenceRaw).trim()
+      meta.sequence = seq
+      meta.item_sequence = seq
     }
     return {
       corporation_uuid: corporationUuid,
@@ -576,8 +665,8 @@ export async function replacePurchaseOrderItems(
       model_number: item?.model_number ?? '',
       location_uuid: item?.location_uuid ?? null,
       location_label: item?.location_label ?? item?.location ?? null,
-      unit_uuid: item?.uom_uuid ?? item?.unit_uuid ?? null,
-      unit_label: item?.uom_label ?? item?.unit_label ?? null,
+      unit_uuid: unitUuid ? String(unitUuid) : null,
+      unit_label: unitLabel || null,
       quantity: toNum(item?.quantity),
       unit_price: toNum(item?.unit_price),
       po_quantity: toNum(item?.po_quantity),

@@ -658,17 +658,31 @@ import {
 } from '~/composables/useProjectAddressForPrint'
 import { sanitizePrintAuditPersonLabel } from '~/utils/printAuditDisplay'
 import { resolvePrintUomDisplay } from '~/utils/printUomDisplay'
-import { normalizeVendorAddresses, getVendorAddressByType } from '~/utils/vendorAddresses'
+import { enrichPoItemForPrint } from '~/utils/poPrintItems'
+import {
+  extractNimbleVendorContractList,
+  mapNimbleVendorContractToPoVendor,
+  normalizeNimbleEntityId,
+} from '~/utils/nimbleVendorMaster'
+import { normalizeVendorAddresses } from '~/utils/vendorAddresses'
 import {
   getPoFinancialValue,
   normalizeLocationWiseMaterialItems,
   resolveFreightDisplayLabel,
   resolveFreightUuidFromPo,
   resolveShipViaUuidFromPo,
+  looksLikeUuid,
   trimDisplayStr,
 } from '~/utils/purchaseOrderPreviewDisplay'
 import { useUOMStore } from '~/stores/uom'
-import { resolveAuthToken, waitForAuthReady } from '~/utils/authToken'
+import {
+  resolveAuthToken,
+  waitForAuthReady,
+  nimbleAuthFetchOptions,
+  hydratePrintAuth,
+} from '~/utils/authToken'
+import { poPrintDebug, poPrintDebugWarn } from '~/utils/poPrintDebug'
+import { getVendorAddressByType } from '~/utils/vendorAddresses'
 
 interface Props {
   purchaseOrder?: any
@@ -725,11 +739,195 @@ async function fetchNimbleMasterDataIfAuthenticated(
   }
 }
 
+async function loadMaterialPoItemsFromDb(purchaseOrderUuid: string) {
+  if (!purchaseOrderDetail.value) return
+  poPrintDebug('loadMaterialPoItemsFromDb — start', { purchaseOrderUuid })
+  try {
+    const itemsResponse: any = await $fetch(
+      `/api/purchase-order-items?purchase_order_uuid=${purchaseOrderUuid}`,
+      { method: 'GET', ...nimbleAuthFetchOptions() },
+    )
+    if (itemsResponse?.data && Array.isArray(itemsResponse.data)) {
+      poPrintDebug('loadMaterialPoItemsFromDb — raw API rows', {
+        count: itemsResponse.data.length,
+        sample: itemsResponse.data.slice(0, 3).map((row: any) => ({
+          item_name: row.item_name,
+          unit_uuid: row.unit_uuid,
+          unit_label: row.unit_label,
+          item_sequence: row.item_sequence,
+          sequence: row.sequence,
+          metadata: row.metadata,
+        })),
+      })
+      purchaseOrderDetail.value.po_items = itemsResponse.data.map(enrichPoItemForPrint)
+      poPrintDebug('loadMaterialPoItemsFromDb — enriched rows', {
+        count: purchaseOrderDetail.value.po_items.length,
+        sample: purchaseOrderDetail.value.po_items.slice(0, 3).map((row: any) => ({
+          item_name: row.item_name,
+          unit_uuid: row.unit_uuid,
+          unit_label: row.unit_label,
+          uom: row.uom,
+          item_sequence: row.item_sequence,
+        })),
+      })
+    }
+    else {
+      poPrintDebugWarn('loadMaterialPoItemsFromDb — empty or invalid response', itemsResponse)
+      purchaseOrderDetail.value.po_items = []
+    }
+  }
+  catch (e) {
+    poPrintDebugWarn('loadMaterialPoItemsFromDb — failed', e)
+    console.error('Failed to load PO items from purchase_order_items_list:', e)
+    if (!Array.isArray(purchaseOrderDetail.value.po_items)) {
+      purchaseOrderDetail.value.po_items = []
+    }
+  }
+}
+
+function applyVendorDetail(vendor: any, source: string) {
+  if (!vendor) return
+  vendorDetail.value = vendor
+  const addresses = normalizeVendorAddresses(vendor.vendor_addresses)
+  poPrintDebug(`applyVendorDetail — from ${source}`, {
+    vendor_uuid: vendor.uuid || vendor.vendor_uuid,
+    vendor_name: vendor.vendor_name,
+    addressCount: addresses.length,
+    source: getVendorAddressByType(addresses, 'source'),
+    manufacturing: getVendorAddressByType(addresses, 'manufacturing'),
+    default: getVendorAddressByType(addresses, 'default'),
+  })
+}
+
+async function loadVendorForPrint(po: any) {
+  if (!po?.vendor_uuid || !po?.corporation_uuid) {
+    poPrintDebugWarn('loadVendorForPrint — skipped (missing vendor_uuid or corporation_uuid)', {
+      vendor_uuid: po?.vendor_uuid,
+      corporation_uuid: po?.corporation_uuid,
+    })
+    return
+  }
+
+  const vendorKey = normalizeNimbleEntityId(po.vendor_uuid)
+  const authOpts = nimbleAuthFetchOptions()
+  const hasToken = !!resolveAuthToken()
+
+  poPrintDebug('loadVendorForPrint — start', {
+    po_vendor_uuid: po.vendor_uuid,
+    normalized_vendor_key: vendorKey,
+    corporation_uuid: po.corporation_uuid,
+    hasAuthToken: hasToken,
+    authHeaderPresent: !!authOpts.headers?.Authorization,
+    usesSessionCookie: true,
+  })
+
+  try {
+    poPrintDebug('loadVendorForPrint — fetching /api/purchase-orders/vendor-for-print')
+    const single: any = await $fetch('/api/purchase-orders/vendor-for-print', {
+      query: {
+        corporation_uuid: String(po.corporation_uuid),
+        vendor_uuid: String(po.vendor_uuid),
+      },
+      ...authOpts,
+    })
+    if (single?.data) {
+      applyVendorDetail(single.data, 'vendor-for-print')
+      return
+    }
+    poPrintDebugWarn('loadVendorForPrint — vendor-for-print returned null')
+  }
+  catch (e) {
+    poPrintDebugWarn('loadVendorForPrint — vendor-for-print failed', e)
+  }
+
+  const pickVendor = (list: any[], label: string) => {
+    const match = list.find((v) => normalizeNimbleEntityId(v.uuid || v.vendor_uuid) === vendorKey)
+    poPrintDebug(`loadVendorForPrint — pickVendor (${label})`, {
+      listSize: list.length,
+      matched: !!match,
+      sampleIds: list.slice(0, 5).map((v) => ({
+        uuid: v.uuid || v.vendor_uuid,
+        normalized: normalizeNimbleEntityId(v.uuid || v.vendor_uuid),
+      })),
+    })
+    return match
+  }
+
+  await waitForAuthReady()
+
+  if (hasToken) {
+    try {
+      poPrintDebug('loadVendorForPrint — fetching /api/nimble/vendors')
+      const response: any = await $fetch('/api/nimble/vendors', {
+        query: { corporation_uuid: String(po.corporation_uuid) },
+        ...authOpts,
+      })
+      const rawRows = extractNimbleVendorContractList(response)
+      poPrintDebug('loadVendorForPrint — nimble vendors response', {
+        rawCount: rawRows.length,
+        responseKeys: response && typeof response === 'object' ? Object.keys(response) : [],
+      })
+      const mapped = rawRows.map(mapNimbleVendorContractToPoVendor)
+      const vendor = pickVendor(mapped, 'nimble')
+      if (vendor) {
+        applyVendorDetail(vendor, 'nimble')
+        return
+      }
+      poPrintDebugWarn('loadVendorForPrint — nimble list had no match for PO vendor_uuid')
+    }
+    catch (e) {
+      poPrintDebugWarn('loadVendorForPrint — /api/nimble/vendors failed', e)
+      console.error('Failed to load vendor from Nimble:', e)
+    }
+  }
+  else {
+    poPrintDebugWarn('loadVendorForPrint — no auth token; skipping /api/nimble/vendors')
+  }
+
+  try {
+    const vendorQuery = new URLSearchParams({
+      corporation_uuid: String(po.corporation_uuid),
+      include_uuid: String(po.vendor_uuid),
+    })
+    poPrintDebug('loadVendorForPrint — fetching /api/purchase-orders/vendors (fallback)')
+    const vendorResponse: any = await $fetch(
+      `/api/purchase-orders/vendors?${vendorQuery.toString()}`,
+      { method: 'GET', ...authOpts },
+    )
+    if (vendorResponse?.data && Array.isArray(vendorResponse.data)) {
+      const vendor = pickVendor(vendorResponse.data, 'purchase-orders/vendors')
+      if (vendor) {
+        applyVendorDetail(vendor, 'purchase-orders/vendors')
+      }
+      else {
+        poPrintDebugWarn('loadVendorForPrint — fallback vendor list had no match', {
+          dataCount: vendorResponse.data.length,
+        })
+      }
+    }
+    else {
+      poPrintDebugWarn('loadVendorForPrint — fallback returned no data array', vendorResponse)
+    }
+  }
+  catch (e) {
+    poPrintDebugWarn('loadVendorForPrint — fallback failed', e)
+    console.error('Failed to load vendor (fallback):', e)
+  }
+}
+
 const load = async () => {
   error.value = null
+  await waitForAuthReady()
+  const hydratedToken = await hydratePrintAuth()
+  poPrintDebug('load — start', {
+    hasPurchaseOrderProp: !!props.purchaseOrder,
+    purchaseOrderUuid: props.purchaseOrderUuid,
+    hydratedAuth: !!hydratedToken,
+  })
   if (props.purchaseOrder) {
     purchaseOrderDetail.value = props.purchaseOrder
     await loadRelatedData()
+    logPrintPreviewSummary()
     emit('preview-ready')
     return
   }
@@ -748,51 +946,7 @@ const fetchDetail = async (uuid: string) => {
       // Fetch PO items separately for Material POs (they're not included in the form response)
       const poType = (response.data.po_type || '').toUpperCase()
       if (poType !== 'LABOR') {
-        try {
-          const itemsResponse: any = await $fetch(`/api/purchase-order-items?purchase_order_uuid=${uuid}`, { method: 'GET' })
-          if (itemsResponse?.data && Array.isArray(itemsResponse.data)) {
-            // Map items to ensure all fields are accessible
-            purchaseOrderDetail.value.po_items = itemsResponse.data.map((item: any) => {
-              // Always prefer saved PO description from purchase_order_items_list.
-              // Preferred item description is only a fallback default.
-              const preferredItem = Array.isArray(item.cost_code_preferred_items) 
-                ? item.cost_code_preferred_items[0] 
-                : item.cost_code_preferred_items;
-              const description = item.description || item.item_description || preferredItem?.description || '';
-              
-              return {
-                ...item,
-                name: item.item_name || item.name || '',
-                item_name: item.item_name || item.name || '',
-                description: description,
-                approval_checks_uuids:
-                  (Array.isArray(item.approval_checks_uuids) ? item.approval_checks_uuids : null) ||
-                  (Array.isArray(item.approval_checks) ? item.approval_checks : null) ||
-                  (Array.isArray(item.metadata?.approval_checks_uuids) ? item.metadata.approval_checks_uuids : null) ||
-                  (Array.isArray(item.metadata?.approval_checks) ? item.metadata.approval_checks : null) ||
-                  [],
-                approval_checks:
-                  (Array.isArray(item.approval_checks) ? item.approval_checks : null) ||
-                  (Array.isArray(item.approval_checks_uuids) ? item.approval_checks_uuids : null) ||
-                  (Array.isArray(item.metadata?.approval_checks) ? item.metadata.approval_checks : null) ||
-                  (Array.isArray(item.metadata?.approval_checks_uuids) ? item.metadata.approval_checks_uuids : null) ||
-                  [],
-                unit_uuid: item.unit_uuid ?? item.uom_uuid ?? null,
-                uom: item.unit_label || item.uom || item.unit || '',
-                unit_label: item.unit_label || item.uom || item.unit || '',
-                unit: item.unit_label || item.uom || item.unit || '',
-                po_quantity: item.po_quantity ?? item.quantity ?? null,
-                po_unit_price: item.po_unit_price ?? item.unit_price ?? null,
-                po_total: item.po_total ?? item.total ?? null,
-              };
-            })
-          } else {
-            purchaseOrderDetail.value.po_items = []
-          }
-        } catch (itemsError) {
-          console.error('Failed to load PO items:', itemsError)
-          purchaseOrderDetail.value.po_items = []
-        }
+        await loadMaterialPoItemsFromDb(uuid)
       } else {
         // For Labor PO, ensure po_items is empty
         purchaseOrderDetail.value.po_items = []
@@ -809,6 +963,7 @@ const fetchDetail = async (uuid: string) => {
     loading.value = false
   }
   if (!error.value && purchaseOrderDetail.value) {
+    logPrintPreviewSummary()
     emit('preview-ready')
   }
 }
@@ -816,25 +971,25 @@ const fetchDetail = async (uuid: string) => {
 const loadRelatedData = async () => {
   if (!purchaseOrderDetail.value) return
 
+  poPrintDebug('loadRelatedData — start')
   const po = purchaseOrderDetail.value
   customerDetail.value = null
   masterSpecByItemUuid.value = new Map()
   masterSpecByTypeAndName.value = new Map()
 
-  // Fetch vendor details - vendors are fetched by corporation_uuid
-  if (po.vendor_uuid && po.corporation_uuid) {
-    try {
-      const vendorResponse: any = await $fetch(`/api/purchase-orders/vendors?corporation_uuid=${po.corporation_uuid}`, { method: 'GET' })
-      if (vendorResponse?.data && Array.isArray(vendorResponse.data)) {
-        const vendor = vendorResponse.data.find((v: any) => v.uuid === po.vendor_uuid)
-        if (vendor) {
-          vendorDetail.value = vendor
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load vendor:', e)
+  const poTypeUpper = String(po.po_type || '').toUpperCase()
+  if (poTypeUpper !== 'LABOR') {
+    const poUuid =
+      po.uuid || po.purchase_order_uuid || props.purchaseOrderUuid || ''
+    if (poUuid) {
+      await loadMaterialPoItemsFromDb(String(poUuid))
+    }
+    else if (Array.isArray(po.po_items)) {
+      purchaseOrderDetail.value.po_items = po.po_items.map(enrichPoItemForPrint)
     }
   }
+
+  await loadVendorForPrint(po)
 
   // Fetch project details
   if (po.project_uuid) {
@@ -848,11 +1003,8 @@ const loadRelatedData = async () => {
     }
   }
 
-  if (
-    String(po.include_items || '').toUpperCase() === 'IMPORT_ITEMS_FROM_MASTER' &&
-    po.corporation_uuid &&
-    po.project_uuid
-  ) {
+  const poTypeForMaster = String(po.po_type || '').toUpperCase()
+  if (poTypeForMaster !== 'LABOR' && po.corporation_uuid && po.project_uuid) {
     try {
       const prefResponse: any = await $fetch('/api/cost-code-preferred-items', {
         method: 'GET',
@@ -949,10 +1101,17 @@ const loadRelatedData = async () => {
   const poType = (po.po_type || '').toUpperCase()
   if (poType !== 'LABOR' && po.corporation_uuid) {
     await fetchNimbleMasterDataIfAuthenticated(async () => {
-      if (uomStore.uom.length === 0) {
-        await uomStore.fetchUOM(po.corporation_uuid)
-      }
+      poPrintDebug('loadRelatedData — fetching UOM catalog')
+      await uomStore.fetchUOM(po.corporation_uuid, true)
+      poPrintDebug('loadRelatedData — UOM catalog loaded', {
+        count: uomStore.uom.length,
+        error: uomStore.error,
+        sample: uomStore.uom.slice(0, 3).map((u) => ({ uuid: u.uuid, short_name: u.short_name })),
+      })
     }, 'UOM for print')
+    if (!resolveAuthToken()) {
+      poPrintDebugWarn('loadRelatedData — UOM catalog skipped (no auth token)')
+    }
   }
 
   // Same `location` table as Location Management — force API so UUID → location_name works for every user (not IndexedDB cache).
@@ -1003,27 +1162,71 @@ const loadRelatedData = async () => {
 
 }
 
-/** Normalize location-wise row: UOM may live on the row or in `metadata` (saved from PO form). */
-const normalizePoLwmItemForUom = (item: any) => {
+/** UOM may live on the row, display_metadata, or metadata (saved from PO form). */
+const normalizePoItemForUom = (item: any) => {
   if (!item || typeof item !== 'object') return item
   const meta =
     item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
       ? item.metadata
       : {}
+  const display =
+    item.display_metadata && typeof item.display_metadata === 'object' && !Array.isArray(item.display_metadata)
+      ? item.display_metadata
+      : {}
   return {
     ...item,
-    unit_uuid: item.unit_uuid ?? item.uom_uuid ?? meta.unit_uuid ?? meta.uom_uuid,
-    uom: item.uom ?? meta.uom ?? meta.unit,
-    unit_label: item.unit_label ?? item.uom_label ?? meta.unit_label,
-    unit: item.unit ?? item.unit_label ?? item.uom ?? meta.unit,
+    unit_uuid:
+      item.unit_uuid ??
+      item.uom_uuid ??
+      display.unit_uuid ??
+      meta.unit_uuid ??
+      meta.uom_uuid,
+    uom:
+      item.uom ??
+      item.uom_label ??
+      display.uom ??
+      display.unit_label ??
+      meta.uom ??
+      meta.uom_label ??
+      meta.unit,
+    unit_label:
+      item.unit_label ??
+      item.uom_label ??
+      display.unit_label ??
+      display.uom ??
+      meta.unit_label ??
+      meta.uom_label ??
+      meta.uom,
+    unit:
+      item.unit ??
+      item.unit_label ??
+      item.uom ??
+      display.unit ??
+      display.unit_label ??
+      meta.unit,
   }
 }
 
+const normalizePoLwmItemForUom = normalizePoItemForUom
+
+const lookupUomByUuid = (uuid: string) => {
+  const lookup = uomStore.getUOMByUuid ?? uomStore.getUOMById
+  const row = typeof lookup === 'function' ? lookup(uuid) : undefined
+  if (!row && uuid) {
+    poPrintDebug('lookupUomByUuid — no catalog match', {
+      unit_uuid: uuid,
+      catalogSize: uomStore.uom.length,
+      catalogLoaded: uomStore.loaded,
+    })
+  }
+  return row
+}
+
 const resolveUnitDisplayForPoLwmItem = (item: any) =>
-  resolvePrintUomDisplay(normalizePoLwmItemForUom(item), (uuid) => uomStore.getUOMByUuid(uuid))
+  resolvePrintUomDisplay(normalizePoLwmItemForUom(item), lookupUomByUuid)
 
 const resolveUnitDisplayForPoItem = (item: any) =>
-  resolvePrintUomDisplay(item, (uuid) => uomStore.getUOMByUuid(uuid))
+  resolvePrintUomDisplay(normalizePoItemForUom(item), lookupUomByUuid)
 
 const formatAddress = (address: any): string => {
   if (!address) return ''
@@ -1175,6 +1378,32 @@ const manufacturingContactName = computed(
   () => manufacturingVendorAddress.value?.addressName || vendorContactName.value
 )
 const manufacturingEmail = computed(() => manufacturingVendorAddress.value?.emailID || vendorEmail.value)
+
+function logPrintPreviewSummary() {
+  const po = purchaseOrderDetail.value
+  if (!po) return
+  const items = Array.isArray(po.po_items) ? po.po_items : []
+  poPrintDebug('=== PRINT PREVIEW SUMMARY ===', {
+    po_uuid: po.uuid,
+    po_type: po.po_type,
+    vendor_uuid: po.vendor_uuid,
+    corporation_uuid: po.corporation_uuid,
+    vendorDetailLoaded: !!vendorDetail.value,
+    vendorDetailName: vendorDetail.value?.vendor_name,
+    sourceAddressDisplay: sourceAddressDisplay.value,
+    manufacturingAddressDisplay: manufacturingAddressDisplay.value,
+    uomStoreLoaded: uomStore.loaded,
+    uomCatalogSize: uomStore.uom?.length ?? 0,
+    lineItems: items.map((item: any, i: number) => ({
+      index: i,
+      item_name: item.item_name || item.name,
+      spec: resolveItemSequence(item),
+      unit_uuid: item.unit_uuid,
+      unit_label: item.unit_label,
+      resolvedUom: resolveUnitDisplayForPoItem(item),
+    })),
+  })
+}
 
 const shipToAddress = computed(() => {
   if (purchaseOrderDetail.value?.shipping_address_custom) {
@@ -1436,15 +1665,12 @@ const resolveItemSequence = (item: any): string => {
   const str = String(raw).trim()
   if (str) return str
 
-  const includeMode = String(purchaseOrderDetail.value?.include_items || '').toUpperCase()
-  if (includeMode === 'IMPORT_ITEMS_FROM_MASTER') {
-    const byUuid = masterSpecByItemUuid.value.get(String(item?.item_uuid || '').trim())
-    if (byUuid) return byUuid
-    const byTypeName = masterSpecByTypeAndName.value.get(
-      buildTypeNameKey(item?.item_type_uuid, item?.item_name || item?.name)
-    )
-    if (byTypeName) return byTypeName
-  }
+  const byUuid = masterSpecByItemUuid.value.get(String(item?.item_uuid || '').trim())
+  if (byUuid) return byUuid
+  const byTypeName = masterSpecByTypeAndName.value.get(
+    buildTypeNameKey(item?.item_type_uuid, item?.item_name || item?.name),
+  )
+  if (byTypeName) return byTypeName
 
   return ''
 }
@@ -1685,8 +1911,23 @@ const formatPrintDescription = (value: any): string => {
 
 // Selected terms and conditions for preview
 const selectedTermsAndCondition = computed(() => {
-  if (!purchaseOrderDetail.value?.terms_and_conditions_uuid) return null
-  return termsAndConditionsStore.getTermsAndConditionById(purchaseOrderDetail.value.terms_and_conditions_uuid) || null
+  const po = purchaseOrderDetail.value
+  if (!po) return null
+
+  const uuid =
+    po.terms_and_conditions_uuid ||
+    (looksLikeUuid(po.terms_and_conditions) ? String(po.terms_and_conditions).trim() : null)
+
+  if (uuid) {
+    return termsAndConditionsStore.getTermsAndConditionById(uuid) || null
+  }
+
+  const raw = String(po.terms_and_conditions || '').trim()
+  if (raw) {
+    return { name: '', content: raw }
+  }
+
+  return null
 })
 
 /** Resolved special instruction for print preview (list loaded in loadRelatedData). */

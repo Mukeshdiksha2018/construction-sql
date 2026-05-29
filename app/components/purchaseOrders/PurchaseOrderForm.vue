@@ -239,7 +239,7 @@
                 size="xs"
                 class="cursor-pointer hover:opacity-80 transition-opacity shrink-0"
                 title="Add vendor"
-                @click="vendorSelectRef?.openAddModal()"
+                @click="openAddVendorModal"
               >
                 <UIcon name="i-heroicons-plus" class="w-3 h-3" />
                 Add
@@ -1606,6 +1606,7 @@ import { useProjectAddressesStore, type ProjectAddress } from "~/stores/projectA
 import { useVendorStore } from "~/stores/vendors";
 import { useUTCDateFormat } from '~/composables/useUTCDateFormat';
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat';
+import { normalizeUsedQuantitiesByItem } from '~/utils/normalizeUsedQuantitiesByItem';
 import { useShipViaStore } from '~/stores/freight';
 import { useFreightStore } from '~/stores/freightGlobal';
 // NOTE: We use purchaseOrderResourcesStore for all data fetching to avoid affecting global stores
@@ -1633,7 +1634,7 @@ import FinancialBreakdown from '~/components/purchaseOrders/FinancialBreakdown.v
 import VendorForm from '~/components/purchaseOrders/VendorForm.vue';
 import TermsAndConditionsSelect from '~/components/shared/TermsAndConditionsSelect.vue';
 import SpecialInstructionsSelect from '~/components/shared/SpecialInstructionsSelect.vue';
-import SpecialInstructionFormBody from '~/components/Configurations/SpecialInstructionFormBody.vue';
+import SpecialInstructionFormBody from '~/components/configurations/SpecialInstructionFormBody.vue';
 import CorporationSelect from '~/components/shared/CorporationSelect.vue';
 import CreditDaysSelect from '~/components/shared/CreditDaysSelect.vue';
 import { useCreditDaysOptions } from '~/composables/useCreditDaysOptions';
@@ -3836,13 +3837,11 @@ const hasImportedEstimateItems = computed(
 
 const latestEstimateUuid = computed(() => latestProjectEstimate.value?.uuid || null);
 
-// Use the PO's actual estimate_uuid when editing, otherwise fall back to latest estimate
+// Use explicit estimate on the PO when set, otherwise latest approved estimate for the project
 const effectiveEstimateUuid = computed(() => {
-  // If editing a PO that was created from a specific estimate, use that estimate
-  if (props.editingPurchaseOrder && props.form.estimate_uuid) {
+  if (props.form.estimate_uuid) {
     return props.form.estimate_uuid;
   }
-  // Otherwise use the latest estimate for the project
   return latestEstimateUuid.value;
 });
 
@@ -3944,15 +3943,7 @@ const fetchUsedQuantities = async () => {
       },
     });
 
-    // Normalize keys to lowercase to match lookup in POItemsTableWithEstimates
-    const normalizedData: Record<string, number> = {};
-    if (response?.data && typeof response.data === 'object') {
-      Object.keys(response.data).forEach((key) => {
-        const normalizedKey = String(key).toLowerCase();
-        normalizedData[normalizedKey] = response.data[key];
-      });
-    }
-    usedQuantitiesByItem.value = normalizedData;
+    usedQuantitiesByItem.value = normalizeUsedQuantitiesByItem(response?.data);
   } catch (error: any) {
     console.error("Failed to fetch used quantities:", error);
     usedQuantitiesByItem.value = {};
@@ -4099,7 +4090,7 @@ watch(
       usedQuantitiesByItem.value = {};
     }
   },
-  { immediate: false }
+  { immediate: true }
 );
 
 // Fetch preferred items directly from API instead of store
@@ -6702,7 +6693,8 @@ const shipToSelectModelValue = computed((): string | undefined => {
   if (uuid && items.some((i) => String(i.value) === uuid)) {
     return uuid;
   }
-  return String(items[0].value);
+  const first = items[0];
+  return first ? String(first.value) : undefined;
 });
 
 const onShipToSelectUpdate = (payload: unknown) => {
@@ -7141,11 +7133,17 @@ const closeFilePreview = () => {
 };
 
 // Vendor edit methods
+const openAddVendorModal = () => {
+  if (props.readonly) return;
+  editingVendor.value = null;
+  showVendorEditModal.value = true;
+};
+
 const openVendorEditModal = () => {
   if (!props.form.vendor_uuid) return;
   
   // Find the vendor data
-  const vendor = vendorStore.vendors.find((v: any) => v.uuid === props.form.vendor_uuid);
+  const vendor = vendorStore.vendors.find((v) => v.uuid === props.form.vendor_uuid);
   if (!vendor) {
     return;
   }

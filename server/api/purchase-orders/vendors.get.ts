@@ -1,45 +1,79 @@
 /**
- * Proxy to the Nimble API for vendor list.
- * Used by the PO list resources store to populate the vendor filter dropdown.
+ * Proxy to the Nimble API for vendor list (with addresses for print preview).
  */
+import {
+  extractNimbleVendorContractList,
+  mapNimbleVendorContractToPoVendor,
+  toNimbleCorpId,
+} from '../../utils/nimbleVendorMaster'
+import { getSessionFromEvent } from '../../utils/auth-session'
+import { resolveNimbleBearerForEvent } from '../../utils/nimbleBearer'
+
 export default defineEventHandler(async (event) => {
-  const { corporation_uuid } = getQuery(event)
+  const { corporation_uuid, include_uuid } = getQuery(event)
   if (!corporation_uuid) throw createError({ statusCode: 400, statusMessage: 'corporation_uuid is required' })
 
   const config = useRuntimeConfig()
   const nimbleApi3 = config.nimbleApi3Url as string
-  const nimbleToken = config.nimbleToken as string
+  const bearer = resolveNimbleBearerForEvent(event)
 
   if (!nimbleApi3) {
     return { data: [] }
   }
 
-  try {
-    // Decode the corporation UUID to get the Nimble CorpID
-    const corpIdRaw = event.context?.nimbleCorpId ?? corporation_uuid
-    const corpId = String(corpIdRaw).replace(/-/g, '')
+  const session = getSessionFromEvent(event)
+  const bearerSource = session?.token ? 'session' : (bearer ? 'nimbleToken-config' : 'none')
 
-    const response = await $fetch<any>(`${nimbleApi3}/v1/VendorContractMaster/List`, {
+  if (!bearer) {
+    console.warn('[PO Print Debug] GET /api/purchase-orders/vendors — no bearer token', {
+      corporation_uuid,
+      include_uuid,
+    })
+    return { data: [] }
+  }
+
+  try {
+    const corpId = toNimbleCorpId(event.context?.nimbleCorpId ?? corporation_uuid)
+
+    console.log('[PO Print Debug] GET /api/purchase-orders/vendors — calling Nimble', {
+      corpId,
+      bearerSource,
+      include_uuid,
+    })
+
+    const response = await $fetch<unknown>(`${nimbleApi3}/v1/VendorContractMaster/List`, {
       method: 'GET',
       query: { CorpID: corpId },
       headers: {
-        Authorization: nimbleToken ? `Bearer ${nimbleToken}` : '',
+        Authorization: `Bearer ${bearer}`,
         'Content-Type': 'application/json',
       },
     })
 
-    const vendors = Array.isArray(response?.Data) ? response.Data : (Array.isArray(response) ? response : [])
+    let mapped = extractNimbleVendorContractList(response).map(mapNimbleVendorContractToPoVendor)
 
-    const mapped = vendors.map((v: any) => ({
-      vendor_uuid: String(v.VendorUUID || v.vendor_uuid || '').toLowerCase(),
-      name: v.VendorName || v.name || v.vendor_name || '',
-      vendor_name: v.VendorName || v.name || v.vendor_name || '',
-      code: v.VendorCode || v.code || '',
-    }))
+    const includeId = typeof include_uuid === 'string' ? include_uuid.trim().toLowerCase() : ''
+    if (includeId && !mapped.some((v) => v.uuid === includeId)) {
+      const extra = extractNimbleVendorContractList(response).find(
+        (v) => String(v.vendorID || '').toLowerCase() === includeId,
+      )
+      if (extra) mapped = [...mapped, mapNimbleVendorContractToPoVendor(extra)]
+    }
+
+    console.log('[PO Print Debug] GET /api/purchase-orders/vendors — success', {
+      vendorCount: mapped.length,
+      includeFound: includeId ? mapped.some((v) => v.uuid === includeId) : null,
+    })
 
     return { data: mapped }
-  } catch (error: any) {
-    console.error('[vendors] Error fetching vendors:', error?.message)
+  }
+  catch (error: any) {
+    console.error('[PO Print Debug] GET /api/purchase-orders/vendors — failed', {
+      message: error?.message,
+      statusCode: error?.statusCode,
+      corpId: toNimbleCorpId(event.context?.nimbleCorpId ?? corporation_uuid),
+      bearerSource,
+    })
     return { data: [] }
   }
 })

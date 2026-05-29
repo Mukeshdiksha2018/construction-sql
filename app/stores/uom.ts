@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { nimbleAuthFetchOptions } from '~/utils/authToken'
 
 /** Shape returned by GET /api/nimble/uom (raw Nimble DTO) */
 interface NimbleUOMDTO {
@@ -22,7 +23,7 @@ export interface UOMItem {
 
 function normalise(dto: NimbleUOMDTO): UOMItem {
   return {
-    uuid: dto.ID,
+    uuid: String(dto.ID || '').toLowerCase(),
     name: dto.UOMName,
     short_name: dto.ShortName,
     uom_type_uuid: dto.UOMType,
@@ -47,12 +48,21 @@ export const useUOMStore = defineStore('uom', {
       state.uom.filter(u => u.status === 'ACTIVE'),
 
     /** Look up a UOM by its Nimble ID (UUID) */
-    getUOMById: (state) => (id: string): UOMItem | undefined =>
-      state.uom.find(u => u.uuid === id),
+    getUOMById: (state) => (id: string): UOMItem | undefined => {
+      const key = String(id || '').trim().toLowerCase()
+      return state.uom.find(u => u.uuid === key)
+    },
+
+    /** Alias used by print preview and item tables */
+    getUOMByUuid: (state) => (uuid: string): UOMItem | undefined => {
+      const key = String(uuid || '').trim().toLowerCase()
+      return state.uom.find(u => u.uuid === key)
+    },
 
     /** Returns the short name for a given UUID – useful for display in read-only tables */
     getShortName: (state) => (id: string): string => {
-      const found = state.uom.find(u => u.uuid === id)
+      const key = String(id || '').trim().toLowerCase()
+      const found = state.uom.find(u => u.uuid === key)
       return found ? found.short_name || found.name : id
     },
   },
@@ -74,9 +84,10 @@ export const useUOMStore = defineStore('uom', {
       this.error = null
 
       try {
-        const data = await $fetch<{ uom: NimbleUOMDTO[] }>('/api/nimble/uom', {
-          credentials: 'include',
-        })
+        const data = await $fetch<{ uom: NimbleUOMDTO[] }>(
+          '/api/nimble/uom',
+          nimbleAuthFetchOptions(),
+        )
 
         this.uom = (data.uom ?? []).map(normalise)
         this.loaded = true

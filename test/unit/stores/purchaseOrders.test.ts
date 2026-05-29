@@ -238,6 +238,37 @@ describe('usePurchaseOrdersStore – fetchPurchaseOrders options object', () => 
     expect((rows as any[])[0].uuid).toBe('po-ret-1')
   })
 
+  it('stores page 1 rows even when only pagination filters are passed', async () => {
+    mockFetch.mockResolvedValue({
+      data: [makePORow({ uuid: 'po-page1' })],
+      pagination: { page: 1, pageSize: 100, totalRecords: 1, totalPages: 1, hasMore: false },
+    })
+    const store = await getStore()
+    await store.fetchPurchaseOrders('corp-1', { force: true, filters: { page: 1, page_size: 100 } })
+
+    expect(store.purchaseOrders.some((po: any) => po.uuid === 'po-page1')).toBe(true)
+  })
+
+  it('merges page > 1 rows into existing corporation rows', async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        data: [makePORow({ uuid: 'po-page1' })],
+        pagination: { page: 1, pageSize: 100, totalRecords: 2, totalPages: 2, hasMore: true },
+      })
+      .mockResolvedValueOnce({
+        data: [makePORow({ uuid: 'po-page2' })],
+        pagination: { page: 2, pageSize: 100, totalRecords: 2, totalPages: 2, hasMore: false },
+      })
+    const store = await getStore()
+
+    await store.fetchPurchaseOrders('corp-1', { force: true, filters: { page: 1, page_size: 100 } })
+    await store.fetchPurchaseOrders('corp-1', { force: false, filters: { page: 2, page_size: 100 } })
+
+    const corpRows = store.purchaseOrders.filter((po: any) => po.corporation_uuid === 'corp-1')
+    expect(corpRows.some((po: any) => po.uuid === 'po-page1')).toBe(true)
+    expect(corpRows.some((po: any) => po.uuid === 'po-page2')).toBe(true)
+  })
+
   it('sets error and does not throw when fetch fails', async () => {
     mockFetch.mockRejectedValue(new Error('Network error'))
     const store = await getStore()

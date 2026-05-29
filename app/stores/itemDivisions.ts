@@ -76,6 +76,10 @@ export const useItemDivisionsStore = defineStore('itemDivisions', () => {
     }
   })
 
+  const getItemDivisionById = (uuid: string): ItemDivision | undefined => {
+    return itemDivisions.value.find((d) => d.uuid === uuid)
+  }
+
   return {
     itemDivisions,
     loading,
@@ -83,5 +87,6 @@ export const useItemDivisionsStore = defineStore('itemDivisions', () => {
     fetchItemDivisions,
     createItemDivision,
     getActiveItemDivisions,
+    getItemDivisionById,
   }
 })

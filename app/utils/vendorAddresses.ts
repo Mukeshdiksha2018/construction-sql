@@ -19,6 +19,16 @@ export type VendorAddress = {
 
 const ADDRESS_TYPES: VendorAddressType[] = ['default', 'source', 'manufacturing']
 
+/** Nimble VendorContractMaster uses 0=default, 1=source, 2=manufacturing. */
+export function coerceVendorAddressType(raw: unknown): VendorAddressType | null {
+  if (raw === 0 || raw === '0') return 'default'
+  if (raw === 1 || raw === '1') return 'source'
+  if (raw === 2 || raw === '2') return 'manufacturing'
+  const text = safeString(raw).toLowerCase()
+  if (ADDRESS_TYPES.includes(text as VendorAddressType)) return text as VendorAddressType
+  return null
+}
+
 function safeString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : value != null ? String(value).trim() : ''
 }
@@ -39,8 +49,12 @@ export function normalizeVendorAddresses(input: unknown): VendorAddress[] {
   for (const item of list) {
     if (!item || typeof item !== 'object') continue
     const row = item as Record<string, unknown>
-    const rawType = safeString(row.addressType ?? row.type).toLowerCase() as VendorAddressType
-    if (!ADDRESS_TYPES.includes(rawType)) continue
+    const rawType =
+      coerceVendorAddressType(row.addressType ?? row.type) ??
+      (ADDRESS_TYPES.includes(safeString(row.addressType ?? row.type).toLowerCase() as VendorAddressType)
+        ? (safeString(row.addressType ?? row.type).toLowerCase() as VendorAddressType)
+        : null)
+    if (!rawType) continue
     byType.set(rawType, {
       addressName: safeString(row.addressName) || null,
       address: safeString(row.address) || null,

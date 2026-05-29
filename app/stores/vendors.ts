@@ -27,6 +27,11 @@ export interface Vendor {
   federal_id: string | null
   payment_method: string | null
   is_active: boolean
+  vendor_address?: string | null
+  vendor_city?: string | null
+  vendor_state?: string | null
+  vendor_zip?: string | null
+  vendor_country?: string | null
 }
 
 function normalise(dto: NimbleVendorDTO, corporationUuid: string): Vendor {

@@ -443,6 +443,27 @@ export const usePurchaseOrderResourcesStore = defineStore('purchaseOrderResource
     return getProjectState.value(corporationUuid, projectUuid)?.estimates ?? []
   }
 
+  /**
+   * Fetch saved PO line items for list expand / breakdown / receipt forms.
+   * Uses GET /api/purchase-order-items (includes server-side UOM enrichment).
+   */
+  const fetchPurchaseOrderItems = async (purchaseOrderUuid: string): Promise<any[]> => {
+    if (!purchaseOrderUuid || typeof window === 'undefined') {
+      return []
+    }
+
+    try {
+      const response = await $fetch<any>('/api/purchase-order-items', {
+        method: 'GET',
+        query: { purchase_order_uuid: purchaseOrderUuid },
+      })
+      return Array.isArray(response?.data) ? response.data : []
+    } catch (err) {
+      console.error('[PO Resources] Failed to fetch purchase order items', err)
+      return []
+    }
+  }
+
   return {
     ensureItemTypes,
     ensurePreferredItems,
@@ -459,6 +480,7 @@ export const usePurchaseOrderResourcesStore = defineStore('purchaseOrderResource
     getPreferredItems,
     getEstimates,
     getCostCodeConfigurations,
+    fetchPurchaseOrderItems,
     clearProject,
     clear,
     estimateKey,

@@ -75,7 +75,7 @@ describe('GET /api/nimble/vendors', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       `${BASE_URL}/v1/VendorContractMaster/List`,
       expect.objectContaining({
-        query: { CorpID: CORP_UUID },
+        query: { CorpID: 'corptestuuid1' },
       }),
     )
   })
@@ -217,7 +217,7 @@ describe('GET /api/nimble/vendors', () => {
 
     expect(mockFetch).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ query: { CorpID: 'UPPER-CORP-ID' } }),
+      expect.objectContaining({ query: { CorpID: 'UPPERCORPID' } }),
     )
   })
 

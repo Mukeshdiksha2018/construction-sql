@@ -53,6 +53,7 @@ export interface PurchaseOrder {
   include_items?: string | null
   quote_reference?: string | null
   terms_and_conditions?: string | null
+  terms_and_conditions_uuid?: string | null
   item_total?: number | null
   freight_charges_percentage?: number | null
   freight_charges_amount?: number | null
@@ -175,9 +176,15 @@ export const usePurchaseOrdersStore = defineStore('purchaseOrders', () => {
     if (!corporationUuid) return
 
     const { force = false, filters } = options
-    const hasListFilters = Boolean(filters && Object.keys(filters).length > 0)
+    const hasListFilters = Boolean(
+      filters?.project_uuid ||
+      filters?.vendor_uuid ||
+      filters?.entry_date_from ||
+      filters?.entry_date_to,
+    )
 
-    let shouldFetch = force || hasListFilters
+    const requestedPage = Number(filters?.page || 1)
+    let shouldFetch = force || hasListFilters || requestedPage > 1
     if (!shouldFetch) {
       shouldFetch = !hasDataForCorporation.value.has(corporationUuid) || lastFetchedCorporation.value !== corporationUuid
     }
@@ -197,8 +204,22 @@ export const usePurchaseOrdersStore = defineStore('purchaseOrders', () => {
       const response = await $fetch<any>('/api/purchase-order-forms', { query })
       const rows: PurchaseOrder[] = Array.isArray(response?.data) ? response.data : []
 
-      if (!hasListFilters) {
+      const shouldReplace = requestedPage <= 1
+      if (shouldReplace) {
         replaceCorporationPOs(corporationUuid, rows)
+      } else {
+        const existing = getPOsForCorporation(corporationUuid)
+        const byUuid = new Map<string, PurchaseOrder>()
+        existing.forEach((po) => {
+          if (po.uuid) byUuid.set(po.uuid, po)
+        })
+        rows.forEach((po) => {
+          if (po.uuid) byUuid.set(po.uuid, po)
+        })
+        const merged = Array.from(byUuid.values())
+        replaceCorporationPOs(corporationUuid, merged)
+      }
+      if (!hasListFilters) {
         lastFetchedCorporation.value = corporationUuid
         hasDataForCorporation.value.add(corporationUuid)
       }

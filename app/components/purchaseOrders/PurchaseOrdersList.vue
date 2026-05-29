@@ -529,7 +529,7 @@
           <div class="text-gray-400 mb-4">
             <UIcon name="i-heroicons-document-text" class="w-12 h-12 mx-auto" />
           </div>
-          <p class="text-gray-500 text-lg">No items to be raised</p>
+          <p class="text-gray-500 text-lg">No left over quantity</p>
           <p class="text-gray-400 text-sm">No items found for the selected project and vendor</p>
         </div>
       </div>
@@ -565,16 +565,16 @@
           v-else-if="itemsTableData.length > 0"
           ref="itemsTable"
           sticky
-          v-model:column-pinning="itemsTableColumnPinning"
           :data="itemsTableData"
           :columns="itemsTableColumns"
           :loading="false"
           v-model:selected="selectedItemsTableRows"
           :selectable="true"
-          class="w-full overflow-x-auto"
+          class="create-po-items-table w-full"
           :ui="{
             td: 'p-2 text-xs text-muted whitespace-normal break-words',
-            tr: 'h-auto'
+            th: 'px-2 py-2 text-xs font-semibold',
+            tr: 'h-auto',
           }"
         />
         <!-- Empty state - only show when not loading, filters are set, and no data -->
@@ -582,7 +582,7 @@
           <div class="text-gray-400 mb-4">
             <UIcon name="i-heroicons-document-text" class="w-12 h-12 mx-auto" />
           </div>
-          <p class="text-gray-500 text-lg">No items to be raised</p>
+          <p class="text-gray-500 text-lg">No left over quantity</p>
           <p class="text-gray-400 text-sm">No estimate lines match the selected filters for this project</p>
         </div>
       </div>
@@ -1160,6 +1160,11 @@ import { useLocationsStore } from '~/stores/locations'
 import POBreakdown from '~/components/purchaseOrders/POBreakdown.vue'
 import { usePurchaseOrderListResourcesStore } from '~/stores/purchaseOrderListResources'
 import { useProjectItemsSummary } from '~/composables/useProjectItemsSummary'
+import {
+  lineItemsShareSingleEstimateVendor,
+  transformCreatePoLineItems,
+} from '~/utils/transformCreatePoLineItems'
+import { normalizeUsedQuantitiesByItem } from '~/utils/normalizeUsedQuantitiesByItem'
 import { useAppSettingsStore } from '~/stores/corporationSettings'
 import { useAuthStore } from '~/stores/auth'
 
@@ -1456,20 +1461,20 @@ function buildUserAuditBody() {
 async function persistPoPrintOption(
   key: 'print_include_approved_by_vendor' | 'print_use_entity_name',
   value: boolean
-) {
-  if (!poForm.value?.uuid) return
+): Promise<boolean> {
+  const uuid = poForm.value?.uuid
+  if (!uuid) return true
   savingPoPrintOptions.value = true
   try {
-    await $fetch('/api/purchase-order-forms', {
+    await $fetch(`/api/purchase-order-forms/${uuid}`, {
       method: 'PUT',
       body: {
-        uuid: poForm.value.uuid,
         [key]: value,
         ...buildUserAuditBody(),
       },
     })
-    // Only apply the saved flag — do not merge full API row into the form (would drop po_items etc.).
     poForm.value[key] = value
+    return true
   } catch (e: unknown) {
     const toast = useToast()
     const msg =
@@ -1483,6 +1488,7 @@ async function persistPoPrintOption(
       description: msg,
       color: 'error',
     })
+    return false
   } finally {
     savingPoPrintOptions.value = false
   }
@@ -1490,12 +1496,24 @@ async function persistPoPrintOption(
 
 async function onPoPrintApprovedByVendorChange(value: boolean | 'indeterminate') {
   if (value === 'indeterminate') return
-  await persistPoPrintOption('print_include_approved_by_vendor', value)
+  const previous = poForm.value?.print_include_approved_by_vendor
+  poForm.value = { ...poForm.value, print_include_approved_by_vendor: value }
+  if (!poForm.value?.uuid) return
+  const ok = await persistPoPrintOption('print_include_approved_by_vendor', value)
+  if (!ok) {
+    poForm.value = { ...poForm.value, print_include_approved_by_vendor: previous }
+  }
 }
 
 async function onPoPrintUseEntityNameChange(value: boolean | 'indeterminate') {
   if (value === 'indeterminate') return
-  await persistPoPrintOption('print_use_entity_name', value)
+  const previous = poForm.value?.print_use_entity_name
+  poForm.value = { ...poForm.value, print_use_entity_name: value }
+  if (!poForm.value?.uuid) return
+  const ok = await persistPoPrintOption('print_use_entity_name', value)
+  if (!ok) {
+    poForm.value = { ...poForm.value, print_use_entity_name: previous }
+  }
 }
 
 watch(showFormModal, async (open) => {
@@ -2153,13 +2171,6 @@ const selectedItemsTableRowsCount = computed(() => {
   return itemsTable.value.tableApi.getFilteredSelectedRowModel().rows.length
 })
 
-// Column pinning for items table (pin quantity columns to the right)
-// Order matters: columns are pinned from left to right in the array
-const itemsTableColumnPinning = ref({
-  left: [],
-  right: ['budget_qty', 'po_qty', 'pending_qty']
-})
-
 // To be Raised items state
 const toBeRaisedItems = ref<any[]>([])
 const loadingToBeRaisedItems = ref(false)
@@ -2210,12 +2221,6 @@ const CREATE_PO_SINGLE_VENDOR_TOAST = {
   description:
     'You must select estimate lines that belong to a single preferred vendor. Deselect rows or choose items for one vendor before creating a purchase order.',
   color: 'warning' as const,
-}
-
-function lineItemsShareSingleEstimateVendor(items: any[]): boolean {
-  if (items.length <= 1) return true
-  const vendorKeys = new Set(items.map((it) => String(it?.preferred_vendor_uuid ?? '')))
-  return vendorKeys.size <= 1
 }
 
 /** Selected rows for Create PO — matches table API when present so sorting/filtering cannot desync selection. */
@@ -2312,6 +2317,9 @@ const shouldShowItemsTable = computed(() => {
 const handleShowResults = async () => {
   if (selectedStatusFilter.value === 'ToBeRaised') {
     const missingFields: string[] = [];
+    const corpForCreate =
+      filterCorporation.value || appliedFilters.value.corporation || selectedCorporationId.value;
+    if (!corpForCreate) missingFields.push('Corporation');
     if (!filterProject.value) missingFields.push('Project');
     if (missingFields.length > 0) {
       const toast = useToast();
@@ -2681,65 +2689,6 @@ const fetchProjectLocationBreakdownsForFilter = async (projectUuid?: string) => 
   }
 }
 
-// Transform selected items to PO items format
-const transformSelectedItemsToPoItems = (selectedItems: any[]): any[] => {
-  return selectedItems.map((item: any, index: number) => {
-    const pendingQty = parseFloat(item.pending_qty || 0) || 0
-    const unitPrice = parseFloat(item.unit_price || 0) || 0
-    const poTotal = pendingQty > 0 && unitPrice > 0 ? Math.round((pendingQty * unitPrice + Number.EPSILON) * 100) / 100 : null
-    
-    const modelNumber = item.model_number || "";
-    
-    return {
-      id: `pending-${index}-${item.item_uuid || item.cost_code_uuid || index}`,
-      cost_code_uuid: item.cost_code_uuid || null,
-      cost_code_number: item.cost_code_number || "",
-      cost_code_name: item.cost_code_name || "",
-      cost_code_label: item.cost_code_label || "",
-      division_name: item.division_name || "",
-      item_type_uuid: item.item_type_uuid || null,
-      item_type_label: item.item_type_label || "",
-      spec_type: item.spec_type || "",
-      sequence: item.sequence || "",
-      item_sequence: item.sequence || "",
-      sequence_uuid: item.sequence_uuid || null,
-      item_uuid: item.item_uuid || null,
-      name: item.item_name || "",
-      description: item.description || "",
-      location: item.location || "",
-      location_uuid: item.location_uuid || null,
-      preferred_vendor_uuid: item.preferred_vendor_uuid || null,
-      // Estimate values (for display in greyed out section)
-      unit_price: unitPrice,
-      quantity: parseFloat(item.budget_qty || 0) || 0,
-      total: unitPrice * parseFloat(item.budget_qty || 0) || 0,
-      // PO values (editable, initialized with pending_qty)
-      po_unit_price: unitPrice > 0 ? unitPrice : null,
-      po_quantity: pendingQty > 0 ? pendingQty : null,
-      po_total: poTotal,
-      uom_uuid: item.unit_uuid || null,
-      uom_label: item.unit_label || "",
-      unit_label: item.unit_label || "",
-      uom: item.unit_label || "",
-      unit_uuid: item.unit_uuid || null,
-      approval_checks: null,
-      model_number: modelNumber,
-      display_metadata: {
-        cost_code_label: item.cost_code_label || "",
-        cost_code_number: item.cost_code_number || "",
-        cost_code_name: item.cost_code_name || "",
-        division_name: item.division_name || "",
-        spec_type: item.spec_type || "",
-        item_type_label: item.item_type_label || "",
-        sequence: item.sequence || "",
-        location_display: item.location || "",
-        unit_uuid: item.unit_uuid || null,
-        unit_label: item.unit_label || "",
-      },
-    }
-  })
-}
-
 // Handle raising purchase order for selected items with pending quantity
 const handleRaisePurchaseOrderForPendingQty = async () => {
   if (selectedItemsTableRowsCount.value === 0) {
@@ -2785,7 +2734,7 @@ const handleRaisePurchaseOrderForPendingQty = async () => {
   }
   
   // Transform selected items to PO items format
-  const poItems = transformSelectedItemsToPoItems(selectedItems)
+  const poItems = transformCreatePoLineItems(selectedItems)
   
   // Clear previous PO resources before opening new form
   purchaseOrderResourcesStore.clear()
@@ -3046,13 +2995,16 @@ const itemsTableColumns: TableColumn<any>[] = [
     accessorKey: 'budget_qty',
     header: 'Budget Qty',
     enableSorting: false,
-    size: 120,
-    meta: { 
-      class: { th: 'text-right whitespace-nowrap', td: 'text-right whitespace-nowrap' }
+    size: 88,
+    meta: {
+      class: {
+        th: 'create-po-qty-col text-right whitespace-nowrap border-l border-gray-200 dark:border-gray-700',
+        td: 'create-po-qty-col text-right whitespace-nowrap border-l border-gray-200 dark:border-gray-700',
+      },
     },
     cell: ({ row }: { row: { original: any } }) => {
       const qty = row.original.budget_qty || 0
-      return h('div', { class: 'text-right' }, String(qty))
+      return h('div', { class: 'text-right tabular-nums' }, String(qty))
     }
   },
   {
@@ -3060,13 +3012,16 @@ const itemsTableColumns: TableColumn<any>[] = [
     accessorKey: 'po_qty',
     header: 'PO Qty',
     enableSorting: false,
-    size: 120,
-    meta: { 
-      class: { th: 'text-right whitespace-nowrap', td: 'text-right whitespace-nowrap' }
+    size: 72,
+    meta: {
+      class: {
+        th: 'create-po-qty-col text-right whitespace-nowrap',
+        td: 'create-po-qty-col text-right whitespace-nowrap',
+      },
     },
     cell: ({ row }: { row: { original: any } }) => {
       const qty = row.original.po_qty || 0
-      return h('div', { class: 'text-right' }, String(qty))
+      return h('div', { class: 'text-right tabular-nums' }, String(qty))
     }
   },
   {
@@ -3074,13 +3029,16 @@ const itemsTableColumns: TableColumn<any>[] = [
     accessorKey: 'pending_qty',
     header: 'Pending Qty',
     enableSorting: false,
-    size: 120,
-    meta: { 
-      class: { th: 'text-right whitespace-nowrap', td: 'text-right whitespace-nowrap' }
+    size: 88,
+    meta: {
+      class: {
+        th: 'create-po-qty-col text-right whitespace-nowrap',
+        td: 'create-po-qty-col text-right whitespace-nowrap',
+      },
     },
     cell: ({ row }: { row: { original: any } }) => {
       const qty = row.original.pending_qty || 0
-      return h('div', { class: 'text-right' }, String(qty))
+      return h('div', { class: 'text-right tabular-nums font-medium' }, String(qty))
     }
   },
   {
@@ -3088,9 +3046,12 @@ const itemsTableColumns: TableColumn<any>[] = [
     accessorKey: 'status',
     header: 'Status',
     enableSorting: false,
-    size: 100,
-    meta: { 
-      class: { th: 'text-left whitespace-nowrap', td: 'text-left whitespace-nowrap' }
+    size: 96,
+    meta: {
+      class: {
+        th: 'text-left whitespace-nowrap pl-3',
+        td: 'text-left whitespace-nowrap pl-3',
+      },
     },
     cell: ({ row }: { row: { original: any } }) => {
       const status = row.original.status || 'Pending'
@@ -3837,14 +3798,7 @@ const fetchUsedQuantities = async () => {
     })
 
     // Normalize keys to lowercase to match lookup in POItemsTableWithEstimates
-    const normalizedData: Record<string, number> = {}
-    if (response?.data && typeof response.data === 'object') {
-      Object.keys(response.data).forEach((key) => {
-        const normalizedKey = String(key).toLowerCase()
-        normalizedData[normalizedKey] = response.data[key]
-      })
-    }
-    usedQuantitiesByItem.value = normalizedData
+    usedQuantitiesByItem.value = normalizeUsedQuantitiesByItem(response?.data)
   } catch (error: any) {
     console.error("Failed to fetch used quantities:", error)
     usedQuantitiesByItem.value = {}
@@ -6009,4 +5963,21 @@ watch(
   { immediate: true }
 )
 </script>
+
+<style scoped>
+/* Keep budget / PO / pending qty columns visually grouped (no pin gap) */
+.create-po-items-table :deep(th.create-po-qty-col),
+.create-po-items-table :deep(td.create-po-qty-col) {
+  width: 5.5rem;
+  min-width: 4.5rem;
+  max-width: 6rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.create-po-items-table :deep(th.create-po-qty-col:first-of-type),
+.create-po-items-table :deep(td.create-po-qty-col:first-of-type) {
+  padding-left: 0.75rem;
+}
+</style>
 

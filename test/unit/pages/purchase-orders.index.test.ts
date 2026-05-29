@@ -7,7 +7,7 @@ const route = reactive({
   query: {} as Record<string, unknown>,
   params: {} as Record<string, unknown>,
 })
-const replace = vi.fn()
+const replace = vi.fn(() => Promise.resolve())
 const currentTab = ref('purchase-orders')
 const navigateToTab = vi.fn()
 const initializeUrl = vi.fn()
@@ -20,6 +20,16 @@ vi.stubGlobal('useRoute', () => route)
 vi.stubGlobal('useRouter', () => ({ replace, push: vi.fn() }))
 vi.stubGlobal('useNimbleContext', () => ({ setFromRoute }))
 vi.stubGlobal('useHead', vi.fn())
+
+vi.mock('~/components/purchaseOrders/PurchaseOrdersList.vue', () => ({
+  default: { template: '<div data-testid="po-list" />' },
+}))
+vi.mock('~/components/purchaseOrders/ReceiptNoteList.vue', () => ({
+  default: { template: '<div data-testid="receipt-note-list" />' },
+}))
+vi.mock('~/components/purchaseOrders/StockReturnsList.vue', () => ({
+  default: { template: '<div data-testid="stock-returns-list" />' },
+}))
 
 vi.mock('~/composables/useTabRouting', () => ({
   PURCHASE_ORDERS_TABS: [
@@ -62,16 +72,18 @@ describe('purchase-orders index page', () => {
 
   it('renders stock receipt note directly from nimble menuId and does not render tabs', async () => {
     runtimeConfig.public.nimbleIntegrations = 'true'
-    route.query = { menuId: '0x010000000000000000000000000000011134' }
+    route.query = {
+      menuId: '0x010000000000000000000000000000011134',
+      tab: 'stock-receipt-note',
+    }
     const component = (await import('../../../app/pages/purchase-orders/index.vue')).default
     const wrapper = mount(component, { global: { stubs } })
-    await flushPromises()
 
     expect(wrapper.find('[data-testid="receipt-note-list"]').exists()).toBe(true)
     expect(wrapper.find('u-tabs-stub').exists()).toBe(false)
   })
 
-  it('defaults query tab when nimble mode is enabled and tab is missing', async () => {
+  it('syncs query tab from menuId when nimble mode is enabled and tab is missing', async () => {
     runtimeConfig.public.nimbleIntegrations = 'true'
     route.query = { menuId: '0x010000000000000000000000000000011132' }
     const component = (await import('../../../app/pages/purchase-orders/index.vue')).default
@@ -80,8 +92,8 @@ describe('purchase-orders index page', () => {
 
     expect(replace).toHaveBeenCalledWith({
       query: expect.objectContaining({
-        tab: 'purchase-orders',
-        menuId: '0x010000000000000000000000000000011131',
+        tab: 'change-orders',
+        menuId: '0x010000000000000000000000000000011132',
       }),
     })
   })

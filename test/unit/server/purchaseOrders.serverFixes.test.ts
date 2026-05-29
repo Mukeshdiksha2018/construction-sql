@@ -292,6 +292,140 @@ describe('updatePurchaseOrder – freight / ship_via UUID preference', () => {
 })
 
 // ══════════════════════════════════════════════════════════════════════════════
+// terms_and_conditions_uuid — stored in terms_and_conditions column
+// ══════════════════════════════════════════════════════════════════════════════
+describe('createPurchaseOrder – terms_and_conditions_uuid', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPOFormCreate.mockImplementation(async ({ data }: any) => ({
+      ...makePrismaPORow(),
+      terms_and_conditions: data.terms_and_conditions,
+    }))
+    mockPOItemFindMany.mockResolvedValue([])
+    mockProjectFindFirst.mockResolvedValue(null)
+  })
+
+  it('stores terms_and_conditions_uuid in the terms_and_conditions column', async () => {
+    const { createPurchaseOrder } = await importUtils()
+    await createPurchaseOrder({
+      corporation_uuid: 'corp-1',
+      entry_date: '2026-05-01',
+      terms_and_conditions_uuid: '11111111-1111-1111-1111-111111111111',
+    })
+
+    const createArg = mockPOFormCreate.mock.calls[0][0]
+    expect(createArg.data.terms_and_conditions).toBe('11111111-1111-1111-1111-111111111111')
+  })
+
+  it('prefers terms_and_conditions_uuid over legacy terms_and_conditions text', async () => {
+    const { createPurchaseOrder } = await importUtils()
+    await createPurchaseOrder({
+      corporation_uuid: 'corp-1',
+      entry_date: '2026-05-01',
+      terms_and_conditions_uuid: '11111111-1111-1111-1111-111111111111',
+      terms_and_conditions: 'Legacy inline HTML',
+    })
+
+    const createArg = mockPOFormCreate.mock.calls[0][0]
+    expect(createArg.data.terms_and_conditions).toBe('11111111-1111-1111-1111-111111111111')
+  })
+
+  it('returns terms_and_conditions_uuid on the mapped row when stored value is a UUID', async () => {
+    mockPOFormCreate.mockResolvedValue(makePrismaPORow({
+      terms_and_conditions: '11111111-1111-1111-1111-111111111111',
+    }))
+
+    const { createPurchaseOrder } = await importUtils()
+    const result = await createPurchaseOrder({
+      corporation_uuid: 'corp-1',
+      entry_date: '2026-05-01',
+      terms_and_conditions_uuid: '11111111-1111-1111-1111-111111111111',
+    })
+
+    expect(result.terms_and_conditions_uuid).toBe('11111111-1111-1111-1111-111111111111')
+    expect(result.terms_and_conditions).toBe('11111111-1111-1111-1111-111111111111')
+  })
+})
+
+describe('updatePurchaseOrder – print option flags', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPOFormFindFirst.mockResolvedValue(makePrismaPORow())
+    mockPOFormUpdate.mockResolvedValue(makePrismaPORow())
+    mockPOItemFindMany.mockResolvedValue([])
+    mockProjectFindFirst.mockResolvedValue(null)
+  })
+
+  it('persists print_include_approved_by_vendor as false (not null)', async () => {
+    const { updatePurchaseOrder } = await importUtils()
+    await updatePurchaseOrder('po-uuid-1', {
+      print_include_approved_by_vendor: false,
+    })
+
+    const updateArg = mockPOFormUpdate.mock.calls[0][0]
+    expect(updateArg.data.print_include_approved_by_vendor).toBe(false)
+  })
+
+  it('persists print_use_entity_name as true', async () => {
+    const { updatePurchaseOrder } = await importUtils()
+    await updatePurchaseOrder('po-uuid-1', {
+      print_use_entity_name: true,
+    })
+
+    const updateArg = mockPOFormUpdate.mock.calls[0][0]
+    expect(updateArg.data.print_use_entity_name).toBe(true)
+  })
+
+  it('returns print flags on mapped row after create', async () => {
+    mockPOFormCreate.mockResolvedValue(makePrismaPORow({
+      print_include_approved_by_vendor: true,
+      print_use_entity_name: false,
+    }))
+    mockPOItemFindMany.mockResolvedValue([])
+    mockProjectFindFirst.mockResolvedValue(null)
+
+    const { createPurchaseOrder } = await importUtils()
+    const result = await createPurchaseOrder({
+      corporation_uuid: 'corp-1',
+      entry_date: '2026-05-01',
+      print_include_approved_by_vendor: true,
+      print_use_entity_name: false,
+    })
+
+    expect(result.print_include_approved_by_vendor).toBe(true)
+    expect(result.print_use_entity_name).toBe(false)
+  })
+})
+
+describe('updatePurchaseOrder – terms_and_conditions_uuid', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPOFormFindFirst.mockResolvedValue(makePrismaPORow())
+    mockPOFormUpdate.mockResolvedValue(makePrismaPORow())
+    mockPOItemFindMany.mockResolvedValue([])
+    mockProjectFindFirst.mockResolvedValue(null)
+  })
+
+  it('persists terms_and_conditions_uuid when only uuid is in payload', async () => {
+    const { updatePurchaseOrder } = await importUtils()
+    await updatePurchaseOrder('po-uuid-1', {
+      terms_and_conditions_uuid: '33333333-3333-3333-3333-333333333333',
+    })
+
+    const updateArg = mockPOFormUpdate.mock.calls[0][0]
+    expect(updateArg.data.terms_and_conditions).toBe('33333333-3333-3333-3333-333333333333')
+  })
+
+  it('does not touch terms_and_conditions when uuid field is omitted', async () => {
+    const { updatePurchaseOrder } = await importUtils()
+    await updatePurchaseOrder('po-uuid-1', { status: 'Ready' })
+
+    const updateArg = mockPOFormUpdate.mock.calls[0][0]
+    expect(updateArg.data.terms_and_conditions).toBeUndefined()
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
 // getPurchaseOrder / mapPORow — financial_breakdown field restoration
 // ══════════════════════════════════════════════════════════════════════════════
 describe('getPurchaseOrder – financial_breakdown field restoration', () => {
@@ -372,6 +506,25 @@ describe('getPurchaseOrder – financial_breakdown field restoration', () => {
     const po = await getPurchaseOrder('po-uuid-1')
     expect(po?.freight_uuid).toBe('fr-uuid-ups')
     expect(po?.ship_via_uuid).toBe('sv-uuid-fedex')
+  })
+
+  it('exposes terms_and_conditions_uuid when terms_and_conditions column holds a UUID', async () => {
+    mockPOFormFindFirst.mockResolvedValue(makePrismaPORow({
+      terms_and_conditions: '22222222-2222-2222-2222-222222222222',
+    }))
+    const { getPurchaseOrder } = await importUtils()
+    const po = await getPurchaseOrder('po-uuid-1')
+    expect(po?.terms_and_conditions_uuid).toBe('22222222-2222-2222-2222-222222222222')
+  })
+
+  it('does not set terms_and_conditions_uuid when column holds inline HTML', async () => {
+    mockPOFormFindFirst.mockResolvedValue(makePrismaPORow({
+      terms_and_conditions: '<p>Inline terms</p>',
+    }))
+    const { getPurchaseOrder } = await importUtils()
+    const po = await getPurchaseOrder('po-uuid-1')
+    expect(po?.terms_and_conditions_uuid).toBeNull()
+    expect(po?.terms_and_conditions).toBe('<p>Inline terms</p>')
   })
 })
 
