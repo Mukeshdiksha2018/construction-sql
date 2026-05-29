@@ -1,33 +1,21 @@
 <template>
   <div class="space-y-6">
     <ClientOnly>
-      <UTabs
-        :items="tabItems"
-        :model-value="activeTab"
-        class="w-full"
-        color="primary"
-        size="sm"
-        :ui="{ leadingIcon: 'xl' }"
-        @update:model-value="handleTabChange"
-      >
-        <template #content="{ item }">
-          <section v-if="item.value === 'project-details'">
-            <ProjectsProjectDetails />
-          </section>
-          <section v-else-if="item.value === 'items'">
-            <ProjectsItems />
-          </section>
-          <section v-else-if="item.value === 'estimates'">
-            <ProjectsEstimates />
-          </section>
-          <section v-else-if="item.value === 'cost-codes'">
-            <ProjectsCostCodes />
-          </section>
-          <p v-else class="text-muted text-sm">
-            This is the {{ item.label }} tab.
-          </p>
-        </template>
-      </UTabs>
+      <section v-if="activeTab === 'project-details'">
+        <ProjectsProjectDetails />
+      </section>
+      <section v-else-if="activeTab === 'items'">
+        <ProjectsItems />
+      </section>
+      <section v-else-if="activeTab === 'estimates'">
+        <ProjectsEstimates />
+      </section>
+      <section v-else-if="activeTab === 'cost-codes'">
+        <ProjectsCostCodes />
+      </section>
+      <p v-else class="text-muted text-sm">
+        No project screen available for this menu.
+      </p>
 
       <template #fallback>
         <div class="flex items-center justify-center h-64">
@@ -44,7 +32,6 @@
 </template>
 
 <script setup lang="ts">
-import type { TabsItem } from '@nuxt/ui'
 import { computed, onMounted, watch } from 'vue'
 import ProjectsProjectDetails from '~/components/projects/ProjectDetails.vue'
 import ProjectsItems from '~/components/projects/Items.vue'
@@ -81,31 +68,12 @@ const {
   refreshTabState,
   tabs,
 } = useTabRouting(visibleTabs.value, visibleTabs.value[0]?.name || 'project-details')
-
-const tabItems = computed<TabsItem[]>(() =>
-  tabs.map(tab => ({
-    label: tab.label,
-    icon: tab.icon,
-    value: tab.value,
-  })),
-)
-
-const activeTab = computed(() => currentTab.value)
-
-function handleTabChange(tab: string | number) {
-  const tabString = String(tab)
-  const validTab = tabs.find(t => t.value === tabString)
-  if (!validTab) return
-
-  const query: Record<string, string> = { ...route.query, tab: validTab.name } as Record<string, string>
-  if (validTab.name === 'items') {
-    query.subTab = 'item-types'
-  }
-  if (validTab.name === 'cost-codes') {
-    query.subTab = 'cost-codes-division'
-  }
-  router.push({ query })
-}
+const activeTab = computed(() => {
+  if (nimbleOn && visibleTabs.value.length > 0) return visibleTabs.value[0]!.name
+  const current = currentTab.value
+  if (tabs.some(t => t.name === current)) return current
+  return tabs[0]?.name || 'project-details'
+})
 
 watch(() => route.query.tab, (newTab) => {
   if (newTab && typeof newTab === 'string') {

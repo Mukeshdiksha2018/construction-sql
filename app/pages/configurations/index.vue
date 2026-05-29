@@ -1,30 +1,18 @@
 <template>
   <div class="space-y-6">
     <ClientOnly>
-      <UTabs
-        :items="tabItems"
-        :model-value="activeTab"
-        class="w-full"
-        color="primary"
-        size="sm"
-        :ui="{ leadingIcon: 'xl' }"
-        @update:model-value="handleTabChange"
-      >
-        <template #content="{ item }">
-          <section v-if="item.value === 'project-types'">
-            <ConfigurationsProjectTypes />
-          </section>
-          <section v-else-if="item.value === 'service-types'">
-            <ConfigurationsServiceTypes />
-          </section>
-          <section v-else-if="item.value === 'terms-and-conditions'">
-            <ConfigurationsTermsAndConditions />
-          </section>
-          <p v-else class="text-muted text-sm">
-            This is the {{ item.label }} tab.
-          </p>
-        </template>
-      </UTabs>
+      <section v-if="activeTab === 'project-types'">
+        <ConfigurationsProjectTypes />
+      </section>
+      <section v-else-if="activeTab === 'service-types'">
+        <ConfigurationsServiceTypes />
+      </section>
+      <section v-else-if="activeTab === 'terms-and-conditions'">
+        <ConfigurationsTermsAndConditions />
+      </section>
+      <p v-else class="text-muted text-sm">
+        No configuration screen available for this menu.
+      </p>
 
       <template #fallback>
         <div class="flex items-center justify-center h-64">
@@ -41,7 +29,6 @@
 </template>
 
 <script setup lang="ts">
-import type { TabsItem } from '@nuxt/ui'
 import { computed, onMounted, watch } from 'vue'
 import ConfigurationsProjectTypes from '~/components/configurations/ProjectTypes.vue'
 import ConfigurationsServiceTypes from '~/components/configurations/ServiceTypes.vue'
@@ -75,24 +62,12 @@ const {
   refreshTabState,
   tabs,
 } = useTabRouting(visibleTabs.value, visibleTabs.value[0]?.name || 'project-types')
-
-const tabItems = computed<TabsItem[]>(() =>
-  tabs.map(tab => ({
-    label: tab.label,
-    icon: tab.icon,
-    value: tab.value,
-  })),
-)
-
-const activeTab = computed(() => currentTab.value)
-
-function handleTabChange(tab: string | number) {
-  const tabString = String(tab)
-  const validTab = tabs.find(t => t.value === tabString)
-  if (validTab) {
-    navigateToTab(validTab.name)
-  }
-}
+const activeTab = computed(() => {
+  if (nimbleOn && visibleTabs.value.length > 0) return visibleTabs.value[0]!.name
+  const current = currentTab.value
+  if (tabs.some(t => t.name === current)) return current
+  return tabs[0]?.name || 'project-types'
+})
 
 watch(() => route.query.tab, (newTab) => {
   if (newTab && typeof newTab === 'string') {
