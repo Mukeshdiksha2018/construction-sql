@@ -491,4 +491,42 @@ describe('usePurchaseOrderResourcesStore', () => {
       expect(cached[0].cost_code_uuid).toBe('cc-1')
     })
   })
+
+  describe('fetchPurchaseOrderItems', () => {
+    const mockPOItems = [
+      { uuid: 'poi-1', purchase_order_uuid: 'po-1', item_name: 'Widget', po_quantity: 2 },
+    ]
+
+    it('fetches items from /api/purchase-order-items', async () => {
+      mockFetch.mockResolvedValue({ data: mockPOItems })
+      const store = await getStore()
+
+      const result = await store.fetchPurchaseOrderItems('po-1')
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/purchase-order-items', {
+        method: 'GET',
+        query: { purchase_order_uuid: 'po-1' },
+      })
+      expect(result).toHaveLength(1)
+      expect(result[0].uuid).toBe('poi-1')
+    })
+
+    it('returns empty array when uuid is missing', async () => {
+      const store = await getStore()
+      expect(await store.fetchPurchaseOrderItems('')).toEqual([])
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('returns empty array on API error', async () => {
+      mockFetch.mockRejectedValue(new Error('API Error'))
+      const store = await getStore()
+      expect(await store.fetchPurchaseOrderItems('po-1')).toEqual([])
+    })
+
+    it('returns empty array when response data is not an array', async () => {
+      mockFetch.mockResolvedValue({ data: null })
+      const store = await getStore()
+      expect(await store.fetchPurchaseOrderItems('po-1')).toEqual([])
+    })
+  })
 })
