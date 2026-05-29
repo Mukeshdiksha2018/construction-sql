@@ -59,6 +59,20 @@ describe('isPublicApiRoute', () => {
       expect(requiresAuthForMethod('PUT')).toBe(true)
       expect(requiresAuthForMethod('PATCH')).toBe(true)
       expect(requiresAuthForMethod('DELETE')).toBe(true)
+      expect(requiresAuthForMethod('post')).toBe(true)
+    })
+
+    it('documents print preview GET endpoints as read-only at middleware layer', () => {
+      const printReads = [
+        '/api/purchase-order-forms/po-uuid',
+        '/api/purchase-order-items',
+        '/api/projects/proj-uuid',
+      ]
+
+      for (const path of printReads) {
+        expect(requiresAuthForMethod('GET')).toBe(false)
+        expect(isPublicApiRoute(path, 'GET')).toBe(false)
+      }
     })
 
     it('protects admin/DB-level routes', () => {

@@ -668,6 +668,7 @@ import {
   trimDisplayStr,
 } from '~/utils/purchaseOrderPreviewDisplay'
 import { useUOMStore } from '~/stores/uom'
+import { resolveAuthToken, waitForAuthReady } from '~/utils/authToken'
 
 interface Props {
   purchaseOrder?: any
@@ -708,6 +709,21 @@ const masterSpecByTypeAndName = ref<Map<string, string>>(new Map())
 const normalizeText = (value: unknown) => String(value || '').trim().toLowerCase()
 const buildTypeNameKey = (itemTypeUuid: unknown, itemName: unknown) =>
   `${normalizeText(itemTypeUuid)}::${normalizeText(itemName)}`
+
+/** Nimble proxy endpoints require a Bearer token; skip quietly on unauthenticated print tabs. */
+async function fetchNimbleMasterDataIfAuthenticated(
+  fetchFn: () => Promise<void>,
+  label: string,
+): Promise<void> {
+  await waitForAuthReady()
+  if (!resolveAuthToken()) return
+  try {
+    await fetchFn()
+  }
+  catch (e) {
+    console.error(`Failed to load ${label}:`, e)
+  }
+}
 
 const load = async () => {
   error.value = null
@@ -932,13 +948,11 @@ const loadRelatedData = async () => {
 
   const poType = (po.po_type || '').toUpperCase()
   if (poType !== 'LABOR' && po.corporation_uuid) {
-    try {
+    await fetchNimbleMasterDataIfAuthenticated(async () => {
       if (uomStore.uom.length === 0) {
         await uomStore.fetchUOM(po.corporation_uuid)
       }
-    } catch (e) {
-      console.error('Failed to load UOM for print:', e)
-    }
+    }, 'UOM for print')
   }
 
   // Same `location` table as Location Management — force API so UUID → location_name works for every user (not IndexedDB cache).
@@ -970,11 +984,9 @@ const loadRelatedData = async () => {
     }
     const shipViaUuid = resolveShipViaUuidFromPo(po)
     if (shipViaUuid && !shipViaStore.getShipViaByUuid(shipViaUuid)) {
-      try {
+      await fetchNimbleMasterDataIfAuthenticated(async () => {
         await shipViaStore.fetchShipVia()
-      } catch (e) {
-        console.error('Failed to refresh ship via for print:', e)
-      }
+      }, 'ship via for print')
     }
   }
 
@@ -1790,13 +1802,11 @@ onMounted(async () => {
       console.error('Failed to load freight data:', e)
     }
   }
-  if (shipViaStore.shipVia.length === 0) {
-    try {
+  await fetchNimbleMasterDataIfAuthenticated(async () => {
+    if (shipViaStore.shipVia.length === 0) {
       await shipViaStore.fetchShipVia()
-    } catch (e) {
-      console.error('Failed to load ship via data:', e)
     }
-  }
+  }, 'ship via data')
   
   // Ensure user profiles are loaded for resolving user names
   if ([].length === 0) {
@@ -1815,13 +1825,11 @@ onMounted(async () => {
     }
   }
 
-  if (corporationStore.corporations.length === 0) {
-    try {
+  await fetchNimbleMasterDataIfAuthenticated(async () => {
+    if (corporationStore.corporations.length === 0) {
       await corporationStore.fetchCorporations()
-    } catch (e) {
-      // Silent failure — fallback to selectedCorporation if available
     }
-  }
+  }, 'corporations')
 
   if (termsAndConditionsStore.termsAndConditions.length === 0) {
     try {
