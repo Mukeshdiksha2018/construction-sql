@@ -30,6 +30,10 @@ function toNum(val: unknown): number | null {
 // ─── Row Mappers ──────────────────────────────────────────────────────────────
 
 function mapPORow(row: any): any {
+  const financialBreakdown = parseJson(row.financial_breakdown, null) as any
+  const savedCharges = financialBreakdown?.charges ?? {}
+  const savedSalesTaxes = financialBreakdown?.sales_taxes ?? {}
+
   return {
     id: String(row.id),
     uuid: row.uuid,
@@ -40,7 +44,9 @@ function mapPORow(row: any): any {
     po_type: row.po_type ?? null,
     credit_days: row.credit_days ?? null,
     credit_days_id: row.credit_days_id ?? null,
+    // ship_via stores a UUID — the client resolves it to a display name via the ship-via master
     ship_via: row.ship_via ?? null,
+    // freight stores a UUID — the client resolves it to a display name via the freight master
     freight: row.freight ?? null,
     shipping_instructions: row.shipping_instructions ?? null,
     estimated_delivery_date: toLocalDate(row.estimated_delivery_date),
@@ -55,7 +61,7 @@ function mapPORow(row: any): any {
     billing_address_uuid: row.billing_address_uuid ?? null,
     shipping_address_uuid: row.shipping_address_uuid ?? null,
     status: row.status,
-    financial_breakdown: parseJson(row.financial_breakdown, null),
+    financial_breakdown: financialBreakdown,
     attachments: parseJson(row.attachments, []),
     removed_po_items: parseJson(row.removed_po_items, []),
     audit_log: parseJson(row.audit_log, []),
@@ -74,6 +80,28 @@ function mapPORow(row: any): any {
     po_items: [],
     labor_po_items: [],
     location_wise_material: [],
+    // Expose freight/ship_via UUID explicitly so the form select-models resolve
+    // without having to treat the `freight`/`ship_via` columns as fallback UUIDs.
+    freight_uuid: row.freight ?? null,
+    ship_via_uuid: row.ship_via ?? null,
+    // ── Restore charge / tax fields from financial_breakdown so the form
+    //    re-hydrates correctly when a saved PO is reopened for editing.
+    freight_charges_percentage: savedCharges.freight?.percentage ?? null,
+    freight_charges_amount: savedCharges.freight?.amount ?? null,
+    freight_charges_taxable: savedCharges.freight?.taxable ?? false,
+    packing_charges_percentage: savedCharges.packing?.percentage ?? null,
+    packing_charges_amount: savedCharges.packing?.amount ?? null,
+    packing_charges_taxable: savedCharges.packing?.taxable ?? false,
+    custom_duties_charges_percentage: savedCharges.custom_duties?.percentage ?? null,
+    custom_duties_charges_amount: savedCharges.custom_duties?.amount ?? null,
+    custom_duties_charges_taxable: savedCharges.custom_duties?.taxable ?? false,
+    other_charges_percentage: savedCharges.other?.percentage ?? null,
+    other_charges_amount: savedCharges.other?.amount ?? null,
+    other_charges_taxable: savedCharges.other?.taxable ?? false,
+    sales_tax_1_percentage: savedSalesTaxes.sales_tax_1?.percentage ?? null,
+    sales_tax_1_amount: savedSalesTaxes.sales_tax_1?.amount ?? null,
+    sales_tax_2_percentage: savedSalesTaxes.sales_tax_2?.percentage ?? null,
+    sales_tax_2_amount: savedSalesTaxes.sales_tax_2?.amount ?? null,
   }
 }
 
@@ -420,8 +448,9 @@ export async function createPurchaseOrder(input: any) {
     po_type: input.po_type ? String(input.po_type).toUpperCase() : null,
     credit_days: input.credit_days ?? null,
     credit_days_id: input.credit_days_id ?? null,
-    ship_via: input.ship_via ?? null,
-    freight: input.freight ?? null,
+    // Prefer UUID over display name so the client can resolve to a name via the master table.
+    ship_via: input.ship_via_uuid || input.ship_via || null,
+    freight: input.freight_uuid || input.freight || null,
     shipping_instructions: input.shipping_instructions ?? null,
     estimated_delivery_date: parseDate(input.estimated_delivery_date),
     include_items: input.include_items ?? null,
@@ -458,7 +487,7 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
 
   const updateData: any = {}
   const fields = [
-    'po_number', 'credit_days', 'credit_days_id', 'ship_via', 'freight',
+    'po_number', 'credit_days', 'credit_days_id',
     'shipping_instructions', 'include_items', 'quote_reference', 'terms_and_conditions',
     'vendor_uuid', 'billing_address_uuid', 'shipping_address_uuid', 'status',
     'prepared_by', 'approved_by', 'print_include_approved_by_vendor',
@@ -466,6 +495,14 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
   ]
   for (const f of fields) {
     if (f in input) updateData[f] = input[f] ?? null
+  }
+  // Prefer UUID over display name — store the master-table UUID so the client
+  // can always resolve it to a name via the ship-via / freight master tables.
+  if ('ship_via_uuid' in input || 'ship_via' in input) {
+    updateData.ship_via = input.ship_via_uuid || input.ship_via || null
+  }
+  if ('freight_uuid' in input || 'freight' in input) {
+    updateData.freight = input.freight_uuid || input.freight || null
   }
   const numericFields = ['item_total', 'charges_total', 'tax_total', 'total_po_amount']
   for (const f of numericFields) {

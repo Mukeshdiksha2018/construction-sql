@@ -2173,7 +2173,8 @@ async function onFreightModelUpdate(val: string | undefined) {
       await freightStore.fetchFreight(true).catch(() => {});
       rec = freightStore.getFreightByUuid(val);
     }
-    updateFormFields({ freight_uuid: val, freight: rec?.ship_via || '' });
+    // Freight records use `freight_name`; ShipVia records use `ship_via`.
+    updateFormFields({ freight_uuid: val, freight: rec?.freight_name || '' });
   } else {
     updateFormFields({ freight: val, freight_uuid: '' });
   }

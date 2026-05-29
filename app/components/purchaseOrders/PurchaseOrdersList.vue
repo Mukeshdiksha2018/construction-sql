@@ -1923,6 +1923,15 @@ const shipViaNameByUuid = computed<Record<string, string>>(() => {
   return map
 })
 
+const freightNameByUuid = computed<Record<string, string>>(() => {
+  const list = freightStore.getAllFreight || []
+  const map: Record<string, string> = {}
+  list.forEach((f: any) => {
+    if (f?.uuid) map[f.uuid] = f.freight_name || f.uuid
+  })
+  return map
+})
+
 const vendorNameByUuid = computed<Record<string, string>>(() => {
   const corpUuid = selectedCorporationId.value || ''
   const list: any[] = corpUuid ? vendorStore.getVendorsForCorporation(corpUuid) : []
@@ -5945,10 +5954,11 @@ watch(
 // Load ship via data and locations on mount
 onMounted(async () => {
   try {
-    await shipViaStore.fetchShipVia(nimbleIntegrationsEnabled)
-    if (nimbleIntegrationsEnabled) {
-      await freightStore.fetchFreight(true)
-    }
+    // Always fetch both so uuid→name lookups work regardless of Nimble flag
+    await Promise.allSettled([
+      shipViaStore.fetchShipVia(nimbleIntegrationsEnabled),
+      freightStore.fetchFreight(),
+    ])
   } catch (error) {
     console.error('Error fetching ship via/freight:', error)
   }
