@@ -4099,7 +4099,7 @@ watch(
       usedQuantitiesByItem.value = {};
     }
   },
-  { immediate: false }
+  { immediate: true }
 );
 
 // Fetch preferred items directly from API instead of store

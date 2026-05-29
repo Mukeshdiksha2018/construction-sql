@@ -1,5 +1,5 @@
-// Returns quantities already allocated to purchase orders per item+cost_code composite key.
-// Used by the estimate form to show how much of each item has already been PO'd.
+import { buildUsedQuantitiesByItem } from '../../utils/estimateQuantityAvailability'
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const projectUuid = String(query.project_uuid || '').trim()
@@ -14,7 +14,20 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // This endpoint depends on a purchase_order_items_list table that may not exist yet.
-  // Return empty map as a safe default — the estimate form will treat all quantities as available.
-  return { data: {} as Record<string, number> }
+  try {
+    const data = await buildUsedQuantitiesByItem({
+      corporationUuid,
+      projectUuid,
+      estimateUuid,
+      excludePoUuid: excludePoUuid || undefined,
+    })
+    return { data }
+  } catch (error: any) {
+    console.error('estimate-quantity-availability API failure', error)
+    if (error.statusCode) throw error
+    throw createError({
+      statusCode: 500,
+      statusMessage: error.message || 'Internal server error',
+    })
+  }
 })
