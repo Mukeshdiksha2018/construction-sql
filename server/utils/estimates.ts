@@ -377,16 +377,22 @@ async function insertLineItems(
   })
   for (const c of created) insertedMap[c.cost_code_uuid] = c.uuid
 
-  // Insert material items, location-wise labor/material
+  // Build flat arrays for all child rows across all line items, then insert each
+  // table in a single createMany call (3 total, run in parallel) instead of up to
+  // 3 × N sequential awaits.
+  const allMatRows: any[] = []
+  const allLwLaborRows: any[] = []
+  const allLwMaterialRows: any[] = []
+
   for (const item of lineItemsInput) {
     const lineItemUuid = insertedMap[item.cost_code_uuid]
     if (!lineItemUuid) continue
 
     if (Array.isArray(item.material_items) && item.material_items.length > 0) {
-      const matRows = item.material_items.map((m, idx) => {
+      item.material_items.forEach((m, idx) => {
         const up = toNum(m.unit_price)
         const qty = toNum(m.quantity)
-        return {
+        allMatRows.push({
           corporation_uuid: corporationUuid,
           project_uuid: projectUuid,
           estimate_uuid: estimateUuid,
@@ -408,45 +414,53 @@ async function insertLineItems(
           sequence: typeof m.sequence === 'number' ? Math.round(m.sequence) : (parseInt(String(m.sequence ?? '')) || idx + 1),
           metadata: stringifyJson(m.metadata ?? {}),
           is_active: true,
-        }
+        })
       })
-      if (matRows.length > 0) await prisma.estimateMaterialItem.createMany({ data: matRows })
     }
 
     if (Array.isArray(item.location_wise_labor) && item.location_wise_labor.length > 0) {
-      const lwRows = item.location_wise_labor.map((r, idx) => ({
-        corporation_uuid: corporationUuid,
-        project_uuid: projectUuid,
-        estimate_uuid: estimateUuid,
-        cost_code_uuid: item.cost_code_uuid,
-        estimate_line_item_uuid: lineItemUuid,
-        location_uuid: r.location_uuid,
-        area_sq_ft: toNum(r.area_sq_ft),
-        no_of_rooms: toNum(r.no_of_rooms),
-        num_hours: toNum(r.num_hours),
-        amount_per_sqft: toNum(r.amount_per_sqft),
-        amount_per_room: toNum(r.amount_per_room),
-        hourly_wage: toNum(r.hourly_wage),
-        amount: toNum(r.amount),
-        sequence: typeof r.sequence === 'number' ? Math.round(r.sequence) : (parseInt(String(r.sequence ?? '')) || idx + 1),
-      }))
-      await prisma.estimateLocationWiseLabor.createMany({ data: lwRows })
+      item.location_wise_labor.forEach((r, idx) => {
+        allLwLaborRows.push({
+          corporation_uuid: corporationUuid,
+          project_uuid: projectUuid,
+          estimate_uuid: estimateUuid,
+          cost_code_uuid: item.cost_code_uuid,
+          estimate_line_item_uuid: lineItemUuid,
+          location_uuid: r.location_uuid,
+          area_sq_ft: toNum(r.area_sq_ft),
+          no_of_rooms: toNum(r.no_of_rooms),
+          num_hours: toNum(r.num_hours),
+          amount_per_sqft: toNum(r.amount_per_sqft),
+          amount_per_room: toNum(r.amount_per_room),
+          hourly_wage: toNum(r.hourly_wage),
+          amount: toNum(r.amount),
+          sequence: typeof r.sequence === 'number' ? Math.round(r.sequence) : (parseInt(String(r.sequence ?? '')) || idx + 1),
+        })
+      })
     }
 
     if (Array.isArray(item.location_wise_material) && item.location_wise_material.length > 0) {
-      const lwmRows = item.location_wise_material.map((r, idx) => ({
-        corporation_uuid: corporationUuid,
-        project_uuid: projectUuid,
-        estimate_uuid: estimateUuid,
-        cost_code_uuid: item.cost_code_uuid,
-        estimate_line_item_uuid: lineItemUuid,
-        location_uuid: r.location_uuid,
-        amount: toNum(r.amount),
-        sequence: typeof r.sequence === 'number' ? Math.round(r.sequence) : (parseInt(String(r.sequence ?? '')) || idx + 1),
-      }))
-      await prisma.estimateLocationWiseMaterial.createMany({ data: lwmRows })
+      item.location_wise_material.forEach((r, idx) => {
+        allLwMaterialRows.push({
+          corporation_uuid: corporationUuid,
+          project_uuid: projectUuid,
+          estimate_uuid: estimateUuid,
+          cost_code_uuid: item.cost_code_uuid,
+          estimate_line_item_uuid: lineItemUuid,
+          location_uuid: r.location_uuid,
+          amount: toNum(r.amount),
+          sequence: typeof r.sequence === 'number' ? Math.round(r.sequence) : (parseInt(String(r.sequence ?? '')) || idx + 1),
+        })
+      })
     }
   }
+
+  // One parallel round-trip per child table (max 3 DB calls total)
+  await Promise.all([
+    allMatRows.length > 0 ? prisma.estimateMaterialItem.createMany({ data: allMatRows }) : Promise.resolve(),
+    allLwLaborRows.length > 0 ? prisma.estimateLocationWiseLabor.createMany({ data: allLwLaborRows }) : Promise.resolve(),
+    allLwMaterialRows.length > 0 ? prisma.estimateLocationWiseMaterial.createMany({ data: allLwMaterialRows }) : Promise.resolve(),
+  ])
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -549,7 +563,14 @@ export async function createEstimate(input: CreateEstimateInput) {
     await insertLineItems(input.line_items, estimate.uuid, input.corporation_uuid, input.project_uuid)
   }
 
-  return getEstimate(estimate.uuid)
+  // Return header without re-reading line items from the DB — the form always
+  // re-fetches via GET /api/estimates/:uuid when opened for editing, so the
+  // save response only needs to update the list store.
+  const project = await prisma.project.findFirst({
+    where: { uuid: estimate.project_uuid },
+    select: { uuid: true, project_name: true, project_id: true },
+  })
+  return mapEstimateRow(estimate, project)
 }
 
 export async function updateEstimate(input: UpdateEstimateInput) {
@@ -599,7 +620,7 @@ export async function updateEstimate(input: UpdateEstimateInput) {
   if (input.removed_cost_code_uuids !== undefined) updateData.removed_cost_code_uuids = stringifyJson(input.removed_cost_code_uuids)
   if (auditEntry) updateData.audit_log = stringifyJson(mergedLog)
 
-  await prisma.estimate.update({ where: { uuid: input.uuid }, data: updateData })
+  const updated = await prisma.estimate.update({ where: { uuid: input.uuid }, data: updateData })
 
   // Replace line items if provided
   if (Array.isArray(input.line_items)) {
@@ -610,7 +631,12 @@ export async function updateEstimate(input: UpdateEstimateInput) {
     }
   }
 
-  return getEstimate(input.uuid)
+  // Return header without re-reading line items — avoids 4 extra DB round-trips.
+  const project = await prisma.project.findFirst({
+    where: { uuid: updated.project_uuid },
+    select: { uuid: true, project_name: true, project_id: true },
+  })
+  return mapEstimateRow(updated, project)
 }
 
 export async function deleteEstimate(uuid: string) {

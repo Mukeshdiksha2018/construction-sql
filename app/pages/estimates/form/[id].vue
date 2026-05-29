@@ -405,7 +405,9 @@ const saveEstimate = async (afterSave: 'new' | 'close' = 'close', newStatus: 'Dr
       const actionName = newStatus === 'Approved' ? 'approved' : newStatus === 'Ready' ? 'verified' : (editingEstimate.value ? 'updated' : 'created')
       const toast = useToast()
       toast.add({ title: 'Success', description: `Estimate ${actionName} successfully`, color: 'success', icon: 'i-heroicons-check-circle' })
-      await estimatesStore.fetchEstimates(corpUuid)
+      // The store already received and patched the updated row from the PUT/POST response.
+      // Fire a background refresh so the list stays accurate, but don't block navigation on it.
+      estimatesStore.fetchEstimates(corpUuid).catch(() => {})
       if (!editingEstimate.value) estimateCreationStore.clearStore()
 
       if (afterSave === 'new') {
@@ -473,7 +475,7 @@ const reviseEstimate = async () => {
     if (success) {
       const toast = useToast()
       toast.add({ title: 'Revise', description: 'Estimate has been reverted to Draft and is now editable.', color: 'info', icon: 'i-heroicons-arrow-uturn-left' })
-      await estimatesStore.fetchEstimates(corpUuid)
+      estimatesStore.fetchEstimates(corpUuid).catch(() => {})
       await loadEstimate()
     }
     else {
