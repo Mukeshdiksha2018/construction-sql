@@ -36,8 +36,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
   }
 
+  // Cookie may be unavailable in a new tab (e.g. Nimble iframe) while Pinia still
+  // has a valid persisted token — allow navigation; API calls use Bearer auth.
   if (authStore.isAuthenticated) {
-    authStore.clear()
+    return
   }
 
   return navigateTo({

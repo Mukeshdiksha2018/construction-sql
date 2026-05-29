@@ -1,15 +1,25 @@
 import { fetchServerSession } from '~/utils/auth-session'
-import { useAuthStore } from '~/stores/auth'
+import { useAuthStore, type NimbleSession } from '~/stores/auth'
+import { consumePrintAuthSession, readPersistedAuthSession } from '~/utils/printAuthBridge'
 
-/** Sync Pinia auth from the HTTP-only session cookie when the store is empty (e.g. new print tab). */
+function applySessionIfNeeded(session: NimbleSession | null | undefined): boolean {
+  if (!session?.token) return false
+  const authStore = useAuthStore()
+  if (authStore.token === session.token) return true
+  authStore.setSession(session)
+  return true
+}
+
+/** Sync Pinia auth from print bridge, localStorage, or the HTTP-only session cookie. */
 export async function ensureAuthSession(): Promise<void> {
   const authStore = useAuthStore()
   if (authStore.token) return
 
+  if (applySessionIfNeeded(consumePrintAuthSession())) return
+  if (applySessionIfNeeded(readPersistedAuthSession())) return
+
   const session = await fetchServerSession()
-  if (session?.token) {
-    authStore.setSession(session)
-  }
+  applySessionIfNeeded(session)
 }
 
 function buildAuthHeaders(extra?: HeadersInit): Headers {

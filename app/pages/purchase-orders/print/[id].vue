@@ -1,56 +1,53 @@
 <template>
-  <div class="min-h-screen bg-white">
-    <ClientOnly>
-      <div v-if="loading" class="flex items-center justify-center min-h-screen">
-        <div class="text-center">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p class="text-gray-600">Loading purchase order...</p>
+  <div class="h-screen overflow-y-auto bg-white text-black print:h-auto print:overflow-visible">
+    <div class="print:hidden w-full">
+      <div class="max-w-5xl mx-auto px-4 pt-4">
+        <div class="flex justify-end">
+          <UButton color="primary" icon="i-heroicons-printer" @click="printPage">Print</UButton>
         </div>
       </div>
-      <div v-else-if="error" class="flex items-center justify-center min-h-screen">
-        <p class="text-red-600">{{ error }}</p>
-      </div>
-      <div v-else-if="purchaseOrder" ref="printRef">
-        <PurchaseOrderPreview :purchase-order="purchaseOrder" />
-      </div>
-    </ClientOnly>
+    </div>
+
+    <div class="max-w-5xl mx-auto px-4 py-6 print:px-2 print:py-2">
+      <PurchaseOrderPreview :purchase-order-uuid="purchaseOrderId" @preview-ready="onPreviewReady" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import PurchaseOrderPreview from '~/components/purchaseOrders/PurchaseOrderPreview.vue'
-import { authenticatedFetch } from '~/utils/authenticatedFetch'
 
 definePageMeta({
   layout: false,
-  middleware: 'auth',
 })
 
 const route = useRoute()
-const id = computed(() => route.params.id as string)
+const purchaseOrderId = computed(() => route.params.id as string)
 
-const purchaseOrder = ref<any>(null)
-const loading = ref(true)
-const error = ref<string | null>(null)
-const printRef = ref<HTMLElement | null>(null)
+const printPage = () => window.print()
 
-onMounted(async () => {
-  try {
-    const response = await authenticatedFetch<any>(`/api/purchase-order-forms/${id.value}`)
-    purchaseOrder.value = response?.data ?? null
-    if (!purchaseOrder.value) {
-      error.value = 'Purchase order not found'
-    }
-  } catch (err: any) {
-    error.value = err?.statusMessage || err?.message || 'Failed to load purchase order'
-  } finally {
-    loading.value = false
-    await nextTick()
-    if (!error.value) {
-      setTimeout(() => window.print(), 500)
-    }
-  }
-})
+function onPreviewReady() {
+  setTimeout(() => window.print(), 500)
+}
 
-useHead({ title: `PO Print` })
+useHead({ title: 'PO Print' })
 </script>
+
+<style>
+@media print {
+  html, body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  @page {
+    margin: 0.5cm;
+  }
+
+  * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+</style>

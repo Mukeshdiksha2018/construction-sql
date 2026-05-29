@@ -1,5 +1,5 @@
 import { fetchServerSession } from '~/utils/auth-session'
-import { getSafeRedirect } from '~/utils/safe-redirect'
+import { getSafeRedirect, DEFAULT_AUTHENTICATED_ROUTE } from '~/utils/safe-redirect'
 import { getPathForMenuId } from '~/utils/nimbleMenuIds'
 import type { NimbleSession } from '~/stores/auth'
 
@@ -27,7 +27,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     if (!authStore.isAuthenticated || authStore.token !== serverSession.token) {
       authStore.setSession(serverSession)
     }
-    return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect))
+    return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect, DEFAULT_AUTHENTICATED_ROUTE))
   }
 
   if (nimbleOn && authId) {
@@ -43,7 +43,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
       })
       if (result?.session) {
         authStore.setSession(result.session)
-        return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect))
+        return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect, DEFAULT_AUTHENTICATED_ROUTE))
       }
     }
     catch {
@@ -52,6 +52,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (authStore.isAuthenticated) {
-    authStore.clear()
+    return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect, DEFAULT_AUTHENTICATED_ROUTE))
   }
 })
