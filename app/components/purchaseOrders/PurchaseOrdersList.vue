@@ -565,16 +565,16 @@
           v-else-if="itemsTableData.length > 0"
           ref="itemsTable"
           sticky
-          v-model:column-pinning="itemsTableColumnPinning"
           :data="itemsTableData"
           :columns="itemsTableColumns"
           :loading="false"
           v-model:selected="selectedItemsTableRows"
           :selectable="true"
-          class="w-full overflow-x-auto"
+          class="create-po-items-table w-full"
           :ui="{
             td: 'p-2 text-xs text-muted whitespace-normal break-words',
-            tr: 'h-auto'
+            th: 'px-2 py-2 text-xs font-semibold',
+            tr: 'h-auto',
           }"
         />
         <!-- Empty state - only show when not loading, filters are set, and no data -->
@@ -2166,13 +2166,6 @@ const selectedItemsTableRowsCount = computed(() => {
   return itemsTable.value.tableApi.getFilteredSelectedRowModel().rows.length
 })
 
-// Column pinning for items table (pin quantity columns to the right)
-// Order matters: columns are pinned from left to right in the array
-const itemsTableColumnPinning = ref({
-  left: [],
-  right: ['budget_qty', 'po_qty', 'pending_qty']
-})
-
 // To be Raised items state
 const toBeRaisedItems = ref<any[]>([])
 const loadingToBeRaisedItems = ref(false)
@@ -3062,13 +3055,16 @@ const itemsTableColumns: TableColumn<any>[] = [
     accessorKey: 'budget_qty',
     header: 'Budget Qty',
     enableSorting: false,
-    size: 120,
-    meta: { 
-      class: { th: 'text-right whitespace-nowrap', td: 'text-right whitespace-nowrap' }
+    size: 88,
+    meta: {
+      class: {
+        th: 'create-po-qty-col text-right whitespace-nowrap border-l border-gray-200 dark:border-gray-700',
+        td: 'create-po-qty-col text-right whitespace-nowrap border-l border-gray-200 dark:border-gray-700',
+      },
     },
     cell: ({ row }: { row: { original: any } }) => {
       const qty = row.original.budget_qty || 0
-      return h('div', { class: 'text-right' }, String(qty))
+      return h('div', { class: 'text-right tabular-nums' }, String(qty))
     }
   },
   {
@@ -3076,13 +3072,16 @@ const itemsTableColumns: TableColumn<any>[] = [
     accessorKey: 'po_qty',
     header: 'PO Qty',
     enableSorting: false,
-    size: 120,
-    meta: { 
-      class: { th: 'text-right whitespace-nowrap', td: 'text-right whitespace-nowrap' }
+    size: 72,
+    meta: {
+      class: {
+        th: 'create-po-qty-col text-right whitespace-nowrap',
+        td: 'create-po-qty-col text-right whitespace-nowrap',
+      },
     },
     cell: ({ row }: { row: { original: any } }) => {
       const qty = row.original.po_qty || 0
-      return h('div', { class: 'text-right' }, String(qty))
+      return h('div', { class: 'text-right tabular-nums' }, String(qty))
     }
   },
   {
@@ -3090,13 +3089,16 @@ const itemsTableColumns: TableColumn<any>[] = [
     accessorKey: 'pending_qty',
     header: 'Pending Qty',
     enableSorting: false,
-    size: 120,
-    meta: { 
-      class: { th: 'text-right whitespace-nowrap', td: 'text-right whitespace-nowrap' }
+    size: 88,
+    meta: {
+      class: {
+        th: 'create-po-qty-col text-right whitespace-nowrap',
+        td: 'create-po-qty-col text-right whitespace-nowrap',
+      },
     },
     cell: ({ row }: { row: { original: any } }) => {
       const qty = row.original.pending_qty || 0
-      return h('div', { class: 'text-right' }, String(qty))
+      return h('div', { class: 'text-right tabular-nums font-medium' }, String(qty))
     }
   },
   {
@@ -3104,9 +3106,12 @@ const itemsTableColumns: TableColumn<any>[] = [
     accessorKey: 'status',
     header: 'Status',
     enableSorting: false,
-    size: 100,
-    meta: { 
-      class: { th: 'text-left whitespace-nowrap', td: 'text-left whitespace-nowrap' }
+    size: 96,
+    meta: {
+      class: {
+        th: 'text-left whitespace-nowrap pl-3',
+        td: 'text-left whitespace-nowrap pl-3',
+      },
     },
     cell: ({ row }: { row: { original: any } }) => {
       const status = row.original.status || 'Pending'
@@ -6025,4 +6030,21 @@ watch(
   { immediate: true }
 )
 </script>
+
+<style scoped>
+/* Keep budget / PO / pending qty columns visually grouped (no pin gap) */
+.create-po-items-table :deep(th.create-po-qty-col),
+.create-po-items-table :deep(td.create-po-qty-col) {
+  width: 5.5rem;
+  min-width: 4.5rem;
+  max-width: 6rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.create-po-items-table :deep(th.create-po-qty-col:first-of-type),
+.create-po-items-table :deep(td.create-po-qty-col:first-of-type) {
+  padding-left: 0.75rem;
+}
+</style>
 
