@@ -667,7 +667,6 @@ import {
   resolveShipViaUuidFromPo,
   trimDisplayStr,
 } from '~/utils/purchaseOrderPreviewDisplay'
-import { authenticatedFetch } from '~/utils/authenticatedFetch'
 import { useUOMStore } from '~/stores/uom'
 
 interface Props {
@@ -726,7 +725,7 @@ const load = async () => {
 const fetchDetail = async (uuid: string) => {
   loading.value = true
   try {
-    const response: any = await authenticatedFetch(`/api/purchase-order-forms/${uuid}`, { method: 'GET' })
+    const response: any = await $fetch(`/api/purchase-order-forms/${uuid}`, { method: 'GET' })
     if (response?.data) {
       purchaseOrderDetail.value = response.data
       
@@ -734,7 +733,7 @@ const fetchDetail = async (uuid: string) => {
       const poType = (response.data.po_type || '').toUpperCase()
       if (poType !== 'LABOR') {
         try {
-          const itemsResponse: any = await authenticatedFetch(`/api/purchase-order-items?purchase_order_uuid=${uuid}`, { method: 'GET' })
+          const itemsResponse: any = await $fetch(`/api/purchase-order-items?purchase_order_uuid=${uuid}`, { method: 'GET' })
           if (itemsResponse?.data && Array.isArray(itemsResponse.data)) {
             // Map items to ensure all fields are accessible
             purchaseOrderDetail.value.po_items = itemsResponse.data.map((item: any) => {
@@ -809,7 +808,7 @@ const loadRelatedData = async () => {
   // Fetch vendor details - vendors are fetched by corporation_uuid
   if (po.vendor_uuid && po.corporation_uuid) {
     try {
-      const vendorResponse: any = await authenticatedFetch(`/api/purchase-orders/vendors?corporation_uuid=${po.corporation_uuid}`, { method: 'GET' })
+      const vendorResponse: any = await $fetch(`/api/purchase-orders/vendors?corporation_uuid=${po.corporation_uuid}`, { method: 'GET' })
       if (vendorResponse?.data && Array.isArray(vendorResponse.data)) {
         const vendor = vendorResponse.data.find((v: any) => v.uuid === po.vendor_uuid)
         if (vendor) {
@@ -824,7 +823,7 @@ const loadRelatedData = async () => {
   // Fetch project details
   if (po.project_uuid) {
     try {
-      const projectResponse: any = await authenticatedFetch(`/api/projects/${po.project_uuid}`, { method: 'GET' })
+      const projectResponse: any = await $fetch(`/api/projects/${po.project_uuid}`, { method: 'GET' })
       if (projectResponse?.data) {
         projectDetail.value = projectResponse.data
       }
@@ -839,7 +838,7 @@ const loadRelatedData = async () => {
     po.project_uuid
   ) {
     try {
-      const prefResponse: any = await authenticatedFetch('/api/cost-code-preferred-items', {
+      const prefResponse: any = await $fetch('/api/cost-code-preferred-items', {
         method: 'GET',
         query: {
           corporation_uuid: po.corporation_uuid,
@@ -874,7 +873,7 @@ const loadRelatedData = async () => {
     try {
       // Match ProjectDetailsForm/CustomerSelect behavior: fetch by corporation first.
       // Project-scoped filtering can hide globally scoped customers for that project.
-      const customersResponse: any = await authenticatedFetch(
+      const customersResponse: any = await $fetch(
         `/api/customers?corporation_uuid=${po.corporation_uuid}`,
         { method: 'GET' }
       )
@@ -888,7 +887,7 @@ const loadRelatedData = async () => {
   // Fetch project addresses - active list first; fall back by UUID for inactive (historical POs)
   if (po.project_uuid) {
     try {
-      const addressResponse: any = await authenticatedFetch(`/api/projects/addresses?project_uuid=${po.project_uuid}`, { method: 'GET' })
+      const addressResponse: any = await $fetch(`/api/projects/addresses?project_uuid=${po.project_uuid}`, { method: 'GET' })
       const list =
         addressResponse?.data && Array.isArray(addressResponse.data) ? addressResponse.data : []
 
@@ -899,7 +898,7 @@ const loadRelatedData = async () => {
         list
       )
       if (po.billing_address_uuid) {
-        const billingResponse: any = await authenticatedFetch('/api/projects/addresses', {
+        const billingResponse: any = await $fetch('/api/projects/addresses', {
           method: 'GET',
           query: {
             project_uuid: po.project_uuid,

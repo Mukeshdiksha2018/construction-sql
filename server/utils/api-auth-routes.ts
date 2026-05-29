@@ -12,6 +12,12 @@ const PUBLIC_API_PREFIXES = [
   '/api/_content/',
 ]
 
+/** True when the HTTP method should require a session at the middleware layer (matches construction-management: GET reads are open). */
+export function requiresAuthForMethod(method: string): boolean {
+  const normalized = method.toUpperCase()
+  return normalized === 'POST' || normalized === 'PUT' || normalized === 'PATCH' || normalized === 'DELETE'
+}
+
 export function isPublicApiRoute(pathname: string, method: string): boolean {
   if (PUBLIC_API_PREFIXES.some(prefix => pathname.startsWith(prefix))) return true
   return PUBLIC_API_ROUTES.some((route) => {

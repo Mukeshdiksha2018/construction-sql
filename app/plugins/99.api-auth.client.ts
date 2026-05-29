@@ -1,3 +1,5 @@
+import { resolveAuthToken } from '~/utils/authToken'
+
 /**
  * Single client $fetch override — credentials + Nimble Bearer token.
  * Runs last so it wraps the final global $fetch.
@@ -9,8 +11,7 @@ export default defineNuxtPlugin({
     const customFetch = $fetch.create({
       credentials: 'include',
       onRequest({ options }) {
-        const authStore = useAuthStore()
-        const token = authStore.token
+        const token = resolveAuthToken()
         if (!token) return
 
         const headers = new Headers(options.headers as HeadersInit | undefined)

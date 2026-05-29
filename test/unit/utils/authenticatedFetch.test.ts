@@ -17,6 +17,16 @@ vi.mock('../../../app/utils/printAuthBridge', async (importOriginal) => {
   }
 })
 
+vi.mock('../../../app/utils/authToken', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../app/utils/authToken')>()
+  return {
+    ...actual,
+    waitForAuthReady: vi.fn().mockResolvedValue(undefined),
+  }
+})
+
+vi.stubGlobal('createError', (error: unknown) => error)
+
 async function getAuthStore() {
   const { useAuthStore } = await import('../../../app/stores/auth')
   return useAuthStore()
@@ -24,7 +34,13 @@ async function getAuthStore() {
 
 describe('authenticatedFetch', () => {
   beforeEach(async () => {
+    localStorage.clear()
     setActivePinia(createPinia())
+    vi.stubGlobal('useAuthStore', (await import('../../../app/stores/auth')).useAuthStore)
+    vi.stubGlobal('useNimbleSessionStore', () => ({
+      token: null,
+      syncFromAuthStore: vi.fn(),
+    }))
     vi.clearAllMocks()
     mockFetch.mockResolvedValue({ data: { ok: true } })
     const { fetchServerSession } = await import('../../../app/utils/auth-session')
@@ -93,12 +109,12 @@ describe('authenticatedFetch', () => {
     const { authenticatedFetch } = await import('../../../app/utils/authenticatedFetch')
     await authenticatedFetch('/api/purchase-order-forms/po-1')
 
-    const store = await getAuthStore()
-    expect(store.token).toBe('cookie-token')
-
     const callOpts = mockFetch.mock.calls[0][1]
     const headers = callOpts.headers as Headers
     expect(headers.get('Authorization')).toBe('Bearer cookie-token')
+
+    const store = await getAuthStore()
+    expect(store.token).toBe('cookie-token')
   })
 
   it('hydrates auth store from the print bridge when the store is empty', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isPublicApiRoute } from '../../../server/utils/api-auth-routes'
+import { isPublicApiRoute, requiresAuthForMethod } from '../../../server/utils/api-auth-routes'
 
 describe('isPublicApiRoute', () => {
   describe('auth endpoints', () => {
@@ -45,11 +45,20 @@ describe('isPublicApiRoute', () => {
   })
 
   describe('protected routes', () => {
-    it('protects arbitrary API routes', () => {
+    it('marks arbitrary API routes as not public', () => {
       expect(isPublicApiRoute('/api/projects', 'GET')).toBe(false)
       expect(isPublicApiRoute('/api/purchase-order-forms', 'GET')).toBe(false)
       expect(isPublicApiRoute('/api/ship-via', 'GET')).toBe(false)
       expect(isPublicApiRoute('/api/credit-days', 'GET')).toBe(false)
+    })
+
+    it('requires auth only for mutating HTTP methods', () => {
+      expect(requiresAuthForMethod('GET')).toBe(false)
+      expect(requiresAuthForMethod('HEAD')).toBe(false)
+      expect(requiresAuthForMethod('POST')).toBe(true)
+      expect(requiresAuthForMethod('PUT')).toBe(true)
+      expect(requiresAuthForMethod('PATCH')).toBe(true)
+      expect(requiresAuthForMethod('DELETE')).toBe(true)
     })
 
     it('protects admin/DB-level routes', () => {

@@ -9,7 +9,10 @@
     </div>
 
     <div class="max-w-5xl mx-auto px-4 py-6 print:px-2 print:py-2">
-      <PurchaseOrderPreview :purchase-order-uuid="purchaseOrderId" @preview-ready="onPreviewReady" />
+      <PurchaseOrderPreview
+        :purchase-order-uuid="purchaseOrderId"
+        @preview-ready="onPreviewReady"
+      />
     </div>
   </div>
 </template>
