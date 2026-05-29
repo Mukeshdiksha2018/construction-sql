@@ -3439,7 +3439,8 @@ watch(
 // Apply labor estimate to cost code
 const applyLaborEstimate = () => {
   if (!selectedCostCode.value) return
-  if (laborTotalAmount.value === 0) return
+  const hasLocationWiseLaborRows = isLocationWiseProject.value && laborLocationWiseRows.value.length > 0
+  if (laborTotalAmount.value === 0 && !hasLocationWiseLaborRows) return
 
   // Tab-independent: check if location-wise labor is active based on project setting and labor type
   const isLocationWise = isLocationWiseProject.value &&
@@ -3702,7 +3703,8 @@ const applyMaterialEstimate = async () => {
   const isLocationWiseMaterial = isLocationWiseProject.value && materialEstimateType.value === 'manual'
   const hasLocationWiseMaterialRows = isLocationWiseMaterial && materialLocationWiseRows.value.length > 0
   if (!selectedCostCode.value) return
-  if (materialTotalAmount.value === 0 && !hasLocationWiseMaterialRows) return
+  const hasItemWiseRows = materialEstimateType.value === 'item-wise' && materialItems.value.length > 0
+  if (materialTotalAmount.value === 0 && !hasLocationWiseMaterialRows && !hasItemWiseRows) return
 
   // Enforce single material estimate type across all cost codes
   const applied = appliedMaterialEstimateType.value
@@ -3931,7 +3933,8 @@ const applyEstimate = async () => {
     applyLaborEstimate()
   }
   const hasAnyLocationWiseMaterial = isLocationWiseProject.value && materialEstimateType.value === 'manual' && materialLocationWiseRows.value.some(r => parseFloat(String(r.amount)) > 0)
-  if (materialTotalAmount.value > 0 || hasAnyLocationWiseMaterial) {
+  const hasAnyItemWiseMaterial = materialEstimateType.value === 'item-wise' && materialItems.value.length > 0
+  if (materialTotalAmount.value > 0 || hasAnyLocationWiseMaterial || hasAnyItemWiseMaterial) {
     const materialResult = await applyMaterialEstimate()
     if (materialResult === false) {
       hasValidationErrors = true
@@ -5243,7 +5246,8 @@ const emitLineItemsUpdate = () => {
     // Emit if there's a value, or if location-wise labor has rows (to ensure breakup is saved)
     const hasLocationWiseLabor = Array.isArray(costCode.location_wise_labor) && costCode.location_wise_labor.length > 0
     const hasLocationWiseMaterial = Array.isArray(costCode.location_wise_material) && costCode.location_wise_material.length > 0
-    if (laborAmount > 0 || materialAmount > 0 || calculatedTotal > 0 || hasLocationWiseLabor || hasLocationWiseMaterial) {
+    const hasMaterialItems = Array.isArray(costCode.material_items) && costCode.material_items.length > 0
+    if (laborAmount > 0 || materialAmount > 0 || calculatedTotal > 0 || hasLocationWiseLabor || hasLocationWiseMaterial || hasMaterialItems) {
       lineItems.push({
         cost_code_uuid: costCode.uuid,
         cost_code_number: costCode.cost_code_number,
@@ -5293,7 +5297,8 @@ const emitLineItemsUpdate = () => {
                 : (laborAmount + materialAmount)
               const hasSubSubLocationWise = Array.isArray(subSubCostCode.location_wise_labor) && subSubCostCode.location_wise_labor.length > 0
               const hasSubSubLocationWiseMaterial = Array.isArray(subSubCostCode.location_wise_material) && subSubCostCode.location_wise_material.length > 0
-              if (laborAmount > 0 || materialAmount > 0 || calculatedTotal > 0 || hasSubSubLocationWise || hasSubSubLocationWiseMaterial) {
+              const hasSubSubMaterialItems = Array.isArray(subSubCostCode.material_items) && subSubCostCode.material_items.length > 0
+              if (laborAmount > 0 || materialAmount > 0 || calculatedTotal > 0 || hasSubSubLocationWise || hasSubSubLocationWiseMaterial || hasSubSubMaterialItems) {
                 lineItems.push({
                   cost_code_uuid: subSubCostCode.uuid,
                   cost_code_number: subSubCostCode.cost_code_number,
@@ -5825,12 +5830,62 @@ watch(() => materialEstimateType.value, (newType) => {
   }
 })
 
-// Watch for changes to materialItems and sync to selectedCostCode.material_items
+// Watch for changes to materialItems and sync to selectedCostCode.material_items.
+// Also update the hierarchy node directly (guards against detached selectedCostCode references)
+// and emit so the parent form.line_items stays in sync without requiring an explicit Apply click.
 watch(() => materialItems.value, (newItems) => {
-  if (selectedCostCode.value && materialEstimateType.value === 'item-wise') {
-    const normalizedItems = newItems.map((item) => normalizeMaterialItem(item))
-    selectedCostCode.value.material_items = normalizedItems
+  if (!selectedCostCode.value || materialEstimateType.value !== 'item-wise') return
+  const normalizedItems = newItems.map((item) => normalizeMaterialItem(item))
+  // Always update the live copy
+  selectedCostCode.value.material_items = normalizedItems
+  // Also update the hierarchy node by UUID so detached copies don't silently lose data
+  const targetUuid = selectedCostCode.value.uuid
+  for (const division of hierarchicalDataRef.value) {
+    for (const cc of division.costCodes) {
+      if (cc.uuid === targetUuid) { cc.material_items = normalizedItems; break }
+      for (const sub of (cc.subCostCodes || [])) {
+        if (sub.uuid === targetUuid) { sub.material_items = normalizedItems; break }
+        for (const subsub of (sub.subSubCostCodes || [])) {
+          if (subsub.uuid === targetUuid) { subsub.material_items = normalizedItems; break }
+        }
+      }
+    }
   }
+  emitLineItemsUpdate()
+}, { deep: true })
+
+// Watch for changes to location-wise labor rows and sync to hierarchy so the parent form stays
+// in sync without requiring an explicit Apply click.
+watch(() => laborLocationWiseRows.value, (newRows) => {
+  if (!selectedCostCode.value || !isLocationWiseProject.value) return
+  const targetUuid = selectedCostCode.value.uuid
+  const mappedRows = newRows.map((r) => ({
+    breakdown_uuid: r.breakdown_uuid,
+    location_uuid: r.location_uuid,
+    area_sq_ft: parseFloat(String(r.area_sq_ft)) || 0,
+    no_of_rooms: parseFloat(String(r.no_of_rooms)) || 0,
+    num_hours: parseFloat(String(r.num_hours)) || 0,
+    amount_per_sqft: parseFloat(String(r.amount_per_sqft)) || 0,
+    amount_per_room: parseFloat(String(r.amount_per_room)) || 0,
+    hourly_wage: parseFloat(String(r.hourly_wage)) || 0,
+    manual_amount: parseFloat(String(r.manual_amount)) || 0,
+    amount: getLocationWiseRowAmount(r)
+  }))
+  // Update live copy
+  selectedCostCode.value.location_wise_labor = mappedRows
+  // Update hierarchy node by UUID
+  for (const division of hierarchicalDataRef.value) {
+    for (const cc of division.costCodes) {
+      if (cc.uuid === targetUuid) { cc.location_wise_labor = mappedRows; break }
+      for (const sub of (cc.subCostCodes || [])) {
+        if (sub.uuid === targetUuid) { sub.location_wise_labor = mappedRows; break }
+        for (const subsub of (sub.subSubCostCodes || [])) {
+          if (subsub.uuid === targetUuid) { subsub.location_wise_labor = mappedRows; break }
+        }
+      }
+    }
+  }
+  emitLineItemsUpdate()
 }, { deep: true })
 
 // Watch for active tab changes: enforce material type when switching to material tab, and load preferred items
