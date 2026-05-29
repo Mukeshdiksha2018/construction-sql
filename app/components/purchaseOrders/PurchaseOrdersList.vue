@@ -3723,10 +3723,8 @@ const switchToEditMode = () => {
 
 const closeFormModal = () => {
   purchaseOrderResourcesStore.clear()
-  if (nimbleIntegrationsEnabled) {
-    shipViaStore.clearShipVia()
-    freightStore.clearFreight()
-  }
+  // Do NOT clear shipVia/freight here — the list needs them to resolve display names.
+  // They will be force-refreshed next time the form opens via refreshFreightAndShipViaForNimble().
   showFormModal.value = false
   isViewMode.value = false
   poForm.value = {
@@ -5841,10 +5839,8 @@ watch(showFormModal, (isOpen, wasOpen) => {
   // If modal just closed, ensure cleanup happens
   if (wasOpen && !isOpen) {
     purchaseOrderResourcesStore.clear()
-    if (nimbleIntegrationsEnabled) {
-      shipViaStore.clearShipVia()
-      freightStore.clearFreight()
-    }
+    // Do NOT clear shipVia/freight — the list needs them for display name resolution.
+    // They are force-refreshed next time the form opens via refreshFreightAndShipViaForNimble().
     isViewMode.value = false
     poForm.value = {
       po_items: [],
