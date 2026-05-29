@@ -131,6 +131,13 @@ function mapPORow(row: any): any {
 }
 
 function mapPOItem(row: any): any {
+  const meta = parseJson(row.metadata, {})
+  const itemSequence =
+    meta?.item_sequence ?? meta?.sequence ?? null
+  const unitLabel = String(
+    row.unit_label ?? meta?.unit_label ?? meta?.uom_label ?? meta?.uom ?? meta?.unit ?? '',
+  ).trim()
+  const unitUuid = row.unit_uuid ?? meta?.unit_uuid ?? meta?.uom_uuid ?? null
   return {
     id: String(row.id),
     uuid: row.uuid,
@@ -156,9 +163,14 @@ function mapPOItem(row: any): any {
     location_uuid: row.location_uuid ?? null,
     location_label: row.location_label ?? '',
     location: row.location_label ?? '',
-    unit_uuid: row.unit_uuid ?? null,
-    unit_label: row.unit_label ?? '',
-    unit: row.unit_label ?? '',
+    unit_uuid: unitUuid,
+    uom_uuid: unitUuid,
+    unit_label: unitLabel,
+    uom_label: unitLabel,
+    unit: unitLabel,
+    uom: unitLabel,
+    item_sequence: itemSequence,
+    sequence: itemSequence,
     quantity: toNum(row.quantity),
     unit_price: toNum(row.unit_price),
     po_quantity: toNum(row.po_quantity),
@@ -168,7 +180,7 @@ function mapPOItem(row: any): any {
     approval_checks_uuids: parseJson(row.approval_checks_uuids, []),
     approval_checks: parseJson(row.approval_checks_uuids, []),
     configuration_name: row.configuration_name ?? null,
-    metadata: parseJson(row.metadata, {}),
+    metadata: meta,
     is_active: row.is_active,
   }
 }
@@ -585,9 +597,52 @@ export async function replacePurchaseOrderItems(
 
   const rows = items.map((item, index) => {
     const meta = { ...(item?.metadata || {}) }
+    const display =
+      item?.display_metadata && typeof item.display_metadata === 'object'
+        ? item.display_metadata
+        : {}
     if ('preferred_vendor_uuid' in (item || {})) {
       const v = item.preferred_vendor_uuid
       meta.preferred_vendor_uuid = v === null || v === undefined || String(v).trim() === '' ? null : String(v).trim()
+    }
+    const unitLabel = String(
+      item?.uom_label ??
+        item?.unit_label ??
+        meta?.unit_label ??
+        meta?.uom_label ??
+        display?.unit_label ??
+        display?.uom ??
+        '',
+    ).trim()
+    if (unitLabel) {
+      meta.unit_label = unitLabel
+      meta.uom_label = unitLabel
+      meta.uom = unitLabel
+      meta.unit = unitLabel
+    }
+    const unitUuid =
+      item?.uom_uuid ??
+      item?.unit_uuid ??
+      meta?.unit_uuid ??
+      meta?.uom_uuid ??
+      display?.unit_uuid ??
+      null
+    if (unitUuid) {
+      meta.unit_uuid = String(unitUuid)
+      meta.uom_uuid = String(unitUuid)
+    }
+    const sequenceRaw =
+      item?.item_sequence ??
+      item?.sequence ??
+      meta?.item_sequence ??
+      meta?.sequence ??
+      (item?.display_metadata && typeof item.display_metadata === 'object'
+        ? (item.display_metadata as Record<string, unknown>).sequence
+        : null)
+    if (sequenceRaw != null && String(sequenceRaw).trim() !== '') {
+      const seq = String(sequenceRaw).trim()
+      meta.sequence = seq
+      meta.item_sequence = seq
     }
     return {
       corporation_uuid: corporationUuid,
@@ -610,8 +665,8 @@ export async function replacePurchaseOrderItems(
       model_number: item?.model_number ?? '',
       location_uuid: item?.location_uuid ?? null,
       location_label: item?.location_label ?? item?.location ?? null,
-      unit_uuid: item?.uom_uuid ?? item?.unit_uuid ?? null,
-      unit_label: item?.uom_label ?? item?.unit_label ?? null,
+      unit_uuid: unitUuid ? String(unitUuid) : null,
+      unit_label: unitLabel || null,
       quantity: toNum(item?.quantity),
       unit_price: toNum(item?.unit_price),
       po_quantity: toNum(item?.po_quantity),

@@ -10,6 +10,14 @@ vi.stubGlobal('$fetch', mockFetch)
 vi.mock('~/utils/authToken', () => ({
   resolveAuthToken: () => mockResolveAuthToken(),
   waitForAuthReady: () => mockWaitForAuthReady(),
+  hydratePrintAuth: async () => mockResolveAuthToken(),
+  nimbleAuthFetchOptions: () => {
+    const token = mockResolveAuthToken()
+    return {
+      credentials: 'include' as const,
+      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+    }
+  },
 }))
 
 vi.mock('~/composables/useDateFormat', () => ({
@@ -78,7 +86,22 @@ vi.mock('~/stores/freight', () => ({ useShipViaStore: () => storeStub() }))
 vi.mock('~/stores/approvalChecks', () => ({ useApprovalChecksStore: () => storeStub() }))
 vi.mock('~/stores/corporationSettings', () => ({ useAppSettingsStore: () => storeStub() }))
 vi.mock('~/stores/locations', () => ({ useLocationsStore: () => storeStub() }))
-vi.mock('~/stores/uom', () => ({ useUOMStore: () => storeStub() }))
+const uomCatalog: Array<{
+  uuid: string
+  name: string
+  short_name: string
+  status: string
+  uom_type_uuid: string
+}> = []
+
+vi.mock('~/stores/uom', () => ({
+  useUOMStore: () => ({
+    uom: uomCatalog,
+    fetchUOM: mockFetchUOM,
+    getUOMByUuid: (uuid: string) => uomCatalog.find((u) => u.uuid === uuid),
+    getUOMById: (uuid: string) => uomCatalog.find((u) => u.uuid === uuid),
+  }),
+}))
 
 vi.stubGlobal('useRuntimeConfig', () => ({
   public: { nimbleIntegrations: 'false' },
@@ -303,5 +326,164 @@ describe('PurchaseOrderPreview terms and conditions', () => {
 
     expect(wrapper.text()).toContain('TERMS AND CONDITIONS')
     expect(wrapper.text()).toContain('Legacy inline terms')
+  })
+})
+
+describe('PurchaseOrderPreview vendor addresses', () => {
+  it('renders source and manufacturer addresses from Nimble vendor_addresses', async () => {
+    mockResolveAuthToken.mockReturnValue('test-token')
+    mockFetch.mockImplementation(async (url: string) => {
+      if (url.includes('/api/purchase-orders/vendor-for-print')) {
+        return {
+          data: {
+            uuid: 'vendor-uuid-1',
+            vendor_uuid: 'vendor-uuid-1',
+            vendor_name: 'Vendor03',
+            vendor_addresses: [
+              {
+                addressType: 'source',
+                address: '160 BEDFOR ST',
+                city: 'Boston',
+                stateName: 'Louisiana',
+                zipCode: '20589',
+                countryName: 'UNITED STATES OF AMERICA',
+              },
+              {
+                addressType: 'manufacturing',
+                address: '150 HARTEWEL AVE',
+                city: 'Boston',
+                stateName: 'Louisiana',
+                zipCode: '21568',
+                countryName: 'UNITED STATES OF AMERICA',
+              },
+            ],
+          },
+        }
+      }
+      if (url.includes('/api/nimble/vendors')) {
+        return {
+          vendorContractMasterList: [
+            {
+              vendorID: 'vendor-uuid-1',
+              vendorName: 'Vendor03',
+              addressDetails: [
+                {
+                  addressType: 1,
+                  address: '160 BEDFOR ST',
+                  city: 'Boston',
+                  stateName: 'Louisiana',
+                  zipCode: '20589',
+                  countryName: 'UNITED STATES OF AMERICA',
+                },
+                {
+                  addressType: 2,
+                  address: '150 HARTEWEL AVE',
+                  city: 'Boston',
+                  stateName: 'Louisiana',
+                  zipCode: '21568',
+                  countryName: 'UNITED STATES OF AMERICA',
+                },
+              ],
+            },
+          ],
+        }
+      }
+      if (url.includes('/api/purchase-order-items')) {
+        return { data: [] }
+      }
+      return { data: [] }
+    })
+
+    const component = (await import('~/components/purchaseOrders/PurchaseOrderPreview.vue')).default
+    const wrapper = mount(component, {
+      props: {
+        purchaseOrder: makeLaborPo({
+          po_type: 'MATERIAL',
+          vendor_uuid: 'vendor-uuid-1',
+          vendor_name: 'Vendor03',
+          po_items: [],
+        }),
+      },
+      global: { stubs: { UAlert: UAlertStub } },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Source Address')
+    expect(wrapper.text()).toContain('Manufacturer Address')
+    expect(wrapper.text()).toContain('160 BEDFOR ST')
+    expect(wrapper.text()).toContain('150 HARTEWEL AVE')
+  })
+})
+
+describe('PurchaseOrderPreview UOM display', () => {
+  it('renders material PO UOM from unit_label on DB row without catalog lookup', async () => {
+    mockFetch.mockImplementation(async (url: string) => {
+      if (url.includes('/api/purchase-order-items')) {
+        return {
+          data: [
+            {
+              item_name: 'Concrete mix',
+              unit_uuid: 'uom-uuid-1',
+              unit_label: 'Each',
+              po_quantity: 2,
+              po_unit_price: 50,
+              po_total: 100,
+            },
+          ],
+        }
+      }
+      return { data: [] }
+    })
+
+    const component = (await import('~/components/purchaseOrders/PurchaseOrderPreview.vue')).default
+    const wrapper = mount(component, {
+      props: {
+        purchaseOrder: makeLaborPo({
+          po_type: 'MATERIAL',
+          po_items: [],
+        }),
+      },
+      global: { stubs: { UAlert: UAlertStub } },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Each')
+    expect(wrapper.text()).not.toContain('uom-uuid-1')
+  })
+
+  it('renders spec from metadata.sequence when item_sequence column is empty', async () => {
+    mockFetch.mockImplementation(async (url: string) => {
+      if (url.includes('/api/purchase-order-items')) {
+        return {
+          data: [
+            {
+              item_name: 'Widget',
+              metadata: { sequence: 'FA-301' },
+              unit_uuid: 'uom-uuid-1',
+              unit_label: 'EA',
+              po_quantity: 1,
+              po_unit_price: 10,
+              po_total: 10,
+            },
+          ],
+        }
+      }
+      return { data: [] }
+    })
+
+    const component = (await import('~/components/purchaseOrders/PurchaseOrderPreview.vue')).default
+    const wrapper = mount(component, {
+      props: {
+        purchaseOrder: makeLaborPo({
+          po_type: 'MATERIAL',
+          po_items: [],
+        }),
+      },
+      global: { stubs: { UAlert: UAlertStub } },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('FA-301')
   })
 })

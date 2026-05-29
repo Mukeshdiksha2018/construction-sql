@@ -1,4 +1,6 @@
 import { requireAuthSession } from '../../utils/auth-session'
+import { toNimbleCorpId } from '../../utils/nimbleVendorMaster'
+import { toNimbleCorpId } from '../../utils/nimbleVendorMaster'
 
 /**
  * GET /api/nimble/vendors?corporation_uuid=<uuid>
@@ -52,19 +54,34 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const corpId = toNimbleCorpId(corporation_uuid)
+
   try {
+    console.log('[PO Print Debug] GET /api/nimble/vendors — calling Nimble', {
+      corpId,
+      hasToken: !!session.token,
+    })
+
     const data = await $fetch<NimbleVendorListResponse>(
       `${api3BaseUrl}/v1/VendorContractMaster/List`,
       {
-        query: { CorpID: corporation_uuid },
+        query: { CorpID: corpId },
         headers: { Authorization: `Bearer ${session.token}` },
       },
     )
 
     const vendors = data?.vendorContractMasterList ?? []
+    console.log('[PO Print Debug] GET /api/nimble/vendors — success', {
+      vendorCount: vendors.length,
+    })
     return { vendors, total: vendors.length }
   }
   catch (err: unknown) {
+    console.error('[PO Print Debug] GET /api/nimble/vendors — failed', {
+      corpId,
+      details: String(err),
+      statusCode: (err as { statusCode?: number })?.statusCode,
+    })
     const status = (err as { statusCode?: number })?.statusCode ?? 502
     throw createError({
       statusCode: status,

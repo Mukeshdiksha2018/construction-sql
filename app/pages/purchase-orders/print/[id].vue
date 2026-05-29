@@ -10,15 +10,18 @@
 
     <div class="max-w-5xl mx-auto px-4 py-6 print:px-2 print:py-2">
       <PurchaseOrderPreview
+        v-if="printAuthReady"
         :purchase-order-uuid="purchaseOrderId"
         @preview-ready="onPreviewReady"
       />
+      <p v-else class="text-sm text-gray-600 p-4">Loading print preview…</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import PurchaseOrderPreview from '~/components/purchaseOrders/PurchaseOrderPreview.vue'
+import { hydratePrintAuth } from '~/utils/authToken'
 
 definePageMeta({
   layout: false,
@@ -26,6 +29,12 @@ definePageMeta({
 
 const route = useRoute()
 const purchaseOrderId = computed(() => route.params.id as string)
+const printAuthReady = ref(false)
+
+onMounted(async () => {
+  await hydratePrintAuth()
+  printAuthReady.value = true
+})
 
 const printPage = () => window.print()
 

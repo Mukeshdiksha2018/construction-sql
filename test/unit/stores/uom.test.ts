@@ -2,6 +2,10 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useUOMStore } from '~/stores/uom'
 
+vi.mock('~/utils/authToken', () => ({
+  nimbleAuthFetchOptions: () => ({ credentials: 'include' as const }),
+}))
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeNimbleUOM(overrides: Record<string, unknown> = {}) {
@@ -264,6 +268,47 @@ describe('useUOMStore', () => {
     it('returns the raw ID before any data is loaded', () => {
       const store = useUOMStore()
       expect(store.getShortName('raw-id')).toBe('raw-id')
+    })
+  })
+
+  // ── getUOMByUuid / getUOMById ─────────────────────────────────────────────
+
+  describe('getUOMByUuid', () => {
+    it('returns the UOM row for a matching uuid', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([
+        makeNimbleUOM({ ID: 'uom-uuid-1', UOMName: 'Each', ShortName: 'EA' }),
+      ]))
+
+      const store = useUOMStore()
+      await store.fetchUOM()
+
+      expect(store.getUOMByUuid('uom-uuid-1')).toEqual({
+        uuid: 'uom-uuid-1',
+        name: 'Each',
+        short_name: 'EA',
+        uom_type_uuid: 'type-1',
+        status: 'ACTIVE',
+      })
+    })
+
+    it('returns undefined when uuid is not found', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse())
+
+      const store = useUOMStore()
+      await store.fetchUOM()
+
+      expect(store.getUOMByUuid('missing')).toBeUndefined()
+    })
+
+    it('getUOMById resolves the same row as getUOMByUuid', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([
+        makeNimbleUOM({ ID: 'uom-uuid-1' }),
+      ]))
+
+      const store = useUOMStore()
+      await store.fetchUOM()
+
+      expect(store.getUOMById('uom-uuid-1')).toEqual(store.getUOMByUuid('uom-uuid-1'))
     })
   })
 
