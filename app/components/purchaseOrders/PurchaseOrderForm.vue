@@ -239,7 +239,7 @@
                 size="xs"
                 class="cursor-pointer hover:opacity-80 transition-opacity shrink-0"
                 title="Add vendor"
-                @click="vendorSelectRef?.openAddModal()"
+                @click="openAddVendorModal"
               >
                 <UIcon name="i-heroicons-plus" class="w-3 h-3" />
                 Add
@@ -1634,7 +1634,7 @@ import FinancialBreakdown from '~/components/purchaseOrders/FinancialBreakdown.v
 import VendorForm from '~/components/purchaseOrders/VendorForm.vue';
 import TermsAndConditionsSelect from '~/components/shared/TermsAndConditionsSelect.vue';
 import SpecialInstructionsSelect from '~/components/shared/SpecialInstructionsSelect.vue';
-import SpecialInstructionFormBody from '~/components/Configurations/SpecialInstructionFormBody.vue';
+import SpecialInstructionFormBody from '~/components/configurations/SpecialInstructionFormBody.vue';
 import CorporationSelect from '~/components/shared/CorporationSelect.vue';
 import CreditDaysSelect from '~/components/shared/CreditDaysSelect.vue';
 import { useCreditDaysOptions } from '~/composables/useCreditDaysOptions';
@@ -6693,7 +6693,8 @@ const shipToSelectModelValue = computed((): string | undefined => {
   if (uuid && items.some((i) => String(i.value) === uuid)) {
     return uuid;
   }
-  return String(items[0].value);
+  const first = items[0];
+  return first ? String(first.value) : undefined;
 });
 
 const onShipToSelectUpdate = (payload: unknown) => {
@@ -7132,11 +7133,17 @@ const closeFilePreview = () => {
 };
 
 // Vendor edit methods
+const openAddVendorModal = () => {
+  if (props.readonly) return;
+  editingVendor.value = null;
+  showVendorEditModal.value = true;
+};
+
 const openVendorEditModal = () => {
   if (!props.form.vendor_uuid) return;
   
   // Find the vendor data
-  const vendor = vendorStore.vendors.find((v: any) => v.uuid === props.form.vendor_uuid);
+  const vendor = vendorStore.vendors.find((v) => v.uuid === props.form.vendor_uuid);
   if (!vendor) {
     return;
   }

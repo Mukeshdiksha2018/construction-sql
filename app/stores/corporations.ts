@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 
 export interface Corporation {
   id: string
+  /** Same as `id`; used as `corporation_uuid` across purchase orders and projects */
+  uuid: string
   profitCenterId: string | null
   name: string
   legalName: string
@@ -54,7 +56,10 @@ export const useCorporationStore = defineStore('corporation', {
           credentials: 'include',
         })
 
-        this.corporations = data.corporations ?? []
+        this.corporations = (data.corporations ?? []).map((c) => ({
+          ...c,
+          uuid: c.id,
+        }))
         this.loaded = true
 
         if (

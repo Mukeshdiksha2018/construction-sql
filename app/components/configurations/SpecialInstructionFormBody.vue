@@ -191,8 +191,8 @@
 
 <script setup lang="ts">
 import { watch, onBeforeUnmount, nextTick, unref } from 'vue'
-import CorporationSelect from '~/components/Shared/CorporationSelect.vue'
-import ProjectSelect from '~/components/Shared/ProjectSelect.vue'
+import CorporationSelect from '~/components/shared/CorporationSelect.vue'
+import ProjectSelect from '~/components/shared/ProjectSelect.vue'
 
 export type SpecialInstructionFormState = {
   name: string

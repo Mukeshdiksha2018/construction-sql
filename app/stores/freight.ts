@@ -39,7 +39,7 @@ export const useFreightStore = defineStore('freight', {
   },
 
   actions: {
-    async fetchFreight() {
+    async fetchFreight(_force = false) {
       this.loading = true
       this.error = null
       try {
@@ -184,7 +184,7 @@ export const useShipViaStore = defineStore('shipVia', {
     getShipViaByUuid: (state) => (uuid: string) => state.shipVia.find((f) => f.uuid === uuid),
   },
   actions: {
-    async fetchShipVia() {
+    async fetchShipVia(_force = false) {
       this.loading = true
       this.error = null
       try {

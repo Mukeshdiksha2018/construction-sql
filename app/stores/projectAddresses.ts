@@ -14,6 +14,7 @@ export interface ProjectAddress {
   zip_code?: string | null
   country?: string | null
   is_primary: boolean
+  is_active?: boolean
   copied_from_billing_address_uuid?: string | null
   created_at?: string
   updated_at?: string
