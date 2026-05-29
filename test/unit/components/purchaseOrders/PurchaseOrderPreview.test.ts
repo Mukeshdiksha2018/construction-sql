@@ -10,7 +10,7 @@ vi.stubGlobal('$fetch', mockFetch)
 vi.mock('~/utils/authToken', () => ({
   resolveAuthToken: () => mockResolveAuthToken(),
   waitForAuthReady: () => mockWaitForAuthReady(),
-  hydratePrintAuth: async () => mockResolveAuthToken(),
+  hydratePrintAuth: async () => mockResolveAuthToken() ?? null,
   nimbleAuthFetchOptions: () => {
     const token = mockResolveAuthToken()
     return {
@@ -330,6 +330,41 @@ describe('PurchaseOrderPreview terms and conditions', () => {
 })
 
 describe('PurchaseOrderPreview vendor addresses', () => {
+  it('calls vendor-for-print endpoint when loading vendor', async () => {
+    mockResolveAuthToken.mockReturnValue('test-token')
+    const urls: string[] = []
+    mockFetch.mockImplementation(async (url: string) => {
+      urls.push(url)
+      if (url.includes('/api/purchase-order-forms/')) {
+        return { data: makeLaborPo({ po_type: 'MATERIAL', vendor_uuid: 'vendor-uuid-1' }) }
+      }
+      if (url.includes('/api/purchase-orders/vendor-for-print')) {
+        return {
+          data: {
+            uuid: 'vendoruuid1',
+            vendor_name: 'Vendor03',
+            vendor_addresses: [
+              { addressType: 'source', address: '160 BEDFOR ST', city: 'Boston' },
+            ],
+          },
+        }
+      }
+      if (url.includes('/api/purchase-order-items')) {
+        return { data: [] }
+      }
+      return { data: [] }
+    })
+
+    const component = (await import('~/components/purchaseOrders/PurchaseOrderPreview.vue')).default
+    await mount(component, {
+      props: { purchaseOrderUuid: 'po-uuid-1' },
+      global: { stubs: { UAlert: UAlertStub } },
+    })
+    await flushPromises()
+
+    expect(urls.some((u) => u.includes('/api/purchase-orders/vendor-for-print'))).toBe(true)
+  })
+
   it('renders source and manufacturer addresses from Nimble vendor_addresses', async () => {
     mockResolveAuthToken.mockReturnValue('test-token')
     mockFetch.mockImplementation(async (url: string) => {

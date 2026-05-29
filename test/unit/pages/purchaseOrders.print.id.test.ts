@@ -1,6 +1,12 @@
-import { computed } from 'vue'
-import { mount } from '@vue/test-utils'
+import { computed, ref } from 'vue'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const mockHydratePrintAuth = vi.fn().mockResolvedValue('test-token')
+
+vi.mock('~/utils/authToken', () => ({
+  hydratePrintAuth: () => mockHydratePrintAuth(),
+}))
 
 let mockRouteParams: { id: string } = { id: 'po-uuid-1' }
 
@@ -35,8 +41,9 @@ describe('Purchase Order Print Page', () => {
 
   async function mountPrintPage(id = 'po-uuid-1') {
     mockRouteParams = { id }
+    mockHydratePrintAuth.mockResolvedValue('test-token')
     const PrintPage = (await import('~/pages/purchase-orders/print/[id].vue')).default
-    return mount(PrintPage, {
+    const wrapper = mount(PrintPage, {
       global: {
         stubs: {
           ClientOnly: { template: '<div><slot /></div>' },
@@ -52,10 +59,13 @@ describe('Purchase Order Print Page', () => {
         },
       },
     })
+    await flushPromises()
+    return wrapper
   }
 
   it('uses layout: false and no auth middleware (print tab like reference)', async () => {
     await mountPrintPage()
+    expect(mockHydratePrintAuth).toHaveBeenCalled()
     expect((globalThis as { definePageMeta?: ReturnType<typeof vi.fn> }).definePageMeta).toHaveBeenCalledWith({
       layout: false,
     })
