@@ -99,6 +99,63 @@ describe('usePurchaseOrderResourcesStore', () => {
       const store = await getStore()
       expect(store.getEstimatesByProject(undefined, undefined)).toEqual([])
     })
+
+    // ── Root-cause regression: estimates must be stored under corp::project key ──
+
+    it('returns estimates after ensureEstimates is called WITH projectUuid', async () => {
+      mockFetch.mockResolvedValue({ data: [{ uuid: 'est-abc', estimate_number: 'E-001' }] })
+      const store = await getStore()
+
+      await store.ensureEstimates({ corporationUuid: 'corp-1', projectUuid: 'proj-1' })
+
+      const result = store.getEstimatesByProject('corp-1', 'proj-1')
+      expect(result).toHaveLength(1)
+      expect(result[0].uuid).toBe('est-abc')
+    })
+
+    it('returns empty when ensureEstimates was called WITHOUT projectUuid (old bug reproduction)', async () => {
+      // Old bug: ensureEstimates called without projectUuid stores under key corp::
+      // getEstimatesByProject looks under corp::proj-1 → never finds them
+      mockFetch.mockResolvedValue({ data: [{ uuid: 'est-abc' }] })
+      const store = await getStore()
+
+      // Intentionally omit projectUuid (simulates the old broken call sites)
+      await store.ensureEstimates({ corporationUuid: 'corp-1' })
+
+      // Under the project-scoped key the estimates should NOT be visible
+      expect(store.getEstimatesByProject('corp-1', 'proj-1')).toEqual([])
+      // But they ARE visible under the unscoped key (no project)
+      expect(store.getEstimatesByProject('corp-1', undefined)).toHaveLength(1)
+    })
+
+    it('does not bleed estimates across different projects', async () => {
+      mockFetch
+        .mockResolvedValueOnce({ data: [{ uuid: 'est-p1', estimate_number: 'E-P1' }] })
+        .mockResolvedValueOnce({ data: [{ uuid: 'est-p2', estimate_number: 'E-P2' }] })
+      const store = await getStore()
+
+      await store.ensureEstimates({ corporationUuid: 'corp-1', projectUuid: 'proj-1' })
+      await store.ensureEstimates({ corporationUuid: 'corp-1', projectUuid: 'proj-2' })
+
+      expect(store.getEstimatesByProject('corp-1', 'proj-1')[0].uuid).toBe('est-p1')
+      expect(store.getEstimatesByProject('corp-1', 'proj-2')[0].uuid).toBe('est-p2')
+      // No cross-contamination
+      expect(store.getEstimatesByProject('corp-1', 'proj-1')).toHaveLength(1)
+      expect(store.getEstimatesByProject('corp-1', 'proj-2')).toHaveLength(1)
+    })
+
+    it('does not bleed estimates across different corporations', async () => {
+      mockFetch
+        .mockResolvedValueOnce({ data: [{ uuid: 'est-c1' }] })
+        .mockResolvedValueOnce({ data: [{ uuid: 'est-c2' }] })
+      const store = await getStore()
+
+      await store.ensureEstimates({ corporationUuid: 'corp-1', projectUuid: 'proj-1' })
+      await store.ensureEstimates({ corporationUuid: 'corp-2', projectUuid: 'proj-1' })
+
+      expect(store.getEstimatesByProject('corp-1', 'proj-1')[0].uuid).toBe('est-c1')
+      expect(store.getEstimatesByProject('corp-2', 'proj-1')[0].uuid).toBe('est-c2')
+    })
   })
 
   // ── Async actions ──────────────────────────────────────────────────────────
@@ -208,6 +265,69 @@ describe('usePurchaseOrderResourcesStore', () => {
       const store = await getStore()
       await store.ensureProjectResources({ corporationUuid: '' })
       expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    // ── Regression: ensureProjectResources must also fetch estimates ──────────
+
+    it('fetches /api/estimates as part of the resource batch when projectUuid is given', async () => {
+      mockFetch.mockResolvedValue({ data: [] })
+      const store = await getStore()
+
+      await store.ensureProjectResources({ corporationUuid: 'corp-1', projectUuid: 'proj-1' })
+
+      const urls = mockFetch.mock.calls.map((c: any[]) => c[0] as string)
+      expect(urls).toContain('/api/estimates')
+    })
+
+    it('passes projectUuid to /api/estimates so results land in the project-scoped cache slot', async () => {
+      mockFetch.mockImplementation((url: string, opts: any) => {
+        if (url === '/api/estimates') {
+          return Promise.resolve({ data: [{ uuid: 'est-from-resources', estimate_number: 'E-001' }] })
+        }
+        return Promise.resolve({ data: [] })
+      })
+      const store = await getStore()
+
+      await store.ensureProjectResources({ corporationUuid: 'corp-1', projectUuid: 'proj-1' })
+
+      // Verify the estimates API was called with the project UUID
+      const estimatesCall = mockFetch.mock.calls.find((c: any[]) => c[0] === '/api/estimates')
+      expect(estimatesCall).toBeDefined()
+      expect(estimatesCall![1]?.query?.project_uuid).toBe('proj-1')
+
+      // Verify the estimates are retrievable via getEstimatesByProject after the call
+      const cached = store.getEstimatesByProject('corp-1', 'proj-1')
+      expect(cached).toHaveLength(1)
+      expect(cached[0].uuid).toBe('est-from-resources')
+    })
+
+    it('skips /api/estimates when no projectUuid is provided', async () => {
+      mockFetch.mockResolvedValue({ data: [] })
+      const store = await getStore()
+
+      await store.ensureProjectResources({ corporationUuid: 'corp-1' })
+
+      const urls = mockFetch.mock.calls.map((c: any[]) => c[0] as string)
+      // Should NOT call estimates endpoint without a project scope
+      expect(urls).not.toContain('/api/estimates')
+    })
+
+    it('full round-trip: after ensureProjectResources, getEstimatesByProject returns project estimates', async () => {
+      const fakeEstimates = [
+        { uuid: 'est-001', estimate_number: 'E-001', status: 'Approved', estimate_date: '2026-01-15' },
+        { uuid: 'est-002', estimate_number: 'E-002', status: 'Draft',    estimate_date: '2026-02-20' },
+      ]
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/estimates') return Promise.resolve({ data: fakeEstimates })
+        return Promise.resolve({ data: [] })
+      })
+      const store = await getStore()
+
+      await store.ensureProjectResources({ corporationUuid: 'corp-1', projectUuid: 'proj-1' })
+
+      const estimates = store.getEstimatesByProject('corp-1', 'proj-1')
+      expect(estimates).toHaveLength(2)
+      expect(estimates.map((e: any) => e.uuid)).toEqual(expect.arrayContaining(['est-001', 'est-002']))
     })
   })
 
