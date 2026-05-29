@@ -3439,8 +3439,7 @@ watch(
 // Apply labor estimate to cost code
 const applyLaborEstimate = () => {
   if (!selectedCostCode.value) return
-  const hasLocationWiseLaborRows = isLocationWiseProject.value && laborLocationWiseRows.value.length > 0
-  if (laborTotalAmount.value === 0 && !hasLocationWiseLaborRows) return
+  if (laborTotalAmount.value === 0) return
 
   // Tab-independent: check if location-wise labor is active based on project setting and labor type
   const isLocationWise = isLocationWiseProject.value &&
@@ -3703,8 +3702,7 @@ const applyMaterialEstimate = async () => {
   const isLocationWiseMaterial = isLocationWiseProject.value && materialEstimateType.value === 'manual'
   const hasLocationWiseMaterialRows = isLocationWiseMaterial && materialLocationWiseRows.value.length > 0
   if (!selectedCostCode.value) return
-  const hasItemWiseRows = materialEstimateType.value === 'item-wise' && materialItems.value.length > 0
-  if (materialTotalAmount.value === 0 && !hasLocationWiseMaterialRows && !hasItemWiseRows) return
+  if (materialTotalAmount.value === 0 && !hasLocationWiseMaterialRows) return
 
   // Enforce single material estimate type across all cost codes
   const applied = appliedMaterialEstimateType.value
@@ -3933,8 +3931,7 @@ const applyEstimate = async () => {
     applyLaborEstimate()
   }
   const hasAnyLocationWiseMaterial = isLocationWiseProject.value && materialEstimateType.value === 'manual' && materialLocationWiseRows.value.some(r => parseFloat(String(r.amount)) > 0)
-  const hasAnyItemWiseMaterial = materialEstimateType.value === 'item-wise' && materialItems.value.length > 0
-  if (materialTotalAmount.value > 0 || hasAnyLocationWiseMaterial || hasAnyItemWiseMaterial) {
+  if (materialTotalAmount.value > 0 || hasAnyLocationWiseMaterial) {
     const materialResult = await applyMaterialEstimate()
     if (materialResult === false) {
       hasValidationErrors = true
@@ -5243,10 +5240,13 @@ const emitLineItemsUpdate = () => {
       }
     }
     
-    // Emit if there's a value, or if location-wise labor has rows (to ensure breakup is saved)
-    const hasLocationWiseLabor = Array.isArray(costCode.location_wise_labor) && costCode.location_wise_labor.length > 0
-    const hasLocationWiseMaterial = Array.isArray(costCode.location_wise_material) && costCode.location_wise_material.length > 0
-    const hasMaterialItems = Array.isArray(costCode.material_items) && costCode.material_items.length > 0
+    // Emit if there's a value, or if location-wise labor / material items have non-zero rows
+    const nonZeroLaborRows = (costCode.location_wise_labor ?? []).filter((r: any) => (parseFloat(String(r.amount)) || 0) > 0)
+    const nonZeroMaterialRows = (costCode.location_wise_material ?? []).filter((r: any) => (parseFloat(String(r.amount)) || 0) > 0)
+    const nonZeroMaterialItems = (costCode.material_items ?? []).filter((item: any) => (parseFloat(String(item.amount)) || 0) > 0)
+    const hasLocationWiseLabor = nonZeroLaborRows.length > 0
+    const hasLocationWiseMaterial = nonZeroMaterialRows.length > 0
+    const hasMaterialItems = nonZeroMaterialItems.length > 0
     if (laborAmount > 0 || materialAmount > 0 || calculatedTotal > 0 || hasLocationWiseLabor || hasLocationWiseMaterial || hasMaterialItems) {
       lineItems.push({
         cost_code_uuid: costCode.uuid,
@@ -5264,9 +5264,9 @@ const emitLineItemsUpdate = () => {
         labor_sq_ft_count: costCode.labor_sq_ft_count || (currentProject.value?.area_sq_ft || 0),
         labor_number_of_hours: costCode.labor_number_of_hours ?? 0,
         labor_hourly_wage: costCode.labor_hourly_wage ?? 0,
-        location_wise_labor: costCode.location_wise_labor ?? [],
-        location_wise_material: costCode.location_wise_material ?? [],
-        material_items: costCode.material_items || [],
+        location_wise_labor: nonZeroLaborRows,
+        location_wise_material: nonZeroMaterialRows,
+        material_items: nonZeroMaterialItems,
         metadata: {
           ...(costCode.metadata || {}),
           contingency_enabled: costCode.contingency_enabled === true,
@@ -5295,9 +5295,12 @@ const emitLineItemsUpdate = () => {
               const calculatedTotal = showOnlyTotal.value
                 ? (parseFloat(subSubCostCode.total_amount) || 0)
                 : (laborAmount + materialAmount)
-              const hasSubSubLocationWise = Array.isArray(subSubCostCode.location_wise_labor) && subSubCostCode.location_wise_labor.length > 0
-              const hasSubSubLocationWiseMaterial = Array.isArray(subSubCostCode.location_wise_material) && subSubCostCode.location_wise_material.length > 0
-              const hasSubSubMaterialItems = Array.isArray(subSubCostCode.material_items) && subSubCostCode.material_items.length > 0
+              const nonZeroSubSubLaborRows = (subSubCostCode.location_wise_labor ?? []).filter((r: any) => (parseFloat(String(r.amount)) || 0) > 0)
+              const nonZeroSubSubMaterialRows = (subSubCostCode.location_wise_material ?? []).filter((r: any) => (parseFloat(String(r.amount)) || 0) > 0)
+              const nonZeroSubSubMaterialItems = (subSubCostCode.material_items ?? []).filter((item: any) => (parseFloat(String(item.amount)) || 0) > 0)
+              const hasSubSubLocationWise = nonZeroSubSubLaborRows.length > 0
+              const hasSubSubLocationWiseMaterial = nonZeroSubSubMaterialRows.length > 0
+              const hasSubSubMaterialItems = nonZeroSubSubMaterialItems.length > 0
               if (laborAmount > 0 || materialAmount > 0 || calculatedTotal > 0 || hasSubSubLocationWise || hasSubSubLocationWiseMaterial || hasSubSubMaterialItems) {
                 lineItems.push({
                   cost_code_uuid: subSubCostCode.uuid,
@@ -5315,9 +5318,9 @@ const emitLineItemsUpdate = () => {
                   labor_sq_ft_count: subSubCostCode.labor_sq_ft_count || (currentProject.value?.area_sq_ft || 0),
                   labor_number_of_hours: subSubCostCode.labor_number_of_hours ?? 0,
                   labor_hourly_wage: subSubCostCode.labor_hourly_wage ?? 0,
-                  location_wise_labor: subSubCostCode.location_wise_labor ?? [],
-                  location_wise_material: subSubCostCode.location_wise_material ?? [],
-                  material_items: subSubCostCode.material_items || [],
+                  location_wise_labor: nonZeroSubSubLaborRows,
+                  location_wise_material: nonZeroSubSubMaterialRows,
+                  material_items: nonZeroSubSubMaterialItems,
                   metadata: {
                     ...(subSubCostCode.metadata || {}),
                     contingency_enabled: subSubCostCode.contingency_enabled === true,
