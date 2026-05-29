@@ -5396,13 +5396,9 @@ watch(
 
       // Handle switching to estimate import
       if (switchedToEstimate) {
-        
-        // Don't proceed if estimate is not approved
-        if (isEstimateImportBlocked.value) {
-          return
-        }
-        
-        // Ensure estimates are fetched when switching to estimate import
+
+        // Ensure estimates are fetched first — estimateUuid from watcher args may be null
+        // when the user selects the option before the store has loaded estimates for the project.
         if (corpUuid && projectUuid) {
           await purchaseOrderResourcesStore.ensureEstimates({
             corporationUuid: corpUuid,
@@ -5410,31 +5406,46 @@ watch(
             force: true,
           });
         }
-        
+
+        // Re-read reactive values AFTER the await: the store may now have estimates that
+        // weren't there when the watcher args were captured (the stale-closure timing bug).
+        const resolvedEstimateUuid = effectiveEstimateUuid.value
+        const resolvedEstimateKey = currentEstimateItemsKey.value
+        const resolvedPoItems = resolvedEstimateUuid
+          ? purchaseOrderResourcesStore.getEstimateItems(corpUuid, projectUuid, resolvedEstimateUuid)
+          : []
+        const resolvedIsLoading = resolvedEstimateUuid
+          ? purchaseOrderResourcesStore.getEstimateItemsLoading(corpUuid, projectUuid, resolvedEstimateUuid)
+          : false
+
+        // Now check the approval guard with freshly-loaded estimate data.
+        if (isEstimateImportBlocked.value) {
+          return
+        }
+
         // If we have all required values, load and apply items
         // Skip this if we're editing an existing PO with saved items
-        if (corpUuid && projectUuid && estimateUuid && !shouldSkipEstimateAutoImport.value) {
+        if (corpUuid && projectUuid && resolvedEstimateUuid && !shouldSkipEstimateAutoImport.value) {
           // If items are already loaded, show modal for selection
-          if (Array.isArray(poItems) && poItems.length > 0) {
-            applyEstimateItemsToForm(poItems, estimateKey, { force: switchedFromEstimate !== switchedToEstimate })
-          } 
+          if (Array.isArray(resolvedPoItems) && resolvedPoItems.length > 0) {
+            applyEstimateItemsToForm(resolvedPoItems, resolvedEstimateKey, { force: switchedFromEstimate !== switchedToEstimate })
+          }
           // If items are not loaded and not currently loading, fetch them first
-          else if (!isLoading && !shouldSkipEstimateAutoImport.value) {
+          else if (!resolvedIsLoading && !shouldSkipEstimateAutoImport.value) {
             try {
-              // ensureEstimateItems now returns the poItems array directly
               const loadedItems = await purchaseOrderResourcesStore.ensureEstimateItems({
                 corporationUuid: corpUuid,
                 projectUuid,
-                estimateUuid,
+                estimateUuid: resolvedEstimateUuid,
                 force: true,
               })
-              
+
               const itemsToApply = Array.isArray(loadedItems) && loadedItems.length > 0
                 ? loadedItems
-                : purchaseOrderResourcesStore.getEstimateItems(corpUuid, projectUuid, estimateUuid)
-              
-              if (Array.isArray(itemsToApply) && itemsToApply.length > 0 && estimateKey) {
-                applyEstimateItemsToForm(itemsToApply, estimateKey, { force: switchedFromEstimate !== switchedToEstimate })
+                : purchaseOrderResourcesStore.getEstimateItems(corpUuid, projectUuid, resolvedEstimateUuid)
+
+              if (Array.isArray(itemsToApply) && itemsToApply.length > 0 && resolvedEstimateKey) {
+                applyEstimateItemsToForm(itemsToApply, resolvedEstimateKey, { force: switchedFromEstimate !== switchedToEstimate })
               }
             } catch (error) {
               // Failed to load estimate items
@@ -5443,14 +5454,14 @@ watch(
         }
 
         // For Material POs: also fetch estimate line items to detect location-wise material
-        if (corpUuid && projectUuid && estimateUuid && !isLaborPurchaseOrder.value) {
+        if (corpUuid && projectUuid && resolvedEstimateUuid && !isLaborPurchaseOrder.value) {
           try {
             locationWiseMaterialLoading.value = true;
             const lwResponse: any = await $fetch('/api/estimate-line-items', {
               method: 'GET',
               query: {
                 project_uuid: projectUuid,
-                estimate_uuid: estimateUuid,
+                estimate_uuid: resolvedEstimateUuid,
                 corporation_uuid: corpUuid,
               },
             });

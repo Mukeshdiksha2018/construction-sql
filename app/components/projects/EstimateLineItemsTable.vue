@@ -5243,7 +5243,10 @@ const emitLineItemsUpdate = () => {
     // Emit if there's a value, or if location-wise labor / material items have non-zero rows
     const nonZeroLaborRows = (costCode.location_wise_labor ?? []).filter((r: any) => (parseFloat(String(r.amount)) || 0) > 0)
     const nonZeroMaterialRows = (costCode.location_wise_material ?? []).filter((r: any) => (parseFloat(String(r.amount)) || 0) > 0)
-    const nonZeroMaterialItems = (costCode.material_items ?? []).filter((item: any) => (parseFloat(String(item.amount)) || 0) > 0)
+    const nonZeroMaterialItems = (costCode.material_items ?? []).filter((item: any) => {
+      const effectiveTotal = parseFloat(String(item.total ?? item.total_amount)) || (parseFloat(String(item.unit_price || 0)) * parseFloat(String(item.quantity || 0)))
+      return effectiveTotal > 0
+    })
     const hasLocationWiseLabor = nonZeroLaborRows.length > 0
     const hasLocationWiseMaterial = nonZeroMaterialRows.length > 0
     const hasMaterialItems = nonZeroMaterialItems.length > 0
@@ -5297,7 +5300,10 @@ const emitLineItemsUpdate = () => {
                 : (laborAmount + materialAmount)
               const nonZeroSubSubLaborRows = (subSubCostCode.location_wise_labor ?? []).filter((r: any) => (parseFloat(String(r.amount)) || 0) > 0)
               const nonZeroSubSubMaterialRows = (subSubCostCode.location_wise_material ?? []).filter((r: any) => (parseFloat(String(r.amount)) || 0) > 0)
-              const nonZeroSubSubMaterialItems = (subSubCostCode.material_items ?? []).filter((item: any) => (parseFloat(String(item.amount)) || 0) > 0)
+              const nonZeroSubSubMaterialItems = (subSubCostCode.material_items ?? []).filter((item: any) => {
+                const effectiveTotal = parseFloat(String(item.total ?? item.total_amount)) || (parseFloat(String(item.unit_price || 0)) * parseFloat(String(item.quantity || 0)))
+                return effectiveTotal > 0
+              })
               const hasSubSubLocationWise = nonZeroSubSubLaborRows.length > 0
               const hasSubSubLocationWiseMaterial = nonZeroSubSubMaterialRows.length > 0
               const hasSubSubMaterialItems = nonZeroSubSubMaterialItems.length > 0
