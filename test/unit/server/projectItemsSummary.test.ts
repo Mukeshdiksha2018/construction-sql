@@ -121,6 +121,51 @@ describe('buildProjectItemsSummary', () => {
     })
   })
 
+  it('marks rows Complete when po_qty meets budget', async () => {
+    mockPrisma.estimateMaterialItem.findMany.mockResolvedValue([
+      {
+        uuid: 'emi-1',
+        estimate_line_item_uuid: 'eli-1',
+        cost_code_uuid: 'cc-1',
+        item_type_uuid: null,
+        item_uuid: 'item-1',
+        preferred_vendor_uuid: null,
+        item_division_uuid: null,
+        location_uuid: null,
+        category: 'Material',
+        name: 'Done item',
+        description: '',
+        model_number: null,
+        unit_price: 1,
+        quantity: 5,
+        uom_uuid: null,
+        sequence: 1,
+        metadata: null,
+      },
+    ])
+    mockPrisma.purchaseOrderForm.findMany.mockResolvedValue([
+      { uuid: 'po-1', vendor_uuid: null },
+    ])
+    mockPrisma.purchaseOrderItem.findMany.mockResolvedValue([
+      {
+        purchase_order_uuid: 'po-1',
+        cost_code_uuid: 'cc-1',
+        item_uuid: 'item-1',
+        quantity: 5,
+        po_quantity: 5,
+      },
+    ])
+
+    const build = await loadBuilder()
+    const result = await build({
+      corporationUuid: 'corp-1',
+      projectUuid: 'proj-1',
+    })
+
+    expect(result[0]?.status).toBe('Complete')
+    expect(result[0]?.pending_qty).toBe(0)
+  })
+
   it('filters rows by preferred vendor when vendor_uuid is provided', async () => {
     mockPrisma.estimateMaterialItem.findMany.mockResolvedValue([
       {
