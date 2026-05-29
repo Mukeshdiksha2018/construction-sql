@@ -529,7 +529,7 @@
           <div class="text-gray-400 mb-4">
             <UIcon name="i-heroicons-document-text" class="w-12 h-12 mx-auto" />
           </div>
-          <p class="text-gray-500 text-lg">No items to be raised</p>
+          <p class="text-gray-500 text-lg">No left over quantity</p>
           <p class="text-gray-400 text-sm">No items found for the selected project and vendor</p>
         </div>
       </div>
@@ -582,7 +582,7 @@
           <div class="text-gray-400 mb-4">
             <UIcon name="i-heroicons-document-text" class="w-12 h-12 mx-auto" />
           </div>
-          <p class="text-gray-500 text-lg">No items to be raised</p>
+          <p class="text-gray-500 text-lg">No left over quantity</p>
           <p class="text-gray-400 text-sm">No estimate lines match the selected filters for this project</p>
         </div>
       </div>
@@ -2325,6 +2325,9 @@ const shouldShowItemsTable = computed(() => {
 const handleShowResults = async () => {
   if (selectedStatusFilter.value === 'ToBeRaised') {
     const missingFields: string[] = [];
+    const corpForCreate =
+      filterCorporation.value || appliedFilters.value.corporation || selectedCorporationId.value;
+    if (!corpForCreate) missingFields.push('Corporation');
     if (!filterProject.value) missingFields.push('Project');
     if (missingFields.length > 0) {
       const toast = useToast();
