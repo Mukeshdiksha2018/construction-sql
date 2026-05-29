@@ -1,6 +1,6 @@
 /**
- * Ensure client API calls carry Nimble Bearer token.
- * This is a fallback for iframe environments where cookies may be blocked.
+ * Single client $fetch override — credentials + Nimble Bearer token.
+ * Must load after other plugins (99 prefix) so this is the final global $fetch.
  */
 export default defineNuxtPlugin(() => {
   const customFetch = $fetch.create({
@@ -18,7 +18,5 @@ export default defineNuxtPlugin(() => {
     },
   })
 
-  // Override global $fetch used by app code.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(globalThis as any).$fetch = customFetch
+  globalThis.$fetch = customFetch
 })

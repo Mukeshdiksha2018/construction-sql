@@ -659,6 +659,15 @@ import {
 import { sanitizePrintAuditPersonLabel } from '~/utils/printAuditDisplay'
 import { resolvePrintUomDisplay } from '~/utils/printUomDisplay'
 import { normalizeVendorAddresses, getVendorAddressByType } from '~/utils/vendorAddresses'
+import {
+  getPoFinancialValue,
+  normalizeLocationWiseMaterialItems,
+  resolveFreightDisplayLabel,
+  resolveFreightUuidFromPo,
+  resolveShipViaUuidFromPo,
+  trimDisplayStr,
+} from '~/utils/purchaseOrderPreviewDisplay'
+import { authenticatedFetch } from '~/utils/authenticatedFetch'
 import { useUOMStore } from '~/stores/uom'
 
 interface Props {
@@ -717,7 +726,7 @@ const load = async () => {
 const fetchDetail = async (uuid: string) => {
   loading.value = true
   try {
-    const response: any = await $fetch(`/api/purchase-order-forms/${uuid}`, { method: 'GET' })
+    const response: any = await authenticatedFetch(`/api/purchase-order-forms/${uuid}`, { method: 'GET' })
     if (response?.data) {
       purchaseOrderDetail.value = response.data
       
@@ -725,7 +734,7 @@ const fetchDetail = async (uuid: string) => {
       const poType = (response.data.po_type || '').toUpperCase()
       if (poType !== 'LABOR') {
         try {
-          const itemsResponse: any = await $fetch(`/api/purchase-order-items?purchase_order_uuid=${uuid}`, { method: 'GET' })
+          const itemsResponse: any = await authenticatedFetch(`/api/purchase-order-items?purchase_order_uuid=${uuid}`, { method: 'GET' })
           if (itemsResponse?.data && Array.isArray(itemsResponse.data)) {
             // Map items to ensure all fields are accessible
             purchaseOrderDetail.value.po_items = itemsResponse.data.map((item: any) => {
@@ -800,7 +809,7 @@ const loadRelatedData = async () => {
   // Fetch vendor details - vendors are fetched by corporation_uuid
   if (po.vendor_uuid && po.corporation_uuid) {
     try {
-      const vendorResponse: any = await $fetch(`/api/purchase-orders/vendors?corporation_uuid=${po.corporation_uuid}`, { method: 'GET' })
+      const vendorResponse: any = await authenticatedFetch(`/api/purchase-orders/vendors?corporation_uuid=${po.corporation_uuid}`, { method: 'GET' })
       if (vendorResponse?.data && Array.isArray(vendorResponse.data)) {
         const vendor = vendorResponse.data.find((v: any) => v.uuid === po.vendor_uuid)
         if (vendor) {
@@ -815,7 +824,7 @@ const loadRelatedData = async () => {
   // Fetch project details
   if (po.project_uuid) {
     try {
-      const projectResponse: any = await $fetch(`/api/projects/${po.project_uuid}`, { method: 'GET' })
+      const projectResponse: any = await authenticatedFetch(`/api/projects/${po.project_uuid}`, { method: 'GET' })
       if (projectResponse?.data) {
         projectDetail.value = projectResponse.data
       }
@@ -830,7 +839,7 @@ const loadRelatedData = async () => {
     po.project_uuid
   ) {
     try {
-      const prefResponse: any = await $fetch('/api/cost-code-preferred-items', {
+      const prefResponse: any = await authenticatedFetch('/api/cost-code-preferred-items', {
         method: 'GET',
         query: {
           corporation_uuid: po.corporation_uuid,
@@ -865,7 +874,7 @@ const loadRelatedData = async () => {
     try {
       // Match ProjectDetailsForm/CustomerSelect behavior: fetch by corporation first.
       // Project-scoped filtering can hide globally scoped customers for that project.
-      const customersResponse: any = await $fetch(
+      const customersResponse: any = await authenticatedFetch(
         `/api/customers?corporation_uuid=${po.corporation_uuid}`,
         { method: 'GET' }
       )
@@ -879,7 +888,7 @@ const loadRelatedData = async () => {
   // Fetch project addresses - active list first; fall back by UUID for inactive (historical POs)
   if (po.project_uuid) {
     try {
-      const addressResponse: any = await $fetch(`/api/projects/addresses?project_uuid=${po.project_uuid}`, { method: 'GET' })
+      const addressResponse: any = await authenticatedFetch(`/api/projects/addresses?project_uuid=${po.project_uuid}`, { method: 'GET' })
       const list =
         addressResponse?.data && Array.isArray(addressResponse.data) ? addressResponse.data : []
 
@@ -890,7 +899,7 @@ const loadRelatedData = async () => {
         list
       )
       if (po.billing_address_uuid) {
-        const billingResponse: any = await $fetch('/api/projects/addresses', {
+        const billingResponse: any = await authenticatedFetch('/api/projects/addresses', {
           method: 'GET',
           query: {
             project_uuid: po.project_uuid,
@@ -950,18 +959,20 @@ const loadRelatedData = async () => {
     console.error('Failed to load approval checks from API for print:', e)
   }
 
-  // Freight / ship-via labels for the summary table: UUID-only rows need a fresh API load when cache is empty (same pattern as PO form).
+  // Freight / ship-via labels for the summary table: UUID-only rows need a fresh API load when cache is empty.
   if (poType !== 'LABOR') {
-    if (po.freight_uuid && !freightStore.getFreightByUuid(String(po.freight_uuid))) {
+    const freightUuid = resolveFreightUuidFromPo(po)
+    if (freightUuid && !freightStore.getFreightByUuid(freightUuid)) {
       try {
-        await freightStore.fetchFreight(true)
+        await freightStore.fetchFreight()
       } catch (e) {
         console.error('Failed to refresh freight for print:', e)
       }
     }
-    if (po.ship_via_uuid && !shipViaStore.getShipViaByUuid(String(po.ship_via_uuid))) {
+    const shipViaUuid = resolveShipViaUuidFromPo(po)
+    if (shipViaUuid && !shipViaStore.getShipViaByUuid(shipViaUuid)) {
       try {
-        await shipViaStore.fetchShipVia(true)
+        await shipViaStore.fetchShipVia()
       } catch (e) {
         console.error('Failed to refresh ship via for print:', e)
       }
@@ -1315,10 +1326,7 @@ const showLocationColumns = computed(() => {
 const showLaborLocationColumn = computed(() => showLocationColumns.value)
 
 const locationWiseMaterialItems = computed(() => {
-  if (!purchaseOrderDetail.value) return []
-  return Array.isArray(purchaseOrderDetail.value.po_location_wise_material_items)
-    ? purchaseOrderDetail.value.po_location_wise_material_items
-    : []
+  return normalizeLocationWiseMaterialItems(purchaseOrderDetail.value)
 })
 
 const hasLocationWiseMaterialItems = computed(() => {
@@ -1355,7 +1363,7 @@ function collectLocationUuidsFromPo(po: any): string[] {
     }
   }
   addFrom(po?.po_items)
-  addFrom(po?.po_location_wise_material_items)
+  addFrom(normalizeLocationWiseMaterialItems(po))
   addFrom(po?.labor_po_items)
   return [...out]
 }
@@ -1448,23 +1456,8 @@ const laborTotal = computed(() => {
 })
 
 // Helper to get value from financial_breakdown or direct field
-const getFinancialValue = (path: string, fallbackPath?: string): number => {
-  const po = purchaseOrderDetail.value
-  if (!po) return 0
-  
-  // Try financial_breakdown first
-  const breakdown = po.financial_breakdown
-  if (breakdown && typeof breakdown === 'object') {
-    const value = path.split('.').reduce((obj: any, key: string) => obj?.[key], breakdown)
-    if (value !== null && value !== undefined) {
-      return parseFloat(value) || 0
-    }
-  }
-  
-  // Fallback to direct field
-  const directValue = fallbackPath ? po[fallbackPath] : po[path]
-  return parseFloat(directValue) || 0
-}
+const getFinancialValue = (path: string, fallbackPath?: string): number =>
+  getPoFinancialValue(purchaseOrderDetail.value, path, fallbackPath)
 
 // Individual charge amounts
 const freightChargesAmount = computed(() => {
@@ -1553,39 +1546,14 @@ const poTotal = computed(() => {
   return calculatedPOTotal.value
 })
 
-function trimDisplayStr(v: unknown): string {
-  if (v === null || v === undefined) return ''
-  const s = String(v).trim()
-  return s
-}
-
 // Freight/Terms/Shipping Instructions/Delivery Date/Currency display
-const freightDisplay = computed(() => {
-  const po = purchaseOrderDetail.value
-  if (!po) return ''
-
-  const freightText = trimDisplayStr(po.freight)
-  if (freightText) return freightText
-
-  if (po.freight_uuid) {
-    const freightRecord = freightStore.getFreightByUuid(String(po.freight_uuid))
-    const via = trimDisplayStr(freightRecord?.ship_via)
-    if (via) return via
-    if (freightRecord?.description) return trimDisplayStr(freightRecord.description)
-  }
-
-  const shipViaText = trimDisplayStr(po.ship_via)
-  if (shipViaText) return shipViaText
-
-  if (po.ship_via_uuid) {
-    const sv = shipViaStore.getShipViaByUuid(String(po.ship_via_uuid))
-    const via = trimDisplayStr(sv?.ship_via)
-    if (via) return via
-    if (sv?.description) return trimDisplayStr(sv.description)
-  }
-
-  return ''
-})
+const freightDisplay = computed(() =>
+  resolveFreightDisplayLabel(
+    purchaseOrderDetail.value,
+    (uuid) => freightStore.getFreightByUuid(uuid),
+    (uuid) => shipViaStore.getShipViaByUuid(uuid),
+  )
+)
 
 const termsDisplay = computed(() => {
   const po = purchaseOrderDetail.value

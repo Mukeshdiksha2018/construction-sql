@@ -19,9 +19,11 @@
 
 <script setup lang="ts">
 import PurchaseOrderPreview from '~/components/purchaseOrders/PurchaseOrderPreview.vue'
+import { authenticatedFetch } from '~/utils/authenticatedFetch'
 
 definePageMeta({
   layout: false,
+  middleware: 'auth',
 })
 
 const route = useRoute()
@@ -34,7 +36,7 @@ const printRef = ref<HTMLElement | null>(null)
 
 onMounted(async () => {
   try {
-    const response = await $fetch<any>(`/api/purchase-order-forms/${id.value}`)
+    const response = await authenticatedFetch<any>(`/api/purchase-order-forms/${id.value}`)
     purchaseOrder.value = response?.data ?? null
     if (!purchaseOrder.value) {
       error.value = 'Purchase order not found'
