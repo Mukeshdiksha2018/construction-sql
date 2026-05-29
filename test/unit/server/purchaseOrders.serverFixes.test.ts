@@ -347,6 +347,56 @@ describe('createPurchaseOrder – terms_and_conditions_uuid', () => {
   })
 })
 
+describe('updatePurchaseOrder – print option flags', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPOFormFindFirst.mockResolvedValue(makePrismaPORow())
+    mockPOFormUpdate.mockResolvedValue(makePrismaPORow())
+    mockPOItemFindMany.mockResolvedValue([])
+    mockProjectFindFirst.mockResolvedValue(null)
+  })
+
+  it('persists print_include_approved_by_vendor as false (not null)', async () => {
+    const { updatePurchaseOrder } = await importUtils()
+    await updatePurchaseOrder('po-uuid-1', {
+      print_include_approved_by_vendor: false,
+    })
+
+    const updateArg = mockPOFormUpdate.mock.calls[0][0]
+    expect(updateArg.data.print_include_approved_by_vendor).toBe(false)
+  })
+
+  it('persists print_use_entity_name as true', async () => {
+    const { updatePurchaseOrder } = await importUtils()
+    await updatePurchaseOrder('po-uuid-1', {
+      print_use_entity_name: true,
+    })
+
+    const updateArg = mockPOFormUpdate.mock.calls[0][0]
+    expect(updateArg.data.print_use_entity_name).toBe(true)
+  })
+
+  it('returns print flags on mapped row after create', async () => {
+    mockPOFormCreate.mockResolvedValue(makePrismaPORow({
+      print_include_approved_by_vendor: true,
+      print_use_entity_name: false,
+    }))
+    mockPOItemFindMany.mockResolvedValue([])
+    mockProjectFindFirst.mockResolvedValue(null)
+
+    const { createPurchaseOrder } = await importUtils()
+    const result = await createPurchaseOrder({
+      corporation_uuid: 'corp-1',
+      entry_date: '2026-05-01',
+      print_include_approved_by_vendor: true,
+      print_use_entity_name: false,
+    })
+
+    expect(result.print_include_approved_by_vendor).toBe(true)
+    expect(result.print_use_entity_name).toBe(false)
+  })
+})
+
 describe('updatePurchaseOrder – terms_and_conditions_uuid', () => {
   beforeEach(() => {
     vi.clearAllMocks()

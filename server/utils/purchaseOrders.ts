@@ -34,6 +34,11 @@ function looksLikeUuid(value: unknown): boolean {
 }
 
 /** PO form stores the master-record UUID in `terms_and_conditions` (no separate uuid column). */
+function normalizePrintBooleanFlag(value: unknown): boolean | null {
+  if (value === null || value === undefined) return null
+  return Boolean(value)
+}
+
 function resolveTermsAndConditionsForStorage(input: any): string | null {
   const fromUuid = input?.terms_and_conditions_uuid
   if (fromUuid !== null && fromUuid !== undefined && String(fromUuid).trim() !== '') {
@@ -491,8 +496,8 @@ export async function createPurchaseOrder(input: any) {
     prepared_by: input.prepared_by ?? null,
     approved_by: input.approved_by ?? null,
     approved_at: parseDate(input.approved_at),
-    print_include_approved_by_vendor: input.print_include_approved_by_vendor ?? null,
-    print_use_entity_name: input.print_use_entity_name ?? null,
+    print_include_approved_by_vendor: normalizePrintBooleanFlag(input.print_include_approved_by_vendor),
+    print_use_entity_name: normalizePrintBooleanFlag(input.print_use_entity_name),
     special_instruction_uuid: input.special_instruction_uuid ?? null,
     is_active: true,
   }
@@ -514,7 +519,13 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
     'print_use_entity_name', 'special_instruction_uuid', 'project_uuid',
   ]
   for (const f of fields) {
-    if (f in input) updateData[f] = input[f] ?? null
+    if (!(f in input)) continue
+    if (f === 'print_include_approved_by_vendor' || f === 'print_use_entity_name') {
+      updateData[f] = normalizePrintBooleanFlag(input[f])
+    }
+    else {
+      updateData[f] = input[f] ?? null
+    }
   }
   // Prefer UUID over display name — store the master-table UUID so the client
   // can always resolve it to a name via the ship-via / freight master tables.

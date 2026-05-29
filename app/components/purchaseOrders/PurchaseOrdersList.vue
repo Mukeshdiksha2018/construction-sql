@@ -1456,20 +1456,20 @@ function buildUserAuditBody() {
 async function persistPoPrintOption(
   key: 'print_include_approved_by_vendor' | 'print_use_entity_name',
   value: boolean
-) {
-  if (!poForm.value?.uuid) return
+): Promise<boolean> {
+  const uuid = poForm.value?.uuid
+  if (!uuid) return true
   savingPoPrintOptions.value = true
   try {
-    await $fetch('/api/purchase-order-forms', {
+    await $fetch(`/api/purchase-order-forms/${uuid}`, {
       method: 'PUT',
       body: {
-        uuid: poForm.value.uuid,
         [key]: value,
         ...buildUserAuditBody(),
       },
     })
-    // Only apply the saved flag — do not merge full API row into the form (would drop po_items etc.).
     poForm.value[key] = value
+    return true
   } catch (e: unknown) {
     const toast = useToast()
     const msg =
@@ -1483,6 +1483,7 @@ async function persistPoPrintOption(
       description: msg,
       color: 'error',
     })
+    return false
   } finally {
     savingPoPrintOptions.value = false
   }
@@ -1490,12 +1491,24 @@ async function persistPoPrintOption(
 
 async function onPoPrintApprovedByVendorChange(value: boolean | 'indeterminate') {
   if (value === 'indeterminate') return
-  await persistPoPrintOption('print_include_approved_by_vendor', value)
+  const previous = poForm.value?.print_include_approved_by_vendor
+  poForm.value = { ...poForm.value, print_include_approved_by_vendor: value }
+  if (!poForm.value?.uuid) return
+  const ok = await persistPoPrintOption('print_include_approved_by_vendor', value)
+  if (!ok) {
+    poForm.value = { ...poForm.value, print_include_approved_by_vendor: previous }
+  }
 }
 
 async function onPoPrintUseEntityNameChange(value: boolean | 'indeterminate') {
   if (value === 'indeterminate') return
-  await persistPoPrintOption('print_use_entity_name', value)
+  const previous = poForm.value?.print_use_entity_name
+  poForm.value = { ...poForm.value, print_use_entity_name: value }
+  if (!poForm.value?.uuid) return
+  const ok = await persistPoPrintOption('print_use_entity_name', value)
+  if (!ok) {
+    poForm.value = { ...poForm.value, print_use_entity_name: previous }
+  }
 }
 
 watch(showFormModal, async (open) => {
