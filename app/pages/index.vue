@@ -168,8 +168,9 @@
 </template>
 
 <script setup lang="ts">
-import type { NimbleSession } from '~/stores/auth'
 import { getPathForMenuId } from '~/utils/nimbleMenuIds'
+import { exchangeNimbleAuthId } from '~/utils/nimbleAuthIdExchange'
+import { syncNimbleSessionFromAuth } from '~/utils/authToken'
 
 definePageMeta({
   layout: false,
@@ -215,14 +216,11 @@ onMounted(async () => {
   const corporationId = String(route.query.corporationId ?? '').trim()
 
   try {
-    const result = await $fetch<{ session: NimbleSession }>('/api/auth/exchange-oauth', {
-      method: 'POST',
-      body: { authId },
-      credentials: 'include',
-    })
+    const session = await exchangeNimbleAuthId(authId)
 
-    if (result?.session) {
-      authStore.setSession(result.session)
+    if (session) {
+      authStore.setSession(session)
+      syncNimbleSessionFromAuth()
 
       // Fetch privileges + approvals in the background before navigation
       const { loadPrivileges } = usePrivilegesFetch()

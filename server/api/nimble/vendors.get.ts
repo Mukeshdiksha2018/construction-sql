@@ -1,6 +1,5 @@
 import { requireAuthSession } from '../../utils/auth-session'
 import { toNimbleCorpId } from '../../utils/nimbleVendorMaster'
-import { toNimbleCorpId } from '../../utils/nimbleVendorMaster'
 
 /**
  * GET /api/nimble/vendors?corporation_uuid=<uuid>

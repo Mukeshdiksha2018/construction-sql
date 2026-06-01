@@ -1,5 +1,6 @@
 import { fetchServerSession } from '~/utils/auth-session'
-import type { NimbleSession } from '~/stores/auth'
+import { exchangeNimbleAuthId } from '~/utils/nimbleAuthIdExchange'
+import { syncNimbleSessionFromAuth } from '~/utils/authToken'
 
 /** Protects pages — requires login (aligned with server API auth cookie). */
 export default defineNuxtRouteMiddleware(async (to) => {
@@ -8,32 +9,23 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const nimbleOn = String(runtimeConfig.public.nimbleIntegrations || '').toLowerCase() === 'true'
   const authId = String(to.query.authId ?? '').trim()
 
+  // Fresh Nimble launch token — exchange before trusting any existing cookie/Pinia session.
+  if (nimbleOn && authId) {
+    const freshSession = await exchangeNimbleAuthId(authId)
+    if (freshSession) {
+      authStore.setSession(freshSession)
+      syncNimbleSessionFromAuth()
+      return
+    }
+  }
+
   const serverSession = await fetchServerSession()
   if (serverSession?.token) {
     if (!authStore.isAuthenticated || authStore.token !== serverSession.token) {
       authStore.setSession(serverSession)
+      syncNimbleSessionFromAuth()
     }
     return
-  }
-
-  if (nimbleOn && authId) {
-    if (import.meta.server) {
-      // Let client bootstrap exchange authId and set browser cookie.
-      return
-    }
-    try {
-      const result = await $fetch<{ session: NimbleSession }>('/api/auth/exchange-oauth', {
-        method: 'POST',
-        body: { authId },
-        credentials: 'include',
-      })
-      if (result?.session) {
-        authStore.setSession(result.session)
-      }
-    }
-    catch {
-      // Fall through to normal unauthenticated redirect handling.
-    }
   }
 
   // Cookie may be unavailable in a new tab (e.g. Nimble iframe) while Pinia still
