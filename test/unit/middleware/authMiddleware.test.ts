@@ -99,15 +99,15 @@ describe('auth middleware', () => {
     expect(mockNavigateTo).not.toHaveBeenCalled()
   })
 
-  it('does not exchange authId when nimbleIntegrations is false (password login mode)', async () => {
+  it('exchanges authId even when nimbleIntegrations is false (launcher / iframe)', async () => {
     nimbleIntegrations = 'false'
-    mockFetchServerSession.mockResolvedValue(staleSession)
+    mockExchangeNimbleAuthId.mockResolvedValue(freshSession)
 
     const store = await getAuthStore()
-    await runAuthMiddleware('/projects', { authId: 'should-be-ignored' })
+    await runAuthMiddleware('/payables', { authId: 'launch-auth-id' })
 
-    expect(mockExchangeNimbleAuthId).not.toHaveBeenCalled()
-    expect(store.token).toBe('stale-cookie-token')
+    expect(mockExchangeNimbleAuthId).toHaveBeenCalledWith('launch-auth-id')
+    expect(store.token).toBe('fresh-token')
     expect(mockNavigateTo).not.toHaveBeenCalled()
   })
 

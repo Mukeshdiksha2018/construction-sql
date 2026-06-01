@@ -5,12 +5,10 @@ import { syncNimbleSessionFromAuth } from '~/utils/authToken'
 /** Protects pages — requires login (aligned with server API auth cookie). */
 export default defineNuxtRouteMiddleware(async (to) => {
   const authStore = useAuthStore()
-  const runtimeConfig = useRuntimeConfig()
-  const nimbleOn = String(runtimeConfig.public.nimbleIntegrations || '').toLowerCase() === 'true'
   const authId = String(to.query.authId ?? '').trim()
 
   // Fresh Nimble launch token — exchange before trusting any existing cookie/Pinia session.
-  if (nimbleOn && authId) {
+  if (authId) {
     const freshSession = await exchangeNimbleAuthId(authId)
     if (freshSession) {
       authStore.setSession(freshSession)

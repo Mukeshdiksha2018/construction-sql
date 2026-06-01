@@ -81,6 +81,21 @@ export const useCorporationStore = defineStore('corporation', {
         this.loading = false
       }
     },
+
+    /** Wait for corporations to be loaded (used by list screens on mount). */
+    async ensureReady(options: { isShowAll?: boolean, force?: boolean } = {}) {
+      const deadline = Date.now() + 15_000
+      while (this.loading && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      if (!options.force && this.loaded && this.corporations.length > 0) {
+        return
+      }
+      await this.fetchCorporations({
+        isShowAll: options.isShowAll ?? false,
+        force: options.force ?? false,
+      })
+    },
   },
 
   persist: {

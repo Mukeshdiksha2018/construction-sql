@@ -16,14 +16,12 @@ function toMenuRedirect(menuPath: string | undefined, corporationId: string): st
 /** For login page — redirect authenticated users away from guest routes. */
 export default defineNuxtRouteMiddleware(async (to) => {
   const authStore = useAuthStore()
-  const runtimeConfig = useRuntimeConfig()
-  const nimbleOn = String(runtimeConfig.public.nimbleIntegrations || '').toLowerCase() === 'true'
   const authId = String(to.query.authId ?? '').trim()
   const menuId = String(to.query.menuId ?? '').trim()
   const corporationId = String(to.query.corporationId ?? '').trim()
   const menuRedirect = toMenuRedirect(getPathForMenuId(menuId), corporationId)
 
-  if (nimbleOn && authId) {
+  if (authId) {
     const freshSession = await exchangeNimbleAuthId(authId)
     if (freshSession) {
       authStore.setSession(freshSession)

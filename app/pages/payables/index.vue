@@ -84,7 +84,10 @@ const {
 const route = useRoute();
 const router = useRouter();
 const config = useRuntimeConfig();
-const nimbleIntegrations = computed(() => !!config.public.nimbleIntegrations);
+const nimbleIntegrations = computed(
+  () => String(config.public.nimbleIntegrations || '').toLowerCase() === 'true',
+);
+const { setFromRoute } = useNimbleContext();
 
 /** When Nimble is on: only tabs that have a menuId. When URL has menuId: only the tab that matches that menuId. */
 const visibleTabs = computed(() =>
@@ -159,6 +162,10 @@ function ensureCurrentTabVisible() {
 
 // Initialize URL on component mount
 onMounted(() => {
+  setFromRoute({
+    params: (route.params || {}) as Record<string, string>,
+    query: (route.query || {}) as Record<string, string>,
+  });
   if (nimbleIntegrations.value) {
     syncTabFromMenuId();
     if (!route.query.tab) {
@@ -188,6 +195,17 @@ onMounted(() => {
   }
   refreshTabState();
 });
+
+watch(
+  () => [route.params, route.query],
+  () => {
+    setFromRoute({
+      params: (route.params || {}) as Record<string, string>,
+      query: (route.query || {}) as Record<string, string>,
+    });
+  },
+  { deep: true },
+);
 
 // Watch for route changes: sync tab from menuId and ensure current tab is visible
 watch(

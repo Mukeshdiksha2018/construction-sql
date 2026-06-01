@@ -1,5 +1,5 @@
-import { isTaxAdjustmentKey } from '@/utils/advancePaymentTaxAdjustmentKeys'
-import { applyEqualAdvanceDeductionToBreakdown } from '@/utils/applyEqualAdvanceDeductionToBreakdown'
+import { isTaxAdjustmentKey } from '~/utils/advancePaymentTaxAdjustmentKeys'
+import { applyEqualAdvanceDeductionToBreakdown } from '~/utils/applyEqualAdvanceDeductionToBreakdown'
 
 export function getAdvanceAdjustmentsByCostCode(holdbackInvoice: any): Map<string, number> {
   const result = new Map<string, number>()

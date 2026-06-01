@@ -1,4 +1,4 @@
-import { isTaxAdjustmentKey } from '@/utils/advancePaymentTaxAdjustmentKeys'
+import { isTaxAdjustmentKey } from '~/utils/advancePaymentTaxAdjustmentKeys'
 
 /**
  * Build one label string per GL row for Configure COA "Advance applied" column:

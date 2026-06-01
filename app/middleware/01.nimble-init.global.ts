@@ -4,9 +4,6 @@ import { syncNimbleSessionFromAuth } from '~/utils/authToken'
 import { usePrivilegesStore } from '~/stores/privileges'
 
 export default defineNuxtRouteMiddleware(async (to) => {
-  // Browser-only (Nimble launch query). Use typeof window so unit tests in happy-dom can cover this path.
-  if (typeof window === 'undefined') return
-
   const authId = String(to.query.authId ?? '').trim()
   const corporationId = String(to.query.corporationId ?? '').trim()
   const menuId = String(to.query.menuId ?? '').trim()
@@ -67,7 +64,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // Nimble always sends the correct page URL — each page handles tab routing
   // internally via syncTabFromMenuId. No global path redirect needed here.
 
-  if (authId) {
+  if (authId && authStore.isAuthenticated) {
     const nextQuery = { ...to.query }
     delete nextQuery.authId
     return navigateTo({ path: to.path, query: nextQuery }, { replace: true })

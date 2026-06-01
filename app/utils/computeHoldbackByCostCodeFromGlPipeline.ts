@@ -1,8 +1,8 @@
-import { allocateGlobalHoldbackProportionally } from '@/utils/allocateGlobalHoldbackProportionally';
+import { allocateGlobalHoldbackProportionally } from '~/utils/allocateGlobalHoldbackProportionally';
 import {
   pipelineCoaModalItemAfterAdvances,
   type CoaGrossRow,
-} from '@/utils/pipelineCoaModalItemAfterAdvances';
+} from '~/utils/pipelineCoaModalItemAfterAdvances';
 
 export type GlCostLine = { costCodeUuid: string; amount: number };
 

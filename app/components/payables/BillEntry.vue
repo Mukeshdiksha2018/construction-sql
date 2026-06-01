@@ -389,7 +389,7 @@ import { useDateRangeStore } from "~/stores/dateRange";
 import { useTableStandard, createSortableColumn, createActionColumn } from '~/composables/useTableStandard'
 import type { TableColumn } from '@nuxt/ui'
 import BillEntryForm from './BillEntryForm.vue'
-import AuditLogSlideover from '@/components/AuditLogs/AuditLogSlideover.vue'
+import AuditLogSlideover from '~/components/auditLogs/AuditLogSlideover.vue'
 import AttachmentPreview from '~/components/shared/AttachmentPreview.vue'
 
 // Use table standard composable

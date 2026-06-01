@@ -114,6 +114,7 @@ describe('nimble-init global middleware (authId exchange regression)', () => {
     await runNimbleInitMiddleware({ authId: 'failed-exchange' })
 
     expect(store.isAuthenticated).toBe(false)
+    expect(mockNavigateTo).not.toHaveBeenCalled()
   })
 
   it('loads privileges in the background after a fresh authId exchange', async () => {
