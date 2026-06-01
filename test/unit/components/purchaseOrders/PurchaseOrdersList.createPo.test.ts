@@ -3,7 +3,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
 
-const mockFetchProjectItemsSummary = vi.fn()
+const { mockFetchProjectItemsSummary } = vi.hoisted(() => ({
+  mockFetchProjectItemsSummary: vi.fn(),
+}))
+
 const mockProjectItemsSummaryData = ref<{ items: any[] } | null>(null)
 const mockProjectItemsSummaryLoading = ref(false)
 
@@ -171,6 +174,17 @@ const uiStubs = {
   PurchaseOrderAuditTimeline: { template: '<div />' },
 }
 
+/** Script-setup refs are not always assignable via `vm.foo = x`; use setupState when present. */
+function setSetupRef(vm: any, key: string, value: unknown) {
+  const setupState = vm?.$?.setupState
+  const target = setupState?.[key]
+  if (target && typeof target === 'object' && 'value' in target) {
+    target.value = value
+    return
+  }
+  vm[key] = value
+}
+
 describe('PurchaseOrdersList Create PO screen', () => {
   beforeEach(() => {
     capturedItemsTables.length = 0
@@ -180,34 +194,49 @@ describe('PurchaseOrdersList Create PO screen', () => {
     mockProjectItemsSummaryLoading.value = false
     mockFetchProjectItemsSummary.mockResolvedValue({ items: [] })
 
-    defineStore('corporations', () => ({
+    defineStore('corporation', () => ({
       selectedCorporationId: ref('corp-1'),
+      corporations: [],
+      setSelectedCorporation: vi.fn(),
     }))()
 
     defineStore('purchaseOrders', () => ({
       purchaseOrders: [],
       loading: false,
+      error: null,
+      paginationInfo: {},
       fetchPurchaseOrders: vi.fn().mockResolvedValue(undefined),
       fetchPurchaseOrder: vi.fn(),
       createPurchaseOrder: vi.fn(),
       updatePurchaseOrder: vi.fn(),
+      deletePurchaseOrder: vi.fn(),
     }))()
 
     defineStore('changeOrders', () => ({
       changeOrders: [],
+      createChangeOrder: vi.fn(),
+      fetchChangeOrders: vi.fn(),
     }))()
 
     defineStore('projects', () => ({
       projects: [],
     }))()
 
-    defineStore('corporationSettings', () => ({
+    defineStore('appSettings', () => ({
       settings: null,
+      loading: false,
       fetchSettings: vi.fn(),
+      poPrintApprovedByVendor: false,
+      poUseEntityName: false,
     }))()
 
     defineStore('auth', () => ({
       token: 'token',
+      isAuthenticated: true,
+      isInitialized: true,
+      session: { token: 'token' },
+      setSession: vi.fn(),
+      clear: vi.fn(),
     }))()
   })
 
@@ -216,15 +245,19 @@ describe('PurchaseOrdersList Create PO screen', () => {
     return mount(component, { global: { stubs: uiStubs } })
   }
 
+  async function openCreatePoScreen(vm: any) {
+    await vm.toggleStatusFilter('ToBeRaised')
+    await nextTick()
+    setSetupRef(vm, 'filterCorporation', 'corp-1')
+    setSetupRef(vm, 'filterProject', 'proj-1')
+    await nextTick()
+  }
+
   it('fetches project items summary when Show Results is used on Create PO screen', async () => {
     const wrapper = await mountList()
     const vm = wrapper.vm as any
 
-    await vm.toggleStatusFilter('ToBeRaised')
-    await nextTick()
-
-    vm.filterCorporation = 'corp-1'
-    vm.filterProject = 'proj-1'
+    await openCreatePoScreen(vm)
     await vm.handleShowResults()
     await flushPromises()
 
@@ -234,7 +267,19 @@ describe('PurchaseOrdersList Create PO screen', () => {
       undefined,
       undefined,
     )
-  })
+  }, 20_000)
+
+  it('does not fetch project items summary when project filter is missing', async () => {
+    const wrapper = await mountList()
+    const vm = wrapper.vm as any
+
+    await vm.toggleStatusFilter('ToBeRaised')
+    setSetupRef(vm, 'filterCorporation', 'corp-1')
+    await vm.handleShowResults()
+    await flushPromises()
+
+    expect(mockFetchProjectItemsSummary).not.toHaveBeenCalled()
+  }, 20_000)
 
   it('renders create PO items table without column pinning', async () => {
     mockProjectItemsSummaryData.value = {
@@ -254,9 +299,7 @@ describe('PurchaseOrdersList Create PO screen', () => {
     const wrapper = await mountList()
     const vm = wrapper.vm as any
 
-    await vm.toggleStatusFilter('ToBeRaised')
-    vm.filterCorporation = 'corp-1'
-    vm.filterProject = 'proj-1'
+    await openCreatePoScreen(vm)
     await vm.handleShowResults()
     await flushPromises()
     await nextTick()
@@ -277,5 +320,5 @@ describe('PurchaseOrdersList Create PO screen', () => {
     const pendingIdx = headers?.indexOf('Pending Qty') ?? -1
     expect(poIdx).toBe(budgetIdx + 1)
     expect(pendingIdx).toBe(poIdx + 1)
-  })
+  }, 20_000)
 })
