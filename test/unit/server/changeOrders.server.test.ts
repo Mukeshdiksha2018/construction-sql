@@ -70,6 +70,12 @@ vi.mock('../../../server/utils/appUserOrNimbleUserId', () => ({
   },
 }))
 
+const mockGetChangeOrderInvoiceSummary = vi.fn()
+
+vi.mock('../../../server/utils/vendorInvoiceSummary', () => ({
+  getChangeOrderInvoiceSummary: (...a: unknown[]) => mockGetChangeOrderInvoiceSummary(...a),
+}))
+
 const SAMPLE_BREAKDOWN = {
   charges: {
     freight: { percentage: 5, amount: 25, taxable: true },
@@ -405,19 +411,19 @@ describe('changeOrders server utils', () => {
   })
 
   describe('getChangeOrderInvoiceSummary', () => {
-    it('computes balance from line items', async () => {
-      mockCOFindFirst.mockResolvedValue({
-        uuid: 'co-uuid-1',
-        financial_breakdown: JSON.stringify(SAMPLE_BREAKDOWN),
+    it('delegates to vendorInvoiceSummary', async () => {
+      mockGetChangeOrderInvoiceSummary.mockResolvedValue({
+        change_order_uuid: 'co-uuid-1',
+        total_co_value: 500,
+        balance_to_be_invoiced: 250,
+        total_co_quantity: 3,
+        advance_paid: 0,
       })
-      mockCOItemFindMany.mockResolvedValue([
-        { uuid: 'i1', co_quantity: 2, co_unit_price: 100, unit_price: 100 },
-        { uuid: 'i2', co_quantity: 1, co_unit_price: 50, unit_price: 50 },
-      ])
 
       const { getChangeOrderInvoiceSummary } = await importUtils()
       const summary = await getChangeOrderInvoiceSummary('co-uuid-1')
 
+      expect(mockGetChangeOrderInvoiceSummary).toHaveBeenCalledWith('co-uuid-1')
       expect(summary?.balance_to_be_invoiced).toBe(250)
       expect(summary?.total_co_quantity).toBe(3)
       expect(summary?.advance_paid).toBe(0)
