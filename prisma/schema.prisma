@@ -1399,6 +1399,39 @@ model VendorInvoiceCoaAssignment {
   @@map("vendor_invoice_coa_assignments")
 }
 
+/// Customer master data for corporations and projects.
+model Customer {
+  id                 BigInt   @id @default(autoincrement())
+  uuid               String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid   String   @db.NVarChar(36)
+  project_uuid       String?  @db.NVarChar(36)
+  customer_address   String   @default("") @db.NVarChar(Max)
+  customer_city      String   @default("") @db.NVarChar(100)
+  customer_state     String   @default("") @db.NVarChar(50)
+  customer_country   String   @default("") @db.NVarChar(2)
+  customer_zip       String   @default("") @db.NVarChar(20)
+  customer_phone     String   @default("") @db.NVarChar(50)
+  customer_email     String   @default("") @db.NVarChar(255)
+  company_name       String   @default("") @db.NVarChar(255)
+  salutation         String   @default("Mr.") @db.NVarChar(20)
+  first_name         String   @db.NVarChar(100)
+  middle_name        String   @default("") @db.NVarChar(100)
+  last_name          String   @db.NVarChar(100)
+  profile_image_url  String   @default("") @db.NVarChar(Max)
+  is_active          Boolean  @default(true)
+  nimble_customer_id String?  @db.NVarChar(255)
+  created_at         DateTime @default(now()) @db.DateTime2
+  updated_at         DateTime @updatedAt @db.DateTime2
+  created_by         String?  @db.NVarChar(128)
+  updated_by         String?  @db.NVarChar(128)
+
+  @@index([corporation_uuid])
+  @@index([project_uuid])
+  @@index([is_active])
+  @@index([created_at(sort: Desc)])
+  @@map("customers")
+}
+
 /// Global terms and conditions templates.
 model TermsAndCondition {
   id         BigInt   @id @default(autoincrement())

@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { useApiClient } from '~/composables/useApiClient'
 
 export interface Project {
   id: number
@@ -206,13 +207,15 @@ export const useProjectsStore = defineStore('projects', {
 
     async fetchLocalCustomers(corporationUuid: string, projectUuid?: string | null, _force?: boolean) {
       if (!corporationUuid) return
+      if (import.meta.server) return
       try {
-        const query: Record<string, string> = { corporation_uuid: corporationUuid }
-        if (projectUuid) query.project_uuid = projectUuid
-        const response = await $fetch<{ data: any[] }>('/api/customers/options', {
-          query,
-          credentials: 'include',
-        })
+        const { apiFetch } = useApiClient()
+        let url = `/api/customers?corporation_uuid=${encodeURIComponent(corporationUuid)}`
+        if (projectUuid) {
+          url += `&project_uuid=${encodeURIComponent(projectUuid)}`
+        }
+        const response = await apiFetch<{ data?: any[], error?: string }>(url)
+        if (response?.error) throw new Error(response.error)
         this.localCustomers = response?.data ?? []
       } catch {
         this.localCustomers = []

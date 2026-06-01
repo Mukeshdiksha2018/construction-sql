@@ -2,7 +2,11 @@ import { mssqlQueryParams } from '../../utils/mssql'
 
 interface CustomerOptionRow {
   uuid?: string
+  corporation_uuid?: string
+  project_uuid?: string | null
+  salutation?: string | null
   first_name?: string | null
+  middle_name?: string | null
   last_name?: string | null
   company_name?: string | null
   customer_email?: string | null
@@ -26,10 +30,12 @@ export default defineEventHandler(async (event) => {
     const rows = projectUuid
       ? await mssqlQueryParams<CustomerOptionRow>(
           `
-            SELECT uuid, first_name, last_name, company_name, customer_email, profile_image_url
+            SELECT uuid, corporation_uuid, project_uuid, salutation,
+              first_name, middle_name, last_name, company_name,
+              customer_email, profile_image_url
             FROM dbo.customers
             WHERE corporation_uuid = @corporationUuid
-              AND project_uuid = @projectUuid
+              AND (project_uuid IS NULL OR project_uuid = @projectUuid)
               AND ISNULL(is_active, 1) = 1
             ORDER BY first_name ASC, last_name ASC
           `,
@@ -37,7 +43,9 @@ export default defineEventHandler(async (event) => {
         )
       : await mssqlQueryParams<CustomerOptionRow>(
           `
-            SELECT uuid, first_name, last_name, company_name, customer_email, profile_image_url
+            SELECT uuid, corporation_uuid, project_uuid, salutation,
+              first_name, middle_name, last_name, company_name,
+              customer_email, profile_image_url
             FROM dbo.customers
             WHERE corporation_uuid = @corporationUuid
               AND ISNULL(is_active, 1) = 1
@@ -49,8 +57,12 @@ export default defineEventHandler(async (event) => {
     return {
       success: true,
       data: rows.map(row => ({
-        uuid: String(row.uuid ?? ''),
+        uuid: String(row.uuid ?? '').toLowerCase(),
+        corporation_uuid: String(row.corporation_uuid ?? '').toLowerCase(),
+        project_uuid: row.project_uuid ? String(row.project_uuid).toLowerCase() : null,
+        salutation: row.salutation ?? null,
         first_name: row.first_name ?? null,
+        middle_name: row.middle_name ?? null,
         last_name: row.last_name ?? null,
         company_name: row.company_name ?? null,
         customer_email: row.customer_email ?? null,
