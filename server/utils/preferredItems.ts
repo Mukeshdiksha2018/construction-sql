@@ -105,12 +105,16 @@ export async function getPreferredItemsByProjectAndItemType(
   corporationUuid: string,
   projectUuid: string,
   itemTypeUuid: string,
+  costCodeConfigurationUuid?: string,
 ): Promise<PreferredItem[]> {
   const rows = await getPrisma().costCodePreferredItem.findMany({
     where: {
       corporation_uuid: corporationUuid.toLowerCase(),
       project_uuid: projectUuid.toLowerCase(),
       item_type_uuid: itemTypeUuid.toLowerCase(),
+      ...(costCodeConfigurationUuid && {
+        cost_code_configuration_uuid: costCodeConfigurationUuid.toLowerCase(),
+      }),
     },
     orderBy: { created_at: 'asc' },
   })

@@ -8,8 +8,11 @@
       <div class="flex items-center justify-between w-full gap-4">
         <div class="flex items-center gap-4 flex-shrink-0">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ editingItemLabel }}
+            {{ modalTitle }}
           </h3>
+          <p v-if="embeddedCostCodeLabel" class="text-xs text-muted truncate max-w-md">
+            {{ embeddedCostCodeLabel }}
+          </p>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
           <UButton color="neutral" variant="soft" @click="closeModal">Cancel</UButton>
@@ -50,6 +53,7 @@
               size="sm"
               :corporation-uuid="corpId"
               class="w-full"
+              :disabled="projectSelectDisabled"
               @change="handleProjectChange"
             />
           </div>
@@ -176,10 +180,25 @@ import { usePreferredItemsStore } from '~/stores/preferredItems'
 interface Props {
   modelValue: boolean
   initialEditingItem?: Record<string, unknown> | null
+  /** standalone = Items list; embedded = cost code configuration flow */
+  mode?: 'standalone' | 'embedded'
+  corporationUuid?: string
+  costCodeConfigurationUuid?: string
+  costCodeLabel?: string
+  /** When embedded, allow picking a project (cost code config / list manage items). */
+  allowEmbeddedProjectSelect?: boolean
+  /** When true with costCodeConfigurationUuid, hide cost code column and lock rows to that config. */
+  lockEmbeddedCostCodeSelection?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   initialEditingItem: null,
+  mode: 'standalone',
+  corporationUuid: '',
+  costCodeConfigurationUuid: '',
+  costCodeLabel: '',
+  allowEmbeddedProjectSelect: true,
+  lockEmbeddedCostCodeSelection: true,
 })
 
 const emit = defineEmits<{
@@ -200,7 +219,38 @@ const modalOpen = computed({
 // The CorporationSelect uses corp.id as its value key — pass selectedCorporationId directly
 const selectedCorporationId = computed(() => corpStore.selectedCorporationId ?? undefined)
 // The corporation's UUID used for API calls is corp.id in this store
-const corpId = computed(() => corpStore.selectedCorporation?.id ?? '')
+const corpId = computed(() => {
+  if (props.mode === 'embedded' && props.corporationUuid) {
+    return props.corporationUuid
+  }
+  return corpStore.selectedCorporation?.id ?? ''
+})
+
+const lockedCostCodeUuid = computed(() =>
+  props.mode === 'embedded' && props.lockEmbeddedCostCodeSelection && props.costCodeConfigurationUuid
+    ? String(props.costCodeConfigurationUuid).trim().toLowerCase()
+    : '',
+)
+
+const projectSelectDisabled = computed(() => {
+  if (!corpId.value) return true
+  if (props.mode === 'embedded' && !props.allowEmbeddedProjectSelect) return true
+  return false
+})
+
+const embeddedCostCodeLabel = computed(() => {
+  if (props.mode !== 'embedded' || !props.costCodeLabel) return ''
+  return props.costCodeLabel
+})
+
+const modalTitle = computed(() => {
+  if (props.mode === 'embedded' && props.costCodeLabel) {
+    return props.initialEditingItem ? 'Edit Preferred Items' : 'Add Preferred Items'
+  }
+  return editingItemLabel.value
+})
+
+const showCostCodeColumn = computed(() => !lockedCostCodeUuid.value)
 
 // ── Form state ──────────────────────────────────────────────────────────────
 const itemForm = ref({
@@ -290,7 +340,8 @@ const _SharedVendorSelect = resolveComponent('SharedVendorSelect')
 const _SharedLocationSelect = resolveComponent('SharedLocationSelect')
 
 // ── Table column definitions ──────────────────────────────────────────────────
-const tableColumns = computed(() => [
+const tableColumns = computed(() => {
+  const cols = [
   {
     accessorKey: 'item_sequence',
     header: () => h('span', { class: 'inline-flex items-center gap-1' }, ['Spec ', h('span', { class: 'text-red-500' }, '*')]),
@@ -432,25 +483,27 @@ const tableColumns = computed(() => [
       'onUpdate:modelValue': (v: string | undefined) => { if (itemRows.value[row.index]) itemRows.value[row.index].preferred_vendor_uuid = v || '' },
     }),
   },
-  {
-    accessorKey: 'cost_code_configuration_uuid',
-    header: () => h('span', { class: 'inline-flex items-center gap-1' }, ['Cost Code ', h('span', { class: 'text-red-500' }, '*')]),
-    enableSorting: false,
-    meta: { class: { th: 'w-[10%] px-3 py-2', td: 'w-[10%] p-2 align-middle' } },
-    cell: ({ row }: any) => h(_SharedCostCodeSelect, {
-      modelValue: itemRows.value[row.index]?.cost_code_configuration_uuid ?? '',
-      placeholder: 'Select cost code',
-      size: 'xs',
-      corporationUuid: corpId.value,
-      class: 'w-full',
-      onChange: (v: unknown) => {
-        if (itemRows.value[row.index]) {
-          const uuid = typeof v === 'string' ? v : (v as Record<string, string>)?.value ?? ''
-          itemRows.value[row.index].cost_code_configuration_uuid = uuid
-        }
-      },
-    }),
-  },
+  ...(showCostCodeColumn.value
+    ? [{
+        accessorKey: 'cost_code_configuration_uuid',
+        header: () => h('span', { class: 'inline-flex items-center gap-1' }, ['Cost Code ', h('span', { class: 'text-red-500' }, '*')]),
+        enableSorting: false,
+        meta: { class: { th: 'w-[10%] px-3 py-2', td: 'w-[10%] p-2 align-middle' } },
+        cell: ({ row }: any) => h(_SharedCostCodeSelect, {
+          modelValue: itemRows.value[row.index]?.cost_code_configuration_uuid ?? '',
+          placeholder: 'Select cost code',
+          size: 'xs',
+          corporationUuid: corpId.value,
+          class: 'w-full',
+          onChange: (v: unknown) => {
+            if (itemRows.value[row.index]) {
+              const uuid = typeof v === 'string' ? v : (v as Record<string, string>)?.value ?? ''
+              itemRows.value[row.index].cost_code_configuration_uuid = uuid
+            }
+          },
+        }),
+      }]
+    : []),
   {
     accessorKey: 'initial_quantity',
     header: 'Initial QTY',
@@ -541,7 +594,9 @@ const tableColumns = computed(() => [
       }),
     ]),
   },
-])
+]
+  return cols
+})
 
 // ── Row helpers ──────────────────────────────────────────────────────────────
 function localDate(iso: string | null | undefined): string {
@@ -557,7 +612,7 @@ function addEmptyRow() {
     model_number: '',
     unit_price: '',
     uom_uuid: '',
-    cost_code_configuration_uuid: '',
+    cost_code_configuration_uuid: lockedCostCodeUuid.value || '',
     preferred_vendor_uuid: '',
     location_uuid: '',
     initial_quantity: '',
@@ -600,9 +655,11 @@ watch(
       return
     }
     try {
-      const response = await $fetch<{ data: Record<string, unknown>[] }>(
-        `/api/preferred-items?corporation_uuid=${corpUuid}&project_uuid=${projectUuid}&item_type_uuid=${itemTypeUuid}`,
-      )
+      let url = `/api/preferred-items?corporation_uuid=${encodeURIComponent(corpUuid)}&project_uuid=${encodeURIComponent(projectUuid)}&item_type_uuid=${encodeURIComponent(itemTypeUuid)}`
+      if (lockedCostCodeUuid.value) {
+        url += `&cost_code_configuration_uuid=${encodeURIComponent(lockedCostCodeUuid.value)}`
+      }
+      const response = await $fetch<{ data: Record<string, unknown>[] }>(url)
       itemRows.value = (response?.data || []).map(r => ({
         uuid: String(r.uuid || ''),
         item_sequence: String(r.item_sequence || ''),
@@ -611,7 +668,7 @@ watch(
         model_number: String(r.model_number || ''),
         unit_price: r.unit_price != null ? r.unit_price : '',
         uom_uuid: String(r.uom_uuid || ''),
-        cost_code_configuration_uuid: String(r.cost_code_configuration_uuid || ''),
+        cost_code_configuration_uuid: String(r.cost_code_configuration_uuid || lockedCostCodeUuid.value || ''),
         preferred_vendor_uuid: String(r.preferred_vendor_uuid || ''),
         location_uuid: String(r.location_uuid || ''),
         initial_quantity: r.initial_quantity != null ? r.initial_quantity : '',
@@ -658,6 +715,21 @@ async function saveItem() {
     return
   }
 
+  if (lockedCostCodeUuid.value) {
+    const missingCostCode = itemRows.value.some(
+      r => !String(r.cost_code_configuration_uuid || '').trim(),
+    )
+    if (missingCostCode) {
+      toast.add({
+        title: 'Validation Error',
+        description: 'Each row must be linked to this cost code.',
+        color: 'error',
+        icon: 'i-heroicons-x-circle',
+      })
+      return
+    }
+  }
+
   isSaving.value = true
   try {
     await $fetch('/api/preferred-items/bulk', {
@@ -674,7 +746,7 @@ async function saveItem() {
           model_number: r.model_number || null,
           unit_price: r.unit_price !== '' && r.unit_price != null ? Number(r.unit_price) : null,
           uom_uuid: r.uom_uuid || null,
-          cost_code_configuration_uuid: r.cost_code_configuration_uuid || null,
+          cost_code_configuration_uuid: r.cost_code_configuration_uuid || lockedCostCodeUuid.value || null,
           preferred_vendor_uuid: r.preferred_vendor_uuid || null,
           location_uuid: r.location_uuid || null,
           initial_quantity: r.initial_quantity !== '' && r.initial_quantity != null ? Number(r.initial_quantity) : null,
@@ -778,7 +850,7 @@ watch(
     if (item) {
       itemForm.value = {
         project_uuid: String(item.project_uuid || ''),
-        item_category: String(item.category || ''),
+        item_category: String(item.category || item.item_category || ''),
         item_type_uuid: String(item.item_type_uuid || ''),
       }
     }

@@ -7,6 +7,7 @@ export default defineEventHandler(async (event) => {
     const corporationUuid = String(query.corporation_uuid || '').trim()
     const projectUuid = String(query.project_uuid || '').trim() || undefined
     const itemTypeUuid = String(query.item_type_uuid || '').trim() || undefined
+    const costCodeConfigurationUuid = String(query.cost_code_configuration_uuid || '').trim() || undefined
 
     if (!corporationUuid) {
       throw createError({ statusCode: 400, statusMessage: 'corporation_uuid is required' })
@@ -14,7 +15,12 @@ export default defineEventHandler(async (event) => {
 
     let data
     if (projectUuid && itemTypeUuid) {
-      data = await getPreferredItemsByProjectAndItemType(corporationUuid, projectUuid, itemTypeUuid)
+      data = await getPreferredItemsByProjectAndItemType(
+        corporationUuid,
+        projectUuid,
+        itemTypeUuid,
+        costCodeConfigurationUuid,
+      )
     }
     else {
       data = await listPreferredItems(corporationUuid, projectUuid)
