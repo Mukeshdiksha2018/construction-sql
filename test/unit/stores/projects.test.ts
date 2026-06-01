@@ -2,6 +2,11 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useProjectsStore } from '~/stores/projects'
 
+const mockApiFetch = vi.fn()
+vi.mock('~/composables/useApiClient', () => ({
+  useApiClient: () => ({ apiFetch: mockApiFetch }),
+}))
+
 const makeProject = (overrides = {}) => ({
   id: 1,
   uuid: 'proj-uuid-1',
@@ -204,17 +209,37 @@ describe('useProjectsStore', () => {
   // ── fetchLocalCustomers ──────────────────────────────────────────────────
   describe('fetchLocalCustomers', () => {
     it('loads customers from API', async () => {
-      mockFetch.mockResolvedValue({ data: [{ id: 'c1', name: 'Customer One' }] })
+      mockApiFetch.mockResolvedValue({ data: [{ uuid: 'c1', first_name: 'Customer' }] })
 
       const store = useProjectsStore()
       await store.fetchLocalCustomers('corp-1')
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/customers/options', expect.objectContaining({ query: { corporation_uuid: 'corp-1' } }))
+      expect(mockApiFetch).toHaveBeenCalledWith('/api/customers?corporation_uuid=corp-1')
       expect(store.localCustomers).toHaveLength(1)
     })
 
+    it('normalizes customer UUIDs from API response', async () => {
+      mockApiFetch.mockResolvedValue({
+        data: [{
+          uuid: 'CUST-UPPER',
+          corporation_uuid: 'CORP-UPPER',
+          project_uuid: 'PROJ-1',
+        }],
+      })
+
+      const store = useProjectsStore()
+      await store.fetchLocalCustomers('corp-1', 'proj-1')
+
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        '/api/customers?corporation_uuid=corp-1&project_uuid=proj-1',
+      )
+      expect(store.localCustomers[0].uuid).toBe('cust-upper')
+      expect(store.localCustomers[0].corporation_uuid).toBe('corp-upper')
+      expect(store.localCustomers[0].project_uuid).toBe('proj-1')
+    })
+
     it('sets empty array on failure', async () => {
-      mockFetch.mockRejectedValue(new Error('API error'))
+      mockApiFetch.mockRejectedValue(new Error('API error'))
 
       const store = useProjectsStore()
       await store.fetchLocalCustomers('corp-1')
@@ -226,7 +251,7 @@ describe('useProjectsStore', () => {
       const store = useProjectsStore()
       await store.fetchLocalCustomers('')
 
-      expect(mockFetch).not.toHaveBeenCalled()
+      expect(mockApiFetch).not.toHaveBeenCalled()
     })
   })
 

@@ -1,4 +1,4 @@
-import { replaceReturnNoteItems } from '../../utils/purchaseOrders'
+import { replaceReturnNoteItems } from '../../utils/stockReturnNotes'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)

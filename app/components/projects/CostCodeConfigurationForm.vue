@@ -109,14 +109,76 @@
             </div>
           </div>
         </UCard>
+
+        <!-- Preferred items (existing cost code only) -->
+        <UCard v-if="props.editingUuid" variant="soft">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="text-base font-bold text-default flex items-center gap-2">
+              <UIcon name="i-heroicons-cube-solid" class="w-5 h-5 text-primary-600" />
+              Preferred Items
+            </h4>
+            <UButton
+              v-if="!readonly"
+              icon="i-heroicons-plus"
+              size="xs"
+              color="primary"
+              @click="openPreferredItemsModal"
+            >
+              Add / Manage Items
+            </UButton>
+          </div>
+          <p v-if="preferredItemsLoading" class="text-xs text-muted">Loading items…</p>
+          <p v-else-if="!preferredItemsForConfig.length" class="text-xs text-muted">
+            No preferred items yet. Use “Add / Manage Items” to attach items to this cost code.
+          </p>
+          <div v-else class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="border-b border-default text-left text-muted">
+                  <th class="py-2 pr-2">Item Name</th>
+                  <th class="py-2 pr-2">Spec</th>
+                  <th class="py-2 pr-2">Project</th>
+                  <th class="py-2 pr-2">Unit Cost</th>
+                  <th class="py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="item in preferredItemsForConfig"
+                  :key="item.uuid"
+                  class="border-b border-default/50"
+                >
+                  <td class="py-2 pr-2">{{ item.item_name || '—' }}</td>
+                  <td class="py-2 pr-2 font-mono">{{ item.item_sequence || '—' }}</td>
+                  <td class="py-2 pr-2">{{ getProjectLabel(item.project_uuid) }}</td>
+                  <td class="py-2 pr-2">{{ item.unit_price ?? '—' }}</td>
+                  <td class="py-2">{{ item.status || '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </UCard>
       </div>
     </div>
+
+    <SharedPreferredItemsAddEditModal
+      v-if="props.editingUuid"
+      v-model="showPreferredItemsModal"
+      mode="embedded"
+      :corporation-uuid="corporationStore.selectedCorporationId || ''"
+      :cost-code-configuration-uuid="props.editingUuid"
+      :cost-code-label="costCodeDisplayLabel"
+      :allow-embedded-project-select="true"
+      :lock-embedded-cost-code-selection="true"
+      @saved="onPreferredItemsSaved"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
+import { reactive, ref, computed, watch, onMounted } from 'vue'
 import { useCorporationStore } from '~/stores/corporations'
+import { useProjectsStore } from '~/stores/projects'
 
 interface FormData {
   division_uuid: string | null
@@ -145,8 +207,64 @@ const emit = defineEmits<{
 }>()
 
 const corporationStore = useCorporationStore()
+const projectsStore = useProjectsStore()
 
 const internalForm = reactive<FormData>({ ...props.modelValue })
+const showPreferredItemsModal = ref(false)
+const preferredItemsForConfig = ref<any[]>([])
+const preferredItemsLoading = ref(false)
+
+const costCodeDisplayLabel = computed(() => {
+  const num = internalForm.cost_code_number || ''
+  const name = internalForm.cost_code_name || ''
+  return [num, name].filter(Boolean).join(' — ') || 'Cost code'
+})
+
+const normalizeUuid = (value?: string | null) => String(value ?? '').trim().toLowerCase()
+
+async function loadPreferredItemsForConfig() {
+  const corpUuid = corporationStore.selectedCorporationId
+  const configUuid = props.editingUuid
+  if (!corpUuid || !configUuid) {
+    preferredItemsForConfig.value = []
+    return
+  }
+  preferredItemsLoading.value = true
+  try {
+    const { data } = await $fetch<{ data: any[] }>('/api/preferred-items', {
+      query: { corporation_uuid: corpUuid },
+      credentials: 'include',
+    })
+    const key = normalizeUuid(configUuid)
+    preferredItemsForConfig.value = (data ?? []).filter(
+      item => normalizeUuid(item.cost_code_configuration_uuid) === key,
+    )
+  }
+  catch {
+    preferredItemsForConfig.value = []
+  }
+  finally {
+    preferredItemsLoading.value = false
+  }
+}
+
+function getProjectLabel(projectUuid?: string | null) {
+  if (!projectUuid) return '—'
+  const project = projectsStore.projects.find(
+    p => normalizeUuid(p.uuid) === normalizeUuid(projectUuid),
+  )
+  return project ? `${project.project_name}` : projectUuid
+}
+
+function openPreferredItemsModal() {
+  if (!props.editingUuid) return
+  showPreferredItemsModal.value = true
+}
+
+async function onPreferredItemsSaved() {
+  await loadPreferredItemsForConfig()
+  showPreferredItemsModal.value = false
+}
 
 watch(() => props.modelValue, (val) => {
   Object.assign(internalForm, val)
@@ -155,6 +273,29 @@ watch(() => props.modelValue, (val) => {
 watch(internalForm, (val) => {
   emit('update:modelValue', { ...val })
 }, { deep: true })
+
+watch(
+  () => [props.editingUuid, corporationStore.selectedCorporationId] as const,
+  async ([editingUuid, corpUuid]) => {
+    if (editingUuid && corpUuid) {
+      if (!projectsStore.projects.length) {
+        await projectsStore.fetchProjects(corpUuid).catch(() => {})
+      }
+      await loadPreferredItemsForConfig()
+    }
+    else {
+      preferredItemsForConfig.value = []
+    }
+  },
+  { immediate: true },
+)
+
+onMounted(async () => {
+  const corpUuid = corporationStore.selectedCorporationId
+  if (corpUuid && props.editingUuid && !projectsStore.projects.length) {
+    await projectsStore.fetchProjects(corpUuid).catch(() => {})
+  }
+})
 
 function numericDotSpace(event: KeyboardEvent) {
   if (!/[0-9.\s]/.test(event.key) && !['Backspace', 'Delete', 'Tab', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {

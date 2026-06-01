@@ -11,6 +11,7 @@ export interface StockReturnNote {
   return_type?: 'purchase_order' | 'change_order' | string
   entry_date: string | null
   return_note_number: string
+  return_number?: string
   reference_number?: string | null
   location_uuid?: string | null
   notes?: string | null
@@ -90,7 +91,10 @@ export const useStockReturnNotesStore = defineStore('stockReturnNotes', () => {
 
       const response = await $fetch<any>('/api/stock-return-notes', { query })
       const notes: StockReturnNote[] = Array.isArray(response?.data) ? response.data : (Array.isArray(response) ? response : [])
-      const normalized = notes.map(n => ({ ...n, return_note_number: normalizeReturnNumber(n.return_note_number) }))
+      const normalized = notes.map((n) => {
+        const num = normalizeReturnNumber(n.return_number ?? n.return_note_number)
+        return { ...n, return_note_number: num, return_number: num }
+      })
       replaceCorporationNotes(corporationUuid, sortNotes(normalized))
       lastFetchedCorporation.value = corporationUuid
       hasDataForCorporation.value.add(corporationUuid)
@@ -121,7 +125,8 @@ export const useStockReturnNotesStore = defineStore('stockReturnNotes', () => {
       const response = await $fetch<any>('/api/stock-return-notes', { method: 'POST', body: payload })
       const newNote: StockReturnNote | null = response?.data ?? response ?? null
       if (newNote) {
-        const normalized = { ...newNote, return_note_number: normalizeReturnNumber(newNote.return_note_number) }
+        const num = normalizeReturnNumber(newNote.return_number ?? newNote.return_note_number)
+        const normalized = { ...newNote, return_note_number: num, return_number: num }
         const corpUuid = normalized.corporation_uuid
         const existing = getNotesForCorporation(corpUuid).filter(n => n.uuid !== normalized.uuid)
         replaceCorporationNotes(corpUuid, sortNotes([normalized, ...existing]))
@@ -146,7 +151,8 @@ export const useStockReturnNotesStore = defineStore('stockReturnNotes', () => {
       const response = await $fetch<any>('/api/stock-return-notes', { method: 'PUT', body: payload })
       const updated: StockReturnNote | null = response?.data ?? response ?? null
       if (!updated) return null
-      const normalized = { ...updated, return_note_number: normalizeReturnNumber(updated.return_note_number) }
+      const num = normalizeReturnNumber(updated.return_number ?? updated.return_note_number)
+      const normalized = { ...updated, return_note_number: num, return_number: num }
       const corpNotes = getNotesForCorporation(corporationUuid).filter(n => n.uuid !== normalized.uuid)
       replaceCorporationNotes(corporationUuid, sortNotes([normalized, ...corpNotes]))
       lastFetchedCorporation.value = corporationUuid

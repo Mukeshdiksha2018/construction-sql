@@ -57,6 +57,19 @@
       <p class="text-gray-400 text-sm">Get started by adding your first configuration</p>
     </div>
 
+    <!-- Manage preferred items (existing cost codes) -->
+    <SharedPreferredItemsAddEditModal
+      v-if="configForItems"
+      v-model="showItemsModal"
+      mode="embedded"
+      :corporation-uuid="corporationStore.selectedCorporationId || ''"
+      :cost-code-configuration-uuid="configForItems.uuid"
+      :cost-code-label="formatCostCodeLabel(configForItems)"
+      :allow-embedded-project-select="true"
+      :lock-embedded-cost-code-selection="true"
+      @saved="onPreferredItemsSaved"
+    />
+
     <!-- Delete Confirmation Modal -->
     <UModal v-model:open="showDeleteModal" title="Delete Configuration" description="">
       <template #body>
@@ -73,7 +86,17 @@
               <strong>Cost Code:</strong> {{ configToDelete.cost_code_number || 'N/A' }}<br>
               <strong>Name:</strong> {{ configToDelete.cost_code_name || 'N/A' }}<br>
               <strong>Sub Category of:</strong> {{ getParentCostCodeName(configToDelete.parent_cost_code_uuid) || 'N/A' }}<br>
+              <strong>Preferred Items:</strong> {{ getPreferredItemCount(configToDelete.uuid) }} item(s)<br>
               <strong>Status:</strong> {{ configToDelete.is_active ? 'Active' : 'Inactive' }}
+            </p>
+          </div>
+          <div
+            v-if="configToDelete && getPreferredItemCount(configToDelete.uuid) > 0"
+            class="bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 p-4 rounded-lg mb-4"
+          >
+            <p class="text-sm text-red-700 dark:text-red-300">
+              This cost code has {{ getPreferredItemCount(configToDelete.uuid) }} preferred item(s).
+              Remove or reassign those items before deleting the configuration.
             </p>
           </div>
           <p class="text-gray-600">Are you sure you want to delete this cost code configuration?</p>
@@ -135,6 +158,9 @@ function getHeader(column: Column<any>, label: string) {
 const showDeleteModal = ref(false)
 const configToDelete = ref<any>(null)
 const deleting = ref(false)
+const showItemsModal = ref(false)
+const configForItems = ref<any>(null)
+const preferredItemCounts = ref<Record<string, number>>({})
 
 const filteredConfigurations = computed(() => {
   const term = props.globalFilter?.trim().toLowerCase() || ''
@@ -157,6 +183,16 @@ const columns: TableColumn<any>[] = [
   { accessorKey: 'cost_code_name', header: 'Cost Code Name', enableSorting: false, meta: { class: { th: 'text-left', td: 'text-left' } }, cell: ({ row }) => h('div', { class: 'text-xs font-medium text-default' }, row.original.cost_code_name || '-') },
   { accessorKey: 'parent_cost_code_uuid', header: 'Sub Category of', enableSorting: false, meta: { class: { th: 'text-left', td: 'text-left' } }, cell: ({ row }) => h('div', { class: 'text-xs text-muted' }, getParentCostCodeName(row.original.parent_cost_code_uuid) || '-') },
   { accessorKey: 'created_at', header: 'Created Date', enableSorting: false, meta: { class: { th: 'text-left', td: 'text-left' } }, cell: ({ row }) => h('div', { class: 'text-xs text-muted' }, formatDate(row.original.created_at) || '-') },
+  {
+    accessorKey: 'preferred_items',
+    header: 'Items',
+    enableSorting: false,
+    meta: { class: { th: 'text-left', td: 'text-left' } },
+    cell: ({ row }) => {
+      const count = getPreferredItemCount(row.original.uuid)
+      return h('div', { class: 'text-xs text-muted' }, count > 0 ? `${count} item${count > 1 ? 's' : ''}` : 'No items')
+    },
+  },
   { accessorKey: 'description', header: 'Description', enableSorting: false, meta: { class: { th: 'text-left', td: 'text-left' } }, cell: ({ row }) => h('div', { class: 'text-xs text-muted max-w-xs truncate' }, row.original.description || '-') },
   {
     accessorKey: 'is_active', header: 'Status', enableSorting: false, meta: { class: { th: 'text-left', td: 'text-left' } },
@@ -170,6 +206,7 @@ const columns: TableColumn<any>[] = [
     meta: { class: { th: 'text-right sticky right-0 z-10 w-32', td: 'text-right sticky right-0 w-32' } },
     cell: ({ row }) => h('div', { class: 'flex justify-end space-x-2' }, [
       h(UTooltip, { text: 'View Configuration' }, () => [h(UButton, { icon: 'i-heroicons-eye-solid', size: 'xs', variant: 'soft', color: 'neutral', class: 'hover:scale-105 transition-transform', onClick: () => viewConfiguration(row.original) }, () => '')]),
+      h(UTooltip, { text: 'Add / manage preferred items' }, () => [h(UButton, { icon: 'i-heroicons-cube', size: 'xs', variant: 'soft', color: 'primary', class: 'hover:scale-105 transition-transform', onClick: () => managePreferredItems(row.original) }, () => '')]),
       h(UTooltip, { text: 'Edit Configuration' }, () => [h(UButton, { icon: 'tdesign:edit-filled', size: 'xs', variant: 'soft', color: 'secondary', class: 'hover:scale-105 transition-transform', onClick: () => editConfiguration(row.original) }, () => '')]),
       h(UTooltip, { text: 'Delete Configuration' }, () => [h(UButton, { icon: 'mingcute:delete-fill', size: 'xs', variant: 'soft', color: 'error', class: 'hover:scale-105 transition-transform', onClick: () => deleteConfiguration(row.original) }, () => '')]),
     ]),
@@ -184,13 +221,91 @@ const editConfiguration = (config: any) => {
   router.push({ path: `/cost-codes/form/${config.uuid}`, query: { ...route.query } })
 }
 
+const normalizeUuid = (value?: string | null) => String(value ?? '').trim().toLowerCase()
+
+const formatCostCodeLabel = (config: any) => {
+  const num = config?.cost_code_number || ''
+  const name = config?.cost_code_name || ''
+  return [num, name].filter(Boolean).join(' — ') || 'Cost code'
+}
+
+const getPreferredItemCount = (configUuid?: string | null) => {
+  const key = normalizeUuid(configUuid)
+  if (!key) return 0
+  return preferredItemCounts.value[key] ?? 0
+}
+
+const loadPreferredItemCounts = async (corporationUuid: string) => {
+  if (!corporationUuid || import.meta.server) {
+    preferredItemCounts.value = {}
+    return
+  }
+  try {
+    const { data } = await $fetch<{ data: Array<{ cost_code_configuration_uuid?: string | null }> }>(
+      '/api/preferred-items',
+      { query: { corporation_uuid: corporationUuid }, credentials: 'include' },
+    )
+    const counts: Record<string, number> = {}
+    for (const item of data ?? []) {
+      const key = normalizeUuid(item.cost_code_configuration_uuid)
+      if (key) counts[key] = (counts[key] || 0) + 1
+    }
+    preferredItemCounts.value = counts
+  }
+  catch {
+    preferredItemCounts.value = {}
+  }
+}
+
+const managePreferredItems = (config: any) => {
+  if (!config?.uuid) {
+    toast.add({
+      title: 'Cannot add items',
+      description: 'Save the cost code configuration before adding preferred items.',
+      color: 'warning',
+      icon: 'i-heroicons-exclamation-triangle',
+    })
+    return
+  }
+  configForItems.value = config
+  showItemsModal.value = true
+}
+
+const onPreferredItemsSaved = async () => {
+  const corpUuid = corporationStore.selectedCorporationId
+  if (corpUuid) {
+    await loadPreferredItemCounts(corpUuid)
+    await configurationsStore.fetchConfigurations(corpUuid, true)
+  }
+  showItemsModal.value = false
+}
+
 const deleteConfiguration = (config: any) => {
+  const count = getPreferredItemCount(config?.uuid)
+  if (count > 0) {
+    toast.add({
+      title: 'Cannot delete cost code',
+      description: `This cost code has ${count} preferred item(s). Remove or reassign them first.`,
+      color: 'error',
+      icon: 'i-heroicons-exclamation-triangle',
+    })
+    return
+  }
   configToDelete.value = config
   showDeleteModal.value = true
 }
 
 const confirmDelete = async () => {
   if (!configToDelete.value) return
+  if (getPreferredItemCount(configToDelete.value.uuid) > 0) {
+    toast.add({
+      title: 'Cannot delete cost code',
+      description: 'Remove all preferred items from this cost code before deleting.',
+      color: 'error',
+      icon: 'i-heroicons-exclamation-triangle',
+    })
+    return
+  }
   deleting.value = true
   try {
     await configurationsStore.deleteConfiguration(configToDelete.value.uuid)
@@ -217,17 +332,25 @@ watch(sorting, () => table.value?.tableApi?.setPageIndex(0))
 
 watch(
   () => corporationStore.selectedCorporationId,
-  (uuid) => {
+  async (uuid) => {
     if (uuid) {
-      configurationsStore.fetchConfigurations(uuid)
+      await Promise.all([
+        configurationsStore.fetchConfigurations(uuid),
+        loadPreferredItemCounts(uuid),
+      ])
+    }
+    else {
+      preferredItemCounts.value = {}
     }
   },
   { immediate: true },
 )
 
 onMounted(() => {
-  if (corporationStore.selectedCorporationId) {
-    configurationsStore.fetchConfigurations(corporationStore.selectedCorporationId)
+  const corpUuid = corporationStore.selectedCorporationId
+  if (corpUuid) {
+    configurationsStore.fetchConfigurations(corpUuid)
+    loadPreferredItemCounts(corpUuid)
   }
 })
 

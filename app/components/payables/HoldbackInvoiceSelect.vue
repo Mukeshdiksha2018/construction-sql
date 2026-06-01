@@ -1,0 +1,536 @@
+<template>
+  <div>
+    <!-- Modal with table -->
+    <UModal
+      v-model:open="showModal"
+      title="Select Invoice for Holdback Invoice"
+      :ui="{
+        content: 'max-w-6xl'
+      }"
+    >
+      <template #body>
+        <div class="space-y-4">
+          <!-- Search -->
+          <div>
+            <UInput
+              v-model="searchFilter"
+              placeholder="Search by invoice number, PO/CO number..."
+              icon="i-heroicons-magnifying-glass"
+              variant="subtle"
+              size="sm"
+              class="w-full"
+            />
+          </div>
+
+          <!-- Loading state -->
+          <div v-if="loading" class="text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+            <p class="mt-2 text-sm text-gray-500">Loading vendor invoices...</p>
+          </div>
+
+          <!-- Table -->
+          <div v-else-if="filteredOptions.length > 0">
+            <UTable
+              :data="filteredOptions"
+              :columns="tableColumns"
+              class="w-full"
+            />
+          </div>
+
+          <!-- Empty state -->
+          <div v-else class="text-center py-12">
+            <UIcon name="i-heroicons-document-text" class="w-12 h-12 mx-auto text-gray-400 mb-4" />
+            <p class="text-gray-500 text-lg">No invoices found</p>
+            <p class="text-gray-400 text-sm mt-2">
+              No vendor invoices against purchase orders or change orders available for this vendor and project
+            </p>
+          </div>
+        </div>
+      </template>
+    </UModal>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, watch, h, resolveComponent } from 'vue'
+import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
+import { useDateFormat } from '~/composables/useDateFormat'
+import type { TableColumn } from '@nuxt/ui'
+
+// Props
+interface Props {
+  modelValue?: boolean
+  projectUuid?: string
+  corporationUuid?: string
+  vendorUuid?: string
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  modelValue: false
+})
+
+// Emits
+const emit = defineEmits<{
+  'update:modelValue': [value: boolean]
+  'select': [invoice: any]
+}>()
+
+// Composables
+const { formatCurrency } = useCurrencyFormat()
+const { formatDate } = useDateFormat()
+
+// Resolve components for table columns
+const UButton = resolveComponent('UButton')
+const UBadge = resolveComponent('UBadge')
+
+// Local state
+const showModal = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value)
+})
+const searchFilter = ref('')
+const vendorInvoices = ref<any[]>([])
+const loading = ref(false)
+const invoiceOptionsWithHoldback = ref<any[]>([])
+
+// Helper function to fetch PO/CO financial breakdown and extract holdback amount
+// Also extracts invoice's total amount (item_total + charges + tax, BEFORE deductions for advances/holdbacks)
+// Returns { totalAmount: number, holdbackAmount: number, poCoTotalAmount: number }
+const getPOCOFinancialData = async (invoice: any): Promise<{ totalAmount: number; holdbackAmount: number; poCoTotalAmount: number }> => {
+  // Get invoice's total amount (item_total + charges + tax, BEFORE deductions for advances/holdbacks)
+  let totalAmount: number | null = null
+  
+  // Parse invoice financial breakdown
+  let invoiceFinancialBreakdown = invoice.financial_breakdown
+  if (typeof invoiceFinancialBreakdown === 'string') {
+    try {
+      invoiceFinancialBreakdown = JSON.parse(invoiceFinancialBreakdown)
+    } catch (e) {
+      // Failed to parse
+    }
+  }
+  
+  // Get the invoice amount from financial_breakdown.totals.total_invoice_amount (the saved final amount)
+  // This is the amount that was actually saved to the database
+  if (invoiceFinancialBreakdown && typeof invoiceFinancialBreakdown === 'object' && invoiceFinancialBreakdown.totals) {
+    // First, try to get total_invoice_amount (the saved final amount after all deductions)
+    const savedTotalInvoiceAmount = invoiceFinancialBreakdown.totals.total_invoice_amount
+    if (savedTotalInvoiceAmount !== null && savedTotalInvoiceAmount !== undefined && savedTotalInvoiceAmount !== '') {
+      totalAmount = typeof savedTotalInvoiceAmount === 'number' 
+        ? savedTotalInvoiceAmount 
+        : (parseFloat(String(savedTotalInvoiceAmount)) || 0)
+    }
+    
+    // If total_invoice_amount is not available, calculate from item_total + charges_total + tax_total
+    if (totalAmount === null || totalAmount === 0) {
+      const itemTotal = invoiceFinancialBreakdown.totals.item_total || 0
+      const chargesTotal = invoiceFinancialBreakdown.totals.charges_total || 0
+      const taxTotal = invoiceFinancialBreakdown.totals.tax_total || 0
+      const calculatedTotal = itemTotal + chargesTotal + taxTotal
+      if (calculatedTotal > 0) {
+        totalAmount = calculatedTotal
+      }
+    }
+  }
+  
+  // Fallback to invoice.amount if financial_breakdown doesn't have the totals
+  if (totalAmount === null || totalAmount === 0) {
+    totalAmount = typeof invoice.amount === 'number' ? invoice.amount : (parseFloat(String(invoice.amount || '0')) || 0)
+  }
+  
+  // Fetch holdback amount from PO/CO financial_breakdown
+  let holdbackAmount: number | null = null
+  let poCoTotalAmount: number | null = null
+  let poCoFinancialBreakdown: any = null
+  
+  // For AGAINST_PO invoices, fetch PO financial_breakdown
+  if (invoice.invoice_type === 'AGAINST_PO' && invoice.purchase_order_uuid) {
+    try {
+      const poResponse = await $fetch<{ data: any }>(`/api/purchase-order-forms/${invoice.purchase_order_uuid}`)
+      const po = poResponse?.data
+      if (po?.financial_breakdown) {
+        poCoFinancialBreakdown = po.financial_breakdown
+        if (typeof poCoFinancialBreakdown === 'string') {
+          try {
+            poCoFinancialBreakdown = JSON.parse(poCoFinancialBreakdown)
+          } catch (e) {
+            console.error('[HoldbackInvoiceSelect] Error parsing PO financial_breakdown:', e)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[HoldbackInvoiceSelect] Error fetching PO financial_breakdown:', error)
+    }
+  } else if (invoice.invoice_type === 'AGAINST_CO' && invoice.change_order_uuid) {
+    // For AGAINST_CO invoices, fetch CO financial_breakdown
+    try {
+      const coResponse = await $fetch<{ data: any }>(`/api/change-orders/${invoice.change_order_uuid}`)
+      const co = coResponse?.data
+      if (co?.financial_breakdown) {
+        poCoFinancialBreakdown = co.financial_breakdown
+        if (typeof poCoFinancialBreakdown === 'string') {
+          try {
+            poCoFinancialBreakdown = JSON.parse(poCoFinancialBreakdown)
+          } catch (e) {
+            console.error('[HoldbackInvoiceSelect] Error parsing CO financial_breakdown:', e)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[HoldbackInvoiceSelect] Error fetching CO financial_breakdown:', error)
+    }
+  }
+  
+  // Extract holdback amount and total amount from PO/CO financial_breakdown
+  if (poCoFinancialBreakdown && typeof poCoFinancialBreakdown === 'object' && poCoFinancialBreakdown.totals) {
+    // Get holdback amount
+    const holdbackValue = poCoFinancialBreakdown.totals.holdback_amount
+    if (holdbackValue !== null && holdbackValue !== undefined && holdbackValue !== '') {
+      const parsed = typeof holdbackValue === 'number' 
+        ? holdbackValue 
+        : (parseFloat(String(holdbackValue)) || 0)
+      holdbackAmount = parsed
+    }
+    
+    // Get PO/CO total amount (the base amount for calculating holdback percentage)
+    // This should be the total invoice amount (item_total + charges + tax) before holdback deduction
+    const poCoTotalValue = poCoFinancialBreakdown.totals.total_invoice_amount || 
+                           poCoFinancialBreakdown.totals.total_po_amount || 
+                           poCoFinancialBreakdown.totals.total_co_amount ||
+                           poCoFinancialBreakdown.totals.amount
+    if (poCoTotalValue !== null && poCoTotalValue !== undefined && poCoTotalValue !== '') {
+      const parsed = typeof poCoTotalValue === 'number' 
+        ? poCoTotalValue 
+        : (parseFloat(String(poCoTotalValue)) || 0)
+      poCoTotalAmount = parsed
+    }
+    
+    // If we don't have total_invoice_amount, calculate from item_total + charges + tax
+    if (poCoTotalAmount === null || poCoTotalAmount === 0) {
+      const itemTotal = poCoFinancialBreakdown.totals.item_total || 0
+      const chargesTotal = poCoFinancialBreakdown.totals.charges_total || 0
+      const taxTotal = poCoFinancialBreakdown.totals.tax_total || 0
+      poCoTotalAmount = itemTotal + chargesTotal + taxTotal
+    }
+  }
+  
+  // Priority: Get holdback amount from invoice's own financial_breakdown (the saved value)
+  // This is the most accurate value as it's what was actually saved
+  if (invoiceFinancialBreakdown && typeof invoiceFinancialBreakdown === 'object' && invoiceFinancialBreakdown.totals) {
+    const holdbackFromInvoice = invoiceFinancialBreakdown.totals.holdback_amount
+    if (holdbackFromInvoice !== null && holdbackFromInvoice !== undefined && holdbackFromInvoice !== '') {
+      const parsed = typeof holdbackFromInvoice === 'number' 
+        ? holdbackFromInvoice 
+        : (parseFloat(String(holdbackFromInvoice)) || 0)
+      if (parsed > 0) {
+        holdbackAmount = parsed
+      }
+    }
+  }
+  
+  // Fallback: Get from PO/CO financial_breakdown (already done above)
+  // If still null, calculate from invoice's total amount and holdback percentage
+  if (holdbackAmount === null || holdbackAmount === 0) {
+    // Use the totalAmount we calculated (which is the invoice's total_invoice_amount or calculated total)
+    const invoiceAmount = totalAmount ?? (typeof invoice.amount === 'number' ? invoice.amount : (parseFloat(String(invoice.amount || '0')) || 0))
+    const holdbackPercentage = typeof invoice.holdback === 'number' ? invoice.holdback : (parseFloat(String(invoice.holdback || '0')) || 0)
+    if (holdbackPercentage > 0 && invoiceAmount > 0) {
+      // Calculate holdback as percentage of the total amount (item_total + charges + tax)
+      // This matches the new calculation logic in FinancialBreakdown
+      holdbackAmount = (invoiceAmount * holdbackPercentage) / 100
+    } else {
+      holdbackAmount = 0
+    }
+  }
+  
+  return { 
+    totalAmount: totalAmount ?? 0, 
+    holdbackAmount: holdbackAmount ?? 0,
+    poCoTotalAmount: poCoTotalAmount ?? 0
+  }
+}
+
+// Process invoices and fetch holdback amounts from PO/CO financial_breakdown
+const processInvoiceOptions = async () => {
+  if (!props.projectUuid || !props.corporationUuid || !props.vendorUuid) {
+    invoiceOptionsWithHoldback.value = []
+    return
+  }
+  
+  // Filter vendor invoices: AGAINST_PO or AGAINST_CO, matching corporation, project, and vendor, and holdback not fully paid
+  const filteredInvoices = vendorInvoices.value.filter(invoice => {
+    const matchesCorporation = invoice.corporation_uuid === props.corporationUuid
+    const matchesProject = invoice.project_uuid === props.projectUuid
+    const matchesVendor = invoice.vendor_uuid === props.vendorUuid
+    const isAgainstPOOrCO = invoice.invoice_type === 'AGAINST_PO' || invoice.invoice_type === 'AGAINST_CO'
+    const isActive = invoice.is_active !== false
+    const isHoldbackFullyPaid = invoice.holdback_fully_paid === true
+    
+    return matchesCorporation && matchesProject && matchesVendor && isAgainstPOOrCO && isActive && !isHoldbackFullyPaid
+  })
+  
+  // Process invoices and fetch holdback amounts from PO/CO and invoice totals
+  const processed = await Promise.all(filteredInvoices.map(async (invoice) => {
+    const invoiceNumber = invoice.number || 'Unnamed Invoice'
+    // Fetch invoice total amount and PO/CO total amount from PO/CO financial_breakdown
+    const { totalAmount, holdbackAmount: poCoHoldbackAmount, poCoTotalAmount } = await getPOCOFinancialData(invoice)
+    
+    // Get holdback percentage from invoice
+    let holdbackPercentage = typeof invoice.holdback === 'number' ? invoice.holdback : (parseFloat(String(invoice.holdback || '0')) || 0)
+    
+    // Priority 1: Get holdback amount from invoice's own financial_breakdown (the saved value)
+    // This is the most accurate value as it's what was actually saved when the invoice was created
+    let calculatedHoldbackAmount: number | null = null
+    let invoiceFB = invoice.financial_breakdown
+    if (typeof invoiceFB === 'string') {
+      try {
+        invoiceFB = JSON.parse(invoiceFB)
+      } catch (e) {
+        // Failed to parse
+      }
+    }
+    if (invoiceFB && typeof invoiceFB === 'object' && invoiceFB.totals) {
+      const savedHoldback = invoiceFB.totals.holdback_amount
+      if (savedHoldback !== null && savedHoldback !== undefined && savedHoldback !== '') {
+        const parsed = typeof savedHoldback === 'number' 
+          ? savedHoldback 
+          : (parseFloat(String(savedHoldback)) || 0)
+        if (parsed > 0) {
+          calculatedHoldbackAmount = parsed
+        }
+      }
+    }
+    
+    // Priority 2: If no saved holdback amount, use the value from PO/CO financial_breakdown
+    if ((calculatedHoldbackAmount === null || calculatedHoldbackAmount === 0) && poCoHoldbackAmount > 0) {
+      calculatedHoldbackAmount = poCoHoldbackAmount
+    }
+    
+    // Priority 3: If still no holdback amount, calculate from invoice's base total and holdback percentage
+    // The base total is item_total + charges_total + tax_total (before deductions)
+    if (calculatedHoldbackAmount === null || calculatedHoldbackAmount === 0) {
+      // Get the base total (item_total + charges + tax) from invoice's financial_breakdown
+      let baseTotalForHoldback = 0
+      if (invoiceFB && typeof invoiceFB === 'object' && invoiceFB.totals) {
+        const itemTotal = invoiceFB.totals.item_total || 0
+        const chargesTotal = invoiceFB.totals.charges_total || 0
+        const taxTotal = invoiceFB.totals.tax_total || 0
+        baseTotalForHoldback = itemTotal + chargesTotal + taxTotal
+      }
+      
+      // If we don't have the breakdown, use totalAmount (which is calculated from breakdown or invoice.amount)
+      if (baseTotalForHoldback === 0) {
+        baseTotalForHoldback = totalAmount
+      }
+      
+      if (holdbackPercentage > 0 && baseTotalForHoldback > 0) {
+        // Calculate holdback as percentage of base total (item_total + charges + tax)
+        // This matches the new calculation logic in FinancialBreakdown
+        calculatedHoldbackAmount = (baseTotalForHoldback * holdbackPercentage) / 100
+      }
+    }
+    
+    // If invoice doesn't have a holdback percentage but we have holdback amount,
+    // calculate the percentage from the amounts (use base total as denominator)
+    if (holdbackPercentage <= 0 && calculatedHoldbackAmount > 0) {
+      let baseTotalForPercentage = 0
+      if (invoiceFB && typeof invoiceFB === 'object' && invoiceFB.totals) {
+        const itemTotal = invoiceFB.totals.item_total || 0
+        const chargesTotal = invoiceFB.totals.charges_total || 0
+        const taxTotal = invoiceFB.totals.tax_total || 0
+        baseTotalForPercentage = itemTotal + chargesTotal + taxTotal
+      }
+      if (baseTotalForPercentage === 0) {
+        baseTotalForPercentage = totalAmount
+      }
+      if (baseTotalForPercentage > 0) {
+        holdbackPercentage = (calculatedHoldbackAmount / baseTotalForPercentage) * 100
+      }
+    }
+    
+    // Ensure calculatedHoldbackAmount is not null
+    if (calculatedHoldbackAmount === null) {
+      calculatedHoldbackAmount = 0
+    }
+    
+    // Get PO/CO number based on invoice type
+    const poCoNumber = invoice.invoice_type === 'AGAINST_PO' 
+      ? (invoice.po_number || 'N/A')
+      : (invoice.co_number || 'N/A')
+    
+    // Format date
+    const billDate = invoice.bill_date || ''
+    const formattedDate = formatDate(billDate)
+    
+    return {
+      label: invoiceNumber,
+      value: invoice.uuid,
+      invoice: invoice,
+      invoiceNumber: invoiceNumber,
+      poCoNumber: poCoNumber,
+      formattedDate: formattedDate || 'N/A',
+      invoiceAmount: totalAmount, // Invoice's saved total_invoice_amount (the final amount after all deductions, as saved in the database)
+      formattedInvoiceAmount: formatCurrency(totalAmount),
+      holdbackPercentage: holdbackPercentage,
+      holdbackAmount: calculatedHoldbackAmount, // Saved holdback_amount from financial_breakdown, or calculated from base total and percentage
+      formattedHoldbackAmount: formatCurrency(calculatedHoldbackAmount),
+      type: invoice.invoice_type === 'AGAINST_PO' ? 'PO' : 'CO',
+      type_label: invoice.invoice_type === 'AGAINST_PO' ? 'PO' : 'CO',
+      type_color: invoice.invoice_type === 'AGAINST_PO' ? 'primary' : 'secondary',
+      searchText: `${invoiceNumber} ${poCoNumber} ${invoice.uuid || ''}`.toLowerCase()
+    }
+  }))
+  
+  // Filter out invoices with 0 holdback amount (check both percentage and amount)
+  const filtered = processed.filter(option => {
+    return option.holdbackAmount > 0 || option.holdbackPercentage > 0
+  })
+  
+  // Sort by invoice number
+  invoiceOptionsWithHoldback.value = filtered.sort((a, b) => {
+    const aNum = a.invoiceNumber || ''
+    const bNum = b.invoiceNumber || ''
+    return aNum.localeCompare(bNum)
+  })
+}
+
+// Fetch vendor invoices directly from API (scoped to form's corporation)
+const fetchVendorInvoices = async (corporationUuid: string) => {
+  if (!corporationUuid) {
+    vendorInvoices.value = []
+    invoiceOptionsWithHoldback.value = []
+    return
+  }
+  
+  loading.value = true
+  try {
+    const response = await $fetch<{ data: any[] }>(`/api/vendor-invoices?corporation_uuid=${corporationUuid}`)
+    const invoices = Array.isArray(response?.data) ? response.data : []
+    vendorInvoices.value = invoices
+    // Process invoices to fetch holdback amounts from PO/CO financial_breakdown
+    await processInvoiceOptions()
+  } catch (error) {
+    console.error('[HoldbackInvoiceSelect] Error fetching vendor invoices:', error)
+    vendorInvoices.value = []
+    invoiceOptionsWithHoldback.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+// Vendor invoices options computed property
+const invoiceOptions = computed(() => {
+  return invoiceOptionsWithHoldback.value
+})
+
+// Filtered options based on search
+const filteredOptions = computed(() => {
+  if (!searchFilter.value.trim()) {
+    return invoiceOptions.value
+  }
+  
+  const searchTerm = searchFilter.value.toLowerCase().trim()
+  return invoiceOptions.value.filter(option => {
+    return option.searchText.includes(searchTerm) ||
+           option.invoiceNumber.toLowerCase().includes(searchTerm) ||
+           option.poCoNumber.toLowerCase().includes(searchTerm)
+  })
+})
+
+// Table columns configuration
+const tableColumns = computed<TableColumn<any>[]>(() => {
+  return [
+    {
+      accessorKey: 'invoiceNumber',
+      header: 'Invoice Number',
+      enableSorting: false,
+      cell: ({ row }: any) => {
+        const option = row.original
+        return h('div', { class: 'flex items-center gap-2 flex-wrap' }, [
+          h('span', { class: 'font-medium text-sm' }, option.invoiceNumber),
+          h(UBadge as any, {
+            color: option.type_color,
+            variant: 'soft',
+            size: 'xs'
+          }, () => option.type_label)
+        ])
+      }
+    },
+    {
+      accessorKey: 'poCoNumber',
+      header: 'PO/CO Number',
+      enableSorting: false,
+      cell: ({ row }: any) => h('div', { class: 'text-sm font-medium' }, row.original.poCoNumber)
+    },
+    {
+      accessorKey: 'formattedDate',
+      header: 'Invoice Date',
+      enableSorting: false,
+      cell: ({ row }: any) => h('div', { class: 'text-sm' }, row.original.formattedDate)
+    },
+    {
+      accessorKey: 'formattedInvoiceAmount',
+      header: 'Invoice Amount',
+      enableSorting: false,
+      cell: ({ row }: any) => h('div', { class: 'text-sm font-semibold text-primary-600 dark:text-primary-400' }, row.original.formattedInvoiceAmount)
+    },
+    {
+      accessorKey: 'holdbackPercentage',
+      header: '% Holdback',
+      enableSorting: false,
+      cell: ({ row }: any) => h('div', { class: 'text-sm font-medium' }, `${row.original.holdbackPercentage || 0}%`)
+    },
+    {
+      accessorKey: 'formattedHoldbackAmount',
+      header: 'Holdback Amount',
+      enableSorting: false,
+      cell: ({ row }: any) => h('div', { class: 'text-sm font-semibold text-primary-600 dark:text-primary-400' }, row.original.formattedHoldbackAmount)
+    },
+    {
+      accessorKey: 'action',
+      header: 'Action',
+      enableSorting: false,
+      cell: ({ row }: any) => {
+        const option = row.original
+        return h('div', { class: 'flex justify-center' }, [
+          h(UButton as any, {
+            color: 'primary',
+            size: 'sm',
+            onClick: () => selectHoldbackInvoice(option)
+          }, () => 'Create Holdback Invoice')
+        ])
+      }
+    }
+  ]
+})
+
+// Methods
+const selectHoldbackInvoice = (option: any) => {
+  emit('select', option.invoice)
+  showModal.value = false
+}
+
+// Watch for modal opening to fetch vendor invoices
+watch(showModal, async (isOpen) => {
+  if (isOpen && props.projectUuid && props.corporationUuid && props.vendorUuid) {
+    searchFilter.value = ''
+    
+    // Fetch vendor invoices directly from API for the form's corporation
+    if (props.corporationUuid) {
+      await fetchVendorInvoices(props.corporationUuid)
+    }
+  }
+})
+
+// Watch for corporation changes and fetch data
+watch(() => props.corporationUuid, async (newCorpUuid, oldCorpUuid) => {
+  // Only fetch if corporation changed and we have a valid UUID
+  if (newCorpUuid && newCorpUuid !== oldCorpUuid) {
+    await fetchVendorInvoices(newCorpUuid)
+  } else if (!newCorpUuid) {
+    // Clear invoices if corporation is cleared
+    vendorInvoices.value = []
+  }
+}, { immediate: false })
+</script>
+

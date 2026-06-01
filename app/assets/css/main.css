@@ -5,6 +5,8 @@
 html {
   height: 100%;
   overflow: hidden;
+  /* Slightly below browser default (16px); scales all rem-based Tailwind / UI sizes */
+  font-size: 14px;
 }
 
 body {
@@ -85,6 +87,8 @@ body {
 
   /* Global font configuration */
   --font-family: 'Poppins', sans-serif;
+  --app-font-size: 14px;
+  --app-font-size-compact: 12px;
 
   /* Ensure primary colors are set (already defined above, but ensure they persist) */
   --color-primary-50: #f0f4f8;
@@ -156,9 +160,9 @@ html, html.dark, html.light, body {
   font-family: 'Poppins', sans-serif !important;
 }
 
-/* Reduce root font-size for screens with width <= 1366px */
+/* Compact root size on smaller viewports */
 @media (max-width: 1366px) {
   html {
-    font-size: 13px;
+    font-size: var(--app-font-size-compact);
   }
 }

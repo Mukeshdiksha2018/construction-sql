@@ -204,4 +204,48 @@ describe('useCorporationStore', () => {
       expect(store.loaded).toBe(true)
     })
   })
+
+  describe('ensureReady', () => {
+    it('fetches corporations when not yet loaded', async () => {
+      mockFetch.mockResolvedValue(mockCorporationsApiResponse())
+
+      const store = useCorporationStore()
+      await store.ensureReady()
+
+      expect(mockFetch).toHaveBeenCalledOnce()
+      expect(store.loaded).toBe(true)
+      expect(store.corporations.length).toBeGreaterThan(0)
+    })
+
+    it('skips fetch when corporations are already loaded', async () => {
+      mockFetch.mockResolvedValue(mockCorporationsApiResponse())
+
+      const store = useCorporationStore()
+      store.corporations = [makeCorporation()]
+      store.loaded = true
+
+      await store.ensureReady()
+
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('waits for an in-flight fetch instead of starting a duplicate', async () => {
+      let resolveFetch!: (value: unknown) => void
+      mockFetch.mockImplementation(
+        () => new Promise(resolve => { resolveFetch = resolve }),
+      )
+
+      const store = useCorporationStore()
+      const inFlight = store.fetchCorporations()
+      const ready = store.ensureReady()
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+
+      resolveFetch(mockCorporationsApiResponse())
+      await Promise.all([inFlight, ready])
+
+      expect(store.loaded).toBe(true)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+  })
 })

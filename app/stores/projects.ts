@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { useApiClient } from '~/composables/useApiClient'
 
 export interface Project {
   id: number
@@ -206,14 +207,25 @@ export const useProjectsStore = defineStore('projects', {
 
     async fetchLocalCustomers(corporationUuid: string, projectUuid?: string | null, _force?: boolean) {
       if (!corporationUuid) return
+      if (import.meta.server) return
       try {
-        const query: Record<string, string> = { corporation_uuid: corporationUuid }
-        if (projectUuid) query.project_uuid = projectUuid
-        const response = await $fetch<{ data: any[] }>('/api/customers/options', {
-          query,
-          credentials: 'include',
-        })
-        this.localCustomers = response?.data ?? []
+        const { apiFetch } = useApiClient()
+        let url = `/api/customers?corporation_uuid=${encodeURIComponent(corporationUuid)}`
+        if (projectUuid) {
+          url += `&project_uuid=${encodeURIComponent(projectUuid)}`
+        }
+        const response = await apiFetch<{ data?: any[], error?: string }>(url)
+        if (response?.error) throw new Error(response.error)
+        this.localCustomers = (response?.data ?? []).map((c: { uuid?: string }) => ({
+          ...c,
+          uuid: c.uuid ? String(c.uuid).trim().toLowerCase() : c.uuid,
+          corporation_uuid: c.corporation_uuid
+            ? String(c.corporation_uuid).trim().toLowerCase()
+            : c.corporation_uuid,
+          project_uuid: c.project_uuid
+            ? String(c.project_uuid).trim().toLowerCase()
+            : c.project_uuid,
+        }))
       } catch {
         this.localCustomers = []
       }

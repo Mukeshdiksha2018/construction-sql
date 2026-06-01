@@ -7,6 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 export type ProjectsTabName = 'project-details' | 'items' | 'estimates' | 'cost-codes'
 export type ConfigurationsTabName = 'project-types' | 'service-types' | 'terms-and-conditions'
 export type PurchaseOrdersTabName = 'purchase-orders' | 'stock-receipt-note'
+export type PayablesTabName = 'vendor-invoices' | 'bill-entry-payment' | 'print-checks'
 
 export type MastersTabName =
   | 'freight'
@@ -69,6 +70,27 @@ export const PURCHASE_ORDERS_TABS: TabConfig[] = [
     label: 'Stock Receipt Note',
     icon: 'i-heroicons-clipboard-document-check',
     value: 'stock-receipt-note',
+  },
+]
+
+export const PAYABLES_TABS: TabConfig[] = [
+  {
+    name: 'vendor-invoices',
+    label: 'Vendor Invoices',
+    icon: 'i-heroicons-document-text',
+    value: 'vendor-invoices',
+  },
+  {
+    name: 'bill-entry-payment',
+    label: 'Bill Entry & Payment',
+    icon: 'i-heroicons-document-plus',
+    value: 'bill-entry-payment',
+  },
+  {
+    name: 'print-checks',
+    label: 'Print Checks',
+    icon: 'i-heroicons-printer',
+    value: 'print-checks',
   },
 ]
 

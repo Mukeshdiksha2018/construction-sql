@@ -26,11 +26,11 @@ export default defineAppConfig({
           "[&>tr]:hover:bg-gray-50/50 dark:[&>tr]:hover:bg-gray-800/30 [&>tr]:data-[selectable=true]:hover:bg-elevated/50 [&>tr]:data-[selectable=true]:focus-visible:outline-primary",
         tfoot: "relative",
         tr: "data-[selected=true]:bg-elevated/50",
-        th: "px-2 py-2 text-sm text-gray-900 dark:text-gray-100 text-center font-bold whitespace-nowrap [&:has([role=checkbox])]:pe-0",
+        th: "px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100 text-center font-bold whitespace-nowrap [&:has([role=checkbox])]:pe-0",
         td: "px-2 py-1 text-xs text-muted whitespace-nowrap [&:has([role=checkbox])]:pe-0",
         separator:
           "absolute z-[1] left-0 w-full h-px bg-(--ui-border-accented)",
-        empty: "py-6 text-center text-sm text-muted",
+        empty: "py-6 text-center text-xs text-muted",
         loading: "py-6 text-center",
       },
       variants: {
@@ -375,7 +375,7 @@ export default defineAppConfig({
       defaultVariants: {
         color: "primary",
         variant: "pill",
-        size: "md",
+        size: "sm",
       },
     },
     button: {
@@ -626,7 +626,7 @@ export default defineAppConfig({
       defaultVariants: {
         color: "primary",
         variant: "solid",
-        size: "md",
+        size: "sm",
       },
     },
     modal: {
@@ -634,8 +634,8 @@ export default defineAppConfig({
         overlay: "backdrop-blur-sm",
         footer:
           "flex items-center justify-end gap-3 px-4 py-3 sm:px-6 sm:py-4 border-t border-default",
-        title: "text-lg font-semibold text-default",
-        description: "text-sm text-muted mt-1",
+        title: "text-base font-semibold text-default",
+        description: "text-xs text-muted mt-1",
       },
     },
   },

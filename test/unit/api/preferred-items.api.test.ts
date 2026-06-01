@@ -94,8 +94,32 @@ describe('preferred-items API handlers', () => {
       const { default: handler } = await import('../../../server/api/preferred-items/index.get')
 
       await handler({})
-      expect(mockGetPreferredItemsByProjectAndItemType).toHaveBeenCalledWith('corp-1', 'proj-1', 'it-1')
+      expect(mockGetPreferredItemsByProjectAndItemType).toHaveBeenCalledWith(
+        'corp-1',
+        'proj-1',
+        'it-1',
+        undefined,
+      )
       expect(mockListPreferredItems).not.toHaveBeenCalled()
+    })
+
+    it('passes cost_code_configuration_uuid to getPreferredItemsByProjectAndItemType when provided', async () => {
+      mockGetQuery.mockReturnValue({
+        corporation_uuid: 'corp-1',
+        project_uuid: 'proj-1',
+        item_type_uuid: 'it-1',
+        cost_code_configuration_uuid: 'CFG-UUID-1',
+      })
+      mockGetPreferredItemsByProjectAndItemType.mockResolvedValue([makeItem()])
+      const { default: handler } = await import('../../../server/api/preferred-items/index.get')
+
+      await handler({})
+      expect(mockGetPreferredItemsByProjectAndItemType).toHaveBeenCalledWith(
+        'corp-1',
+        'proj-1',
+        'it-1',
+        'CFG-UUID-1',
+      )
     })
 
     it('throws 400 when corporation_uuid is missing', async () => {

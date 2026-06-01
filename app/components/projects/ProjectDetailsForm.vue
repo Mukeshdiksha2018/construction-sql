@@ -856,7 +856,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useCorporationStore } from '~/stores/corporations'
 import { useProjectTypesStore } from '~/stores/projectTypes'
 import { useServiceTypesStore } from '~/stores/serviceTypes'
@@ -1579,9 +1579,24 @@ const handleCustomerSaved = async (savedCustomer?: { uuid?: string } | null) => 
   const corporationUuid = props.form.corporation_uuid || corpStore.selectedCorporationId
   const projectUuid = props.form.uuid || props.form.id || null
   if (!corporationUuid) return
-  await projectsStore.fetchLocalCustomers(corporationUuid, projectUuid, true)
+
   const customerUuid = savedCustomer?.uuid
+    ? String(savedCustomer.uuid).trim().toLowerCase()
+    : ''
+
+  if (customerUuid && savedCustomer) {
+    const alreadyListed = projectsStore.localCustomers.some(
+      c => String(c?.uuid ?? '').trim().toLowerCase() === customerUuid,
+    )
+    if (!alreadyListed) {
+      projectsStore.localCustomers = [...projectsStore.localCustomers, savedCustomer]
+    }
+  }
+
+  await projectsStore.fetchLocalCustomers(corporationUuid, projectUuid, true)
+
   if (!customerUuid || effectiveReadonly.value) return
+  await nextTick()
   handleFormUpdate('customer_uuid', customerUuid)
 }
 
