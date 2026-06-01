@@ -1,4 +1,4 @@
-import { deleteStockReturnNote } from '../../utils/purchaseOrders'
+import { deleteStockReturnNote } from '../../utils/stockReturnNotes'
 
 export default defineEventHandler(async (event) => {
   const { uuid } = getQuery(event)

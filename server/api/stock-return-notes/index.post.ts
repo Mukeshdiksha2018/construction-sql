@@ -1,4 +1,4 @@
-import { createStockReturnNote } from '../../utils/purchaseOrders'
+import { createStockReturnNote } from '../../utils/stockReturnNotes'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)

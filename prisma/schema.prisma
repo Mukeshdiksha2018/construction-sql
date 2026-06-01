@@ -766,33 +766,38 @@ model ReceiptNoteItem {
 
 /// Stock return note header.
 model StockReturnNote {
-  id                    BigInt    @id @default(autoincrement())
-  uuid                  String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
-  corporation_uuid      String    @db.NVarChar(36)
-  project_uuid          String?   @db.NVarChar(36)
-  purchase_order_uuid   String?   @db.NVarChar(36)
-  return_type           String?   @db.NVarChar(50)
-  vendor_uuid           String?   @db.NVarChar(36)
-  entry_date            DateTime? @db.DateTime2
-  return_note_number    String    @db.NVarChar(100)
-  reference_number      String?   @db.NVarChar(100)
-  location_uuid         String?   @db.NVarChar(36)
-  notes                 String?   @db.NVarChar(Max)
-  status                String    @default("Draft") @db.NVarChar(50)
-  total_return_amount   Decimal?  @db.Decimal(18, 2)
-  attachments           String?   @db.NVarChar(Max)
-  metadata              String?   @db.NVarChar(Max)
-  audit_log             String?   @db.NVarChar(Max)
-  is_active             Boolean   @default(true)
-  created_at            DateTime  @default(now()) @db.DateTime2
-  updated_at            DateTime  @updatedAt @db.DateTime2
+  id                         BigInt    @id @default(autoincrement())
+  uuid                       String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid           String    @db.NVarChar(36)
+  project_uuid               String?   @db.NVarChar(36)
+  purchase_order_uuid        String?   @db.NVarChar(36)
+  change_order_uuid          String?   @db.NVarChar(36)
+  return_type                String?   @db.NVarChar(50)
+  vendor_uuid                String?   @db.NVarChar(36)
+  entry_date                 DateTime? @db.DateTime2
+  return_note_number         String    @db.NVarChar(100)
+  reference_number           String?   @db.NVarChar(100)
+  returned_by                String?   @db.NVarChar(36)
+  nimble_returned_by_user_id String?   @db.NVarChar(255)
+  location_uuid              String?   @db.NVarChar(36)
+  notes                      String?   @db.NVarChar(Max)
+  status                     String    @default("Waiting") @db.NVarChar(50)
+  total_return_amount        Decimal?  @db.Decimal(18, 2)
+  attachments                String?   @db.NVarChar(Max)
+  metadata                   String?   @db.NVarChar(Max)
+  audit_log                  String?   @db.NVarChar(Max)
+  is_active                  Boolean   @default(true)
+  created_at                 DateTime  @default(now()) @db.DateTime2
+  updated_at                 DateTime  @updatedAt @db.DateTime2
 
   purchaseOrder PurchaseOrderForm? @relation(fields: [purchase_order_uuid], references: [uuid])
+  changeOrder   ChangeOrder?       @relation(fields: [change_order_uuid], references: [uuid])
   items         ReturnNoteItem[]
 
   @@index([corporation_uuid])
   @@index([project_uuid])
   @@index([purchase_order_uuid])
+  @@index([change_order_uuid])
   @@index([vendor_uuid])
   @@index([is_active])
   @@index([entry_date(sort: Desc)])
@@ -886,6 +891,7 @@ model ChangeOrder {
   laborItems           LaborChangeOrderItem[]
   locationWiseMaterial COLocationWiseMaterialItem[]
   receiptNotes         StockReceiptNote[]
+  returnNotes          StockReturnNote[]
   originalPurchaseOrder PurchaseOrderForm? @relation(fields: [original_purchase_order_uuid], references: [uuid], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([corporation_uuid])
