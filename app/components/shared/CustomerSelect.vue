@@ -73,10 +73,24 @@ const emit = defineEmits<{
 }>()
 
 const customerStore = useCustomerStore()
-const selectedCustomer = ref<string | undefined>(props.modelValue)
+const normalizeId = (value?: string | null) => String(value ?? '').trim().toLowerCase()
+
+const selectedCustomer = ref<string | undefined>(
+  props.modelValue ? normalizeId(props.modelValue) : undefined,
+)
 const selectedCustomerObject = ref<any>(undefined)
 const customers = ref<any[]>([])
 const loading = ref(false)
+
+const filterCustomersForContext = (source: any[], corporationUuid: string, projectUuid?: string) => {
+  const corp = normalizeId(corporationUuid)
+  let filtered = source.filter(c => normalizeId(c.corporation_uuid) === corp)
+  if (projectUuid) {
+    const proj = normalizeId(projectUuid)
+    filtered = filtered.filter(c => !c.project_uuid || normalizeId(c.project_uuid) === proj)
+  }
+  return filtered
+}
 
 const menuUi = {
   content: 'max-h-60 min-w-full w-max',
@@ -103,20 +117,31 @@ const computeInitials = (customer: any) => {
   return 'C'
 }
 
+const applyLocalCustomers = () => {
+  if (!props.corporationUuid || props.localCustomers === undefined || !Array.isArray(props.localCustomers)) {
+    return
+  }
+  customers.value = filterCustomersForContext(
+    props.localCustomers,
+    props.corporationUuid,
+    props.projectUuid,
+  )
+}
+
 const fetchCustomersFromAPI = async (corporationUuid: string, projectUuid?: string) => {
   if (!corporationUuid) { customers.value = []; return }
   if (props.localCustomers !== undefined && Array.isArray(props.localCustomers)) {
-    let filtered = props.localCustomers.filter(c => c.corporation_uuid === corporationUuid)
-    if (projectUuid) filtered = filtered.filter(c => !c.project_uuid || c.project_uuid === projectUuid)
-    customers.value = filtered
+    applyLocalCustomers()
     return
   }
   loading.value = true
   try {
-    await customerStore.fetchCustomers(corporationUuid, projectUuid || null, false)
-    let filtered = customerStore.customers.filter(c => c.corporation_uuid === corporationUuid)
-    if (projectUuid) filtered = filtered.filter(c => !c.project_uuid || c.project_uuid === projectUuid)
-    customers.value = filtered
+    await customerStore.fetchCustomers(corporationUuid, projectUuid || null, true)
+    customers.value = filterCustomersForContext(
+      customerStore.customers,
+      corporationUuid,
+      projectUuid,
+    )
   } catch {
     customers.value = []
   } finally {
@@ -136,7 +161,7 @@ const customerOptions = computed(() =>
       : { alt, text: computeInitials(customer), size: 'xs' as const }
     return {
       label,
-      value: customer.uuid,
+      value: normalizeId(customer.uuid),
       customer,
       description,
       avatarData,
@@ -175,12 +200,16 @@ const handleSelection = (customer: any) => {
     return
   }
   if (!customerValue) { emit('update:modelValue', undefined); return }
-  selectedCustomer.value = customerValue
-  emit('update:modelValue', customerValue)
-  emit('change', customerObject || customer)
+  const normalized = normalizeId(customerValue)
+  selectedCustomer.value = normalized
+  emit('update:modelValue', normalized)
+  emit('change', customerObject?.customer ?? customerObject ?? customer)
 }
 
-watch(() => props.modelValue, v => { selectedCustomer.value = v; updateSelectedObject() })
+watch(() => props.modelValue, (v) => {
+  selectedCustomer.value = v ? normalizeId(v) : undefined
+  updateSelectedObject()
+})
 watch(customerOptions, () => updateSelectedObject(), { immediate: true })
 watch(selectedCustomer, () => updateSelectedObject())
 watch(
@@ -194,6 +223,30 @@ watch(
     if (newCorp) await fetchCustomersFromAPI(newCorp, newProj)
     else customers.value = []
   },
-  { immediate: true }
+  { immediate: true },
+)
+
+watch(
+  () => customerStore.customers,
+  () => {
+    if (props.localCustomers === undefined && props.corporationUuid) {
+      customers.value = filterCustomersForContext(
+        customerStore.customers,
+        props.corporationUuid,
+        props.projectUuid,
+      )
+      updateSelectedObject()
+    }
+  },
+  { deep: true },
+)
+
+watch(
+  () => props.localCustomers,
+  () => {
+    applyLocalCustomers()
+    updateSelectedObject()
+  },
+  { deep: true, immediate: true },
 )
 </script>

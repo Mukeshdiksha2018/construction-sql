@@ -216,7 +216,16 @@ export const useProjectsStore = defineStore('projects', {
         }
         const response = await apiFetch<{ data?: any[], error?: string }>(url)
         if (response?.error) throw new Error(response.error)
-        this.localCustomers = response?.data ?? []
+        this.localCustomers = (response?.data ?? []).map((c: { uuid?: string }) => ({
+          ...c,
+          uuid: c.uuid ? String(c.uuid).trim().toLowerCase() : c.uuid,
+          corporation_uuid: c.corporation_uuid
+            ? String(c.corporation_uuid).trim().toLowerCase()
+            : c.corporation_uuid,
+          project_uuid: c.project_uuid
+            ? String(c.project_uuid).trim().toLowerCase()
+            : c.project_uuid,
+        }))
       } catch {
         this.localCustomers = []
       }
