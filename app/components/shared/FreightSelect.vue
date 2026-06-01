@@ -54,7 +54,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { useFreightStore } from '~/stores/freight'
+import { useFreightStore } from '~/stores/freightGlobal'
 
 interface Props {
   modelValue?: string

@@ -555,7 +555,7 @@ import ProjectSelect from "~/components/shared/ProjectSelect.vue";
 import CorporationSelect from "~/components/shared/CorporationSelect.vue";
 import VendorSelect from "~/components/shared/VendorSelect.vue";
 import ReceiptNoteItemsTable from "~/components/purchaseOrders/ReceiptNoteItemsTable.vue";
-// userProfiles store not available - simplified
+import { useUserProfilesStore } from "~/stores/userProfiles";
 import { useNimbleSessionStore } from "~/stores/nimbleSession";
 import { useItemTypesStore } from "~/stores/itemTypes";
 import {
@@ -598,6 +598,7 @@ const vendorStore = useVendorStore();
 const nimbleSession = useNimbleSessionStore();
 const itemTypesStore = useItemTypesStore();
 const stockReceiptNotesStore = useStockReceiptNotesStore();
+const userProfilesStore = useUserProfilesStore();
 const runtimeConfig = useRuntimeConfig();
 const nimbleIntegrationsEnabled = computed(() =>
   Boolean(runtimeConfig.public.nimbleIntegrations)

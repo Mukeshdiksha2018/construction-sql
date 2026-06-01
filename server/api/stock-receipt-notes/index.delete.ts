@@ -1,4 +1,4 @@
-import { deleteStockReceiptNote } from '../../utils/purchaseOrders'
+import { deleteStockReceiptNote } from '../../utils/stockReceiptNotes'
 
 export default defineEventHandler(async (event) => {
   const { uuid } = getQuery(event)

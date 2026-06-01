@@ -516,7 +516,7 @@ import { usePurchaseOrderResourcesStore } from "~/stores/purchaseOrderResources"
 import { useChangeOrdersStore } from "~/stores/changeOrders";
 import { useProjectsStore } from "~/stores/projects";
 import { useVendorStore } from "~/stores/vendors";
-// userProfiles store not available - simplified
+import { useUserProfilesStore } from "~/stores/userProfiles";
 import { usePermissions } from "~/composables/usePermissions";
 import { useDateFormat } from "~/composables/useDateFormat";
 import { useCurrencyFormat } from "~/composables/useCurrencyFormat";
@@ -557,6 +557,7 @@ const purchaseOrderResourcesStore = usePurchaseOrderResourcesStore();
 const changeOrdersStore = useChangeOrdersStore();
 const projectsStore = useProjectsStore();
 const vendorStore = useVendorStore();
+const userProfilesStore = useUserProfilesStore();
 const { hasPermission, isReady } = usePermissions();
 const { formatDate } = useDateFormat();
 const { formatCurrency, formatCurrencyAbbreviated } = useCurrencyFormat();

@@ -1,7 +1,8 @@
 import { fetchServerSession } from '~/utils/auth-session'
+import { exchangeNimbleAuthId } from '~/utils/nimbleAuthIdExchange'
+import { syncNimbleSessionFromAuth } from '~/utils/authToken'
 import { getSafeRedirect, DEFAULT_AUTHENTICATED_ROUTE } from '~/utils/safe-redirect'
 import { getPathForMenuId } from '~/utils/nimbleMenuIds'
-import type { NimbleSession } from '~/stores/auth'
 
 function toMenuRedirect(menuPath: string | undefined, corporationId: string): string | null {
   if (!menuPath) return null
@@ -22,33 +23,22 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const corporationId = String(to.query.corporationId ?? '').trim()
   const menuRedirect = toMenuRedirect(getPathForMenuId(menuId), corporationId)
 
+  if (nimbleOn && authId) {
+    const freshSession = await exchangeNimbleAuthId(authId)
+    if (freshSession) {
+      authStore.setSession(freshSession)
+      syncNimbleSessionFromAuth()
+      return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect, DEFAULT_AUTHENTICATED_ROUTE))
+    }
+  }
+
   const serverSession = await fetchServerSession()
   if (serverSession?.token) {
     if (!authStore.isAuthenticated || authStore.token !== serverSession.token) {
       authStore.setSession(serverSession)
+      syncNimbleSessionFromAuth()
     }
     return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect, DEFAULT_AUTHENTICATED_ROUTE))
-  }
-
-  if (nimbleOn && authId) {
-    if (import.meta.server) {
-      // Let client bootstrap exchange authId and set browser cookie.
-      return
-    }
-    try {
-      const result = await $fetch<{ session: NimbleSession }>('/api/auth/exchange-oauth', {
-        method: 'POST',
-        body: { authId },
-        credentials: 'include',
-      })
-      if (result?.session) {
-        authStore.setSession(result.session)
-        return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect, DEFAULT_AUTHENTICATED_ROUTE))
-      }
-    }
-    catch {
-      // Leave user on login page if exchange fails.
-    }
   }
 
   if (authStore.isAuthenticated) {

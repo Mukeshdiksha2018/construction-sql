@@ -30,6 +30,9 @@ vi.mock('~/components/purchaseOrders/ReceiptNoteList.vue', () => ({
 vi.mock('~/components/purchaseOrders/StockReturnsList.vue', () => ({
   default: { template: '<div data-testid="stock-returns-list" />' },
 }))
+vi.mock('~/components/changeOrders/ChangeOrdersList.vue', () => ({
+  default: { template: '<div data-testid="change-orders-list" />' },
+}))
 
 vi.mock('~/composables/useTabRouting', () => ({
   PURCHASE_ORDERS_TABS: [
@@ -52,7 +55,13 @@ vi.mock('~/composables/useTabRouting', () => ({
 
 const stubs = {
   ClientOnly: { template: '<div><slot /></div>' },
+  UTabs: {
+    props: ['modelValue'],
+    template:
+      '<div data-testid="u-tabs"><slot name="content" :item="{ value: modelValue, label: \'\' }" /></div>',
+  },
   PurchaseOrdersList: { template: '<div data-testid="po-list" />' },
+  ChangeOrdersList: { template: '<div data-testid="change-orders-list" />' },
   ReceiptNoteList: { template: '<div data-testid="receipt-note-list" />' },
   StockReturnsList: { template: '<div data-testid="stock-returns-list" />' },
 }
@@ -87,7 +96,7 @@ describe('purchase-orders index page', () => {
     runtimeConfig.public.nimbleIntegrations = 'true'
     route.query = { menuId: '0x010000000000000000000000000000011132' }
     const component = (await import('../../../app/pages/purchase-orders/index.vue')).default
-    mount(component, { global: { stubs } })
+    const wrapper = mount(component, { global: { stubs } })
     await flushPromises()
 
     expect(replace).toHaveBeenCalledWith({
@@ -96,6 +105,7 @@ describe('purchase-orders index page', () => {
         menuId: '0x010000000000000000000000000000011132',
       }),
     })
+    expect(wrapper.find('[data-testid="change-orders-list"]').exists()).toBe(true)
   })
 
   it('renders stock returns when non-nimble route requests stock-returns tab', async () => {

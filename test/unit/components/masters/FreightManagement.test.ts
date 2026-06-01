@@ -22,7 +22,7 @@ const mockStore = {
 
 const toastAdd = vi.fn()
 
-vi.mock('~/stores/freight', () => ({
+vi.mock('~/stores/freightGlobal', () => ({
   useFreightStore: () => mockStore,
 }))
 

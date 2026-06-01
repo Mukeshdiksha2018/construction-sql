@@ -1,9 +1,11 @@
-import type { NimbleSession } from '~/stores/auth'
 import { fetchServerSession } from '~/utils/auth-session'
+import { exchangeNimbleAuthId } from '~/utils/nimbleAuthIdExchange'
+import { syncNimbleSessionFromAuth } from '~/utils/authToken'
 import { usePrivilegesStore } from '~/stores/privileges'
 
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (!import.meta.client) return
+  // Browser-only (Nimble launch query). Use typeof window so unit tests in happy-dom can cover this path.
+  if (typeof window === 'undefined') return
 
   const authId = String(to.query.authId ?? '').trim()
   const corporationId = String(to.query.corporationId ?? '').trim()
@@ -18,28 +20,20 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   let sessionChanged = false
 
-  if (serverSession?.token) {
-    if (!authStore.isAuthenticated || authStore.token !== serverSession.token) {
-      authStore.setSession(serverSession)
+  // Fresh Nimble launch — always exchange authId even when a stale session cookie exists.
+  if (authId) {
+    const freshSession = await exchangeNimbleAuthId(authId)
+    if (freshSession) {
+      authStore.setSession(freshSession)
+      syncNimbleSessionFromAuth()
       sessionChanged = true
     }
   }
-
-  if (authId && !serverSession?.token) {
-    try {
-      const result = await $fetch<{ session: NimbleSession }>('/api/auth/exchange-oauth', {
-        method: 'POST',
-        body: { authId },
-        credentials: 'include',
-      })
-
-      if (result?.session) {
-        authStore.setSession(result.session)
-        sessionChanged = true
-      }
-    }
-    catch {
-      return
+  else if (serverSession?.token) {
+    if (!authStore.isAuthenticated || authStore.token !== serverSession.token) {
+      authStore.setSession(serverSession)
+      syncNimbleSessionFromAuth()
+      sessionChanged = true
     }
   }
 
