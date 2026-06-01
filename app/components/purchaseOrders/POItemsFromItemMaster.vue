@@ -17,7 +17,7 @@
     @po-quantity-change="emit('po-quantity-change', $event)"
     @po-total-change="emit('po-total-change', $event)"
     @description-change="emit('description-change', $event)"
-    @edit-selection="emit('edit-selection', $event)"
+    @edit-selection="emit('edit-selection')"
   >
     <template v-if="$slots.actions" #actions="slotProps">
       <slot name="actions" v-bind="slotProps" />
