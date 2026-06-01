@@ -218,6 +218,26 @@ describe('useProjectsStore', () => {
       expect(store.localCustomers).toHaveLength(1)
     })
 
+    it('normalizes customer UUIDs from API response', async () => {
+      mockApiFetch.mockResolvedValue({
+        data: [{
+          uuid: 'CUST-UPPER',
+          corporation_uuid: 'CORP-UPPER',
+          project_uuid: 'PROJ-1',
+        }],
+      })
+
+      const store = useProjectsStore()
+      await store.fetchLocalCustomers('corp-1', 'proj-1')
+
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        '/api/customers?corporation_uuid=corp-1&project_uuid=proj-1',
+      )
+      expect(store.localCustomers[0].uuid).toBe('cust-upper')
+      expect(store.localCustomers[0].corporation_uuid).toBe('corp-upper')
+      expect(store.localCustomers[0].project_uuid).toBe('proj-1')
+    })
+
     it('sets empty array on failure', async () => {
       mockApiFetch.mockRejectedValue(new Error('API error'))
 
