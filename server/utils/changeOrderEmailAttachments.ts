@@ -1,7 +1,5 @@
-import { supabaseServer } from "~/utils/supabaseServer";
-
-/** Same bucket as change-orders/documents/upload */
-export const CO_EMAIL_STORAGE_BUCKET = "change_order_storage";
+/** Legacy bucket name (Supabase); attachments are stored as data URLs in MSSQL JSON. */
+export const CO_EMAIL_STORAGE_BUCKET = 'change_order_storage'
 
 /** Max CO bucket PDFs per email (preview PDF is separate). */
 export const CO_EMAIL_MAX_EXTRA_FILES = 8;
@@ -15,12 +13,13 @@ export const CO_EMAIL_MAX_TOTAL_BYTES = 18 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set(["application/pdf"]);
 
 export type StoredCoAttachmentMeta = {
-  uuid?: string;
-  document_name?: string;
-  mime_type?: string;
-  file_size?: number;
-  file_path?: string;
-};
+  uuid?: string
+  document_name?: string
+  mime_type?: string
+  file_size?: number
+  file_path?: string
+  file_url?: string
+}
 
 export type CoEmailStorageAttachment = {
   filename: string;
@@ -60,15 +59,33 @@ export function filterCoAttachmentsExcludingUuids(
   });
 }
 
+function decodeAttachmentBuffer(meta: StoredCoAttachmentMeta): Buffer | null {
+  const url = String(meta.file_url || '').trim()
+  if (url.startsWith('data:')) {
+    const match = url.match(/^data:.*;base64,(.+)$/s)
+    if (!match?.[1]) return null
+    try {
+      return Buffer.from(match[1], 'base64')
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 export function normalizeStoredCoAttachments(
-  attachments: unknown
+  attachments: unknown,
 ): StoredCoAttachmentMeta[] {
-  if (!Array.isArray(attachments)) return [];
+  if (!Array.isArray(attachments)) return []
   return attachments.filter((item): item is StoredCoAttachmentMeta => {
-    if (!item || typeof item !== "object") return false;
-    const path = (item as StoredCoAttachmentMeta).file_path;
-    return typeof path === "string" && path.trim().length > 0;
-  });
+    if (!item || typeof item !== 'object') return false
+    const path = (item as StoredCoAttachmentMeta).file_path
+    const url = (item as StoredCoAttachmentMeta).file_url
+    return (
+      (typeof path === 'string' && path.trim().length > 0) ||
+      (typeof url === 'string' && url.trim().length > 0)
+    )
+  })
 }
 
 export function validateCoEmailAttachmentPlan(
@@ -137,23 +154,17 @@ export async function loadChangeOrderEmailStorageAttachments(
   }
 
   for (let i = 0; i < stored.length; i++) {
-    const meta = stored[i];
-    const displayName = meta.document_name || `document-${i + 1}.pdf`;
-    const filePath = String(meta.file_path).trim();
+    const meta = stored[i]
+    const displayName = meta.document_name || `document-${i + 1}.pdf`
 
-    const { data, error } = await supabaseServer.storage
-      .from(CO_EMAIL_STORAGE_BUCKET)
-      .download(filePath);
-
-    if (error || !data) {
+    const buffer = decodeAttachmentBuffer(meta)
+    if (!buffer) {
       result.skipped.push({
         name: displayName,
-        reason: error?.message || "Could not download from storage",
-      });
-      continue;
+        reason: 'Attachment file is not available (re-upload the PDF)',
+      })
+      continue
     }
-
-    const buffer = Buffer.from(await data.arrayBuffer());
     if (!buffer.length) {
       result.skipped.push({ name: displayName, reason: "File is empty" });
       continue;

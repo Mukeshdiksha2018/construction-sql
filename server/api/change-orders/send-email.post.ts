@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import { readMultipartFormData } from "h3";
-import { supabaseServer } from "~/utils/supabaseServer";
+import { getPrisma } from '~/server/utils/prisma'
 import {
   appendSkippedAttachmentsNotice,
   filterCoAttachmentsExcludingUuids,
@@ -96,17 +96,16 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const { data: coRow, error: coErr } = await supabaseServer
-    .from("change_orders")
-    .select("uuid, co_number, attachments")
-    .eq("uuid", coUuid)
-    .maybeSingle();
+  const coRow = await getPrisma().changeOrder.findFirst({
+    where: { uuid: coUuid, is_active: true },
+    select: { uuid: true, co_number: true, attachments: true },
+  })
 
-  if (coErr || !coRow) {
+  if (!coRow) {
     throw createError({
       statusCode: 404,
-      statusMessage: "Change order not found",
-    });
+      statusMessage: 'Change order not found',
+    })
   }
 
   if (!toRaw) {
@@ -150,10 +149,16 @@ export default defineEventHandler(async (event) => {
     ? String(coNumber).replace(/[^\w.-]+/g, "_")
     : coUuid;
 
-  const attachmentsForEmail = filterCoAttachmentsExcludingUuids(
-    (coRow as { attachments?: unknown }).attachments,
-    excludeAttachmentUuids
-  );
+  let attachmentsForEmail: unknown = []
+  try {
+    attachmentsForEmail = coRow.attachments ? JSON.parse(coRow.attachments) : []
+  } catch {
+    attachmentsForEmail = []
+  }
+  attachmentsForEmail = filterCoAttachmentsExcludingUuids(
+    attachmentsForEmail,
+    excludeAttachmentUuids,
+  )
 
   let storageAttachmentResult;
   try {
