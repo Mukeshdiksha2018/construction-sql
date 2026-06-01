@@ -498,7 +498,7 @@ import LocationSelect from "~/components/shared/LocationSelect.vue";
 import CorporationSelect from "~/components/shared/CorporationSelect.vue";
 import StorageLocationSelect from "~/components/shared/StorageLocationSelect.vue";
 import ReturnNoteItemsTable from "~/components/purchaseOrders/ReturnNoteItemsTable.vue";
-// userProfiles store not available - simplified
+import { useUserProfilesStore } from "~/stores/userProfiles";
 import { useNimbleSessionStore } from "~/stores/nimbleSession";
 import { useItemTypesStore } from "~/stores/itemTypes";
 import { useStockReceiptNotesStore } from "~/stores/stockReceiptNotes";
@@ -544,6 +544,7 @@ const runtimeConfig = useRuntimeConfig();
 const nimbleIntegrationsEnabled = computed(() =>
   Boolean(runtimeConfig.public.nimbleIntegrations)
 );
+const userProfilesStore = useUserProfilesStore();
 const { users: allUsers, hasData: hasUsersData } = storeToRefs(userProfilesStore);
 const { toUTCString, fromUTCString } = useUTCDateFormat();
 const { formatCurrency } = useCurrencyFormat();

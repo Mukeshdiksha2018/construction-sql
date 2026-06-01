@@ -1,8 +1,10 @@
-import { createStockReceiptNote } from '../../utils/purchaseOrders'
+import { createStockReceiptNote } from '../../utils/stockReceiptNotes'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  if (!body?.corporation_uuid) throw createError({ statusCode: 400, statusMessage: 'corporation_uuid is required' })
+  if (!body?.corporation_uuid) {
+    throw createError({ statusCode: 400, statusMessage: 'corporation_uuid is required' })
+  }
 
   try {
     const note = await createStockReceiptNote(body)

@@ -1,8 +1,8 @@
-import { updateStockReceiptNote } from '../../utils/purchaseOrders'
+import { updateStockReceiptNote } from '../../utils/stockReceiptNotes'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const { uuid } = body ?? {}
+  const uuid = body?.uuid
   if (!uuid) throw createError({ statusCode: 400, statusMessage: 'uuid is required' })
 
   try {

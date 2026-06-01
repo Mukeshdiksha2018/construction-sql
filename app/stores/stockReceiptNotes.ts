@@ -7,6 +7,7 @@ export interface StockReceiptNote {
   corporation_uuid: string
   project_uuid?: string | null
   purchase_order_uuid?: string | null
+  change_order_uuid?: string | null
   receipt_type?: 'purchase_order' | 'change_order' | string
   vendor_uuid?: string | null
   entry_date: string | null

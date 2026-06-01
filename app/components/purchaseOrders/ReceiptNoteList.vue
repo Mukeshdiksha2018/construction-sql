@@ -737,6 +737,7 @@ import {
   resolveComponent,
   nextTick,
 } from "vue";
+import { storeToRefs } from "pinia";
 import { CalendarDate, DateFormatter, getLocalTimeZone } from "@internationalized/date";
 import ReceiptNoteForm from "~/components/purchaseOrders/ReceiptNoteForm.vue";
 import ReturnNoteForm from "~/components/purchaseOrders/ReturnNoteForm.vue";
@@ -749,7 +750,7 @@ import { usePurchaseOrderResourcesStore } from "~/stores/purchaseOrderResources"
 import { useChangeOrdersStore } from "~/stores/changeOrders";
 import { useProjectsStore } from "~/stores/projects";
 import { useVendorStore } from "~/stores/vendors";
-// userProfiles store not available - simplified
+import { useUserProfilesStore } from "~/stores/userProfiles";
 import { usePermissions } from "~/composables/usePermissions";
 import { useDateFormat } from "~/composables/useDateFormat";
 import { useCurrencyFormat } from "~/composables/useCurrencyFormat";
@@ -792,6 +793,8 @@ const purchaseOrderResourcesStore = usePurchaseOrderResourcesStore();
 const changeOrdersStore = useChangeOrdersStore();
 const projectsStore = useProjectsStore();
 const vendorStore = useVendorStore();
+const userProfilesStore = useUserProfilesStore();
+const { users: profileUsers } = storeToRefs(userProfilesStore);
 const { hasPermission, isReady } = usePermissions();
 const { formatDate } = useDateFormat();
 const { formatCurrency, formatCurrencyAbbreviated } = useCurrencyFormat();
@@ -1223,7 +1226,7 @@ const vendorLookup = computed(() => {
 
 const userLookup = computed(() => {
   const map = new Map<string, { name: string; imageUrl?: string }>();
-  const list = [] ?? [];
+  const list = profileUsers.value ?? [];
   list.forEach((user: any) => {
     if (user?.id) {
       const firstName = user.firstName || "";

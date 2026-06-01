@@ -602,6 +602,7 @@ model PurchaseOrderItem {
   po_total              Decimal? @db.Decimal(18, 2)
   total                 Decimal? @db.Decimal(18, 2)
   approval_checks_uuids String?  @db.NVarChar(Max)
+  receipt_note_uuids    String?  @db.NVarChar(Max)
   configuration_name    String?  @db.NVarChar(255)
   metadata              String?  @db.NVarChar(Max)
   is_active             Boolean  @default(true)
@@ -683,6 +684,7 @@ model StockReceiptNote {
   corporation_uuid          String    @db.NVarChar(36)
   project_uuid              String?   @db.NVarChar(36)
   purchase_order_uuid       String?   @db.NVarChar(36)
+  change_order_uuid         String?   @db.NVarChar(36)
   receipt_type              String?   @db.NVarChar(50)
   vendor_uuid               String?   @db.NVarChar(36)
   entry_date                DateTime? @db.DateTime2
@@ -704,11 +706,13 @@ model StockReceiptNote {
   updated_at                DateTime  @updatedAt @db.DateTime2
 
   purchaseOrder PurchaseOrderForm? @relation(fields: [purchase_order_uuid], references: [uuid])
+  changeOrder   ChangeOrder?       @relation(fields: [change_order_uuid], references: [uuid], onDelete: NoAction, onUpdate: NoAction)
   items         ReceiptNoteItem[]
 
   @@index([corporation_uuid])
   @@index([project_uuid])
   @@index([purchase_order_uuid])
+  @@index([change_order_uuid])
   @@index([vendor_uuid])
   @@index([status])
   @@index([is_active])
@@ -740,14 +744,17 @@ model ReceiptNoteItem {
   unit_label            String?  @db.NVarChar(100)
   category              String?  @db.NVarChar(100)
   po_quantity           Decimal? @db.Decimal(18, 4)
-  received_quantity     Decimal? @db.Decimal(18, 4)
-  unit_price            Decimal? @db.Decimal(18, 4)
-  total                 Decimal? @db.Decimal(18, 2)
-  po_item_uuid          String?  @db.NVarChar(36)
-  metadata              String?  @db.NVarChar(Max)
-  is_active             Boolean  @default(true)
-  created_at            DateTime @default(now()) @db.DateTime2
-  updated_at            DateTime @updatedAt @db.DateTime2
+  received_quantity             Decimal? @db.Decimal(18, 4)
+  received_total                Decimal? @db.Decimal(18, 2)
+  grn_total                     Decimal? @db.Decimal(18, 2)
+  grn_total_with_charges_taxes    Decimal? @db.Decimal(18, 2)
+  unit_price                    Decimal? @db.Decimal(18, 4)
+  total                         Decimal? @db.Decimal(18, 2)
+  po_item_uuid                  String?  @db.NVarChar(36)
+  metadata                      String?  @db.NVarChar(Max)
+  is_active                     Boolean  @default(true)
+  created_at                    DateTime @default(now()) @db.DateTime2
+  updated_at                    DateTime @updatedAt @db.DateTime2
 
   receiptNote StockReceiptNote @relation(fields: [receipt_note_uuid], references: [uuid], onDelete: Cascade)
 
@@ -878,6 +885,7 @@ model ChangeOrder {
   materialItems        ChangeOrderItem[]
   laborItems           LaborChangeOrderItem[]
   locationWiseMaterial COLocationWiseMaterialItem[]
+  receiptNotes         StockReceiptNote[]
   originalPurchaseOrder PurchaseOrderForm? @relation(fields: [original_purchase_order_uuid], references: [uuid], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([corporation_uuid])
@@ -924,6 +932,7 @@ model ChangeOrderItem {
   co_total               Decimal? @db.Decimal(18, 2)
   total                  Decimal? @db.Decimal(18, 2)
   approval_checks_uuids  String?  @db.NVarChar(Max)
+  receipt_note_uuids     String?  @db.NVarChar(Max)
   configuration_name     String?  @db.NVarChar(255)
   metadata               String?  @db.NVarChar(Max)
   is_active              Boolean  @default(true)

@@ -177,7 +177,7 @@
 import { computed, h, onMounted, ref, resolveComponent, useTemplateRef } from 'vue'
 import { getPaginationRowModel } from '@tanstack/vue-table'
 import type { TableColumn } from '@nuxt/ui'
-import { useFreightStore, type Freight } from '~/stores/freight'
+import { useFreightStore, type Freight } from '~/stores/freightGlobal'
 
 const UButton = resolveComponent('UButton')
 const UBadge = resolveComponent('UBadge')

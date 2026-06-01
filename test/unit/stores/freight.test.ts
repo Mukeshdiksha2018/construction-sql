@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useFreightStore } from '~/stores/freight'
+import { useFreightStore } from '~/stores/freightGlobal'
 
 describe('useFreightStore', () => {
   let mockFetch: ReturnType<typeof vi.fn>
