@@ -58,6 +58,17 @@ describe('stock-return-notes API handlers', () => {
       expect(result).toEqual({ data: { return_number: 'RTN-42' } })
     })
 
+    it('returns 404 when note not found', async () => {
+      vi.stubGlobal('getQuery', () => ({ uuid: 'missing' }))
+      mockGet.mockResolvedValue(null)
+
+      const handler = (await import('../../../server/api/stock-return-notes/index.get')).default
+      await expect(handler(makeEvent())).rejects.toMatchObject({
+        statusCode: 404,
+        message: 'Return note not found',
+      })
+    })
+
     it('returns single note by uuid', async () => {
       vi.stubGlobal('getQuery', () => ({ uuid: 'rtn-1' }))
       mockGet.mockResolvedValue({ uuid: 'rtn-1', return_number: 'RTN-1' })
