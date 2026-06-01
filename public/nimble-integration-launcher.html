@@ -243,7 +243,9 @@
             <div class="section-title">Purchase Orders</div>
             <div class="actions-grid">
               <button type="button" id="go-purchase-orders">Purchase Orders (list)</button>
+              <button type="button" id="go-change-orders">Change Orders</button>
               <button type="button" id="go-receipt-notes">Stock Receipt Notes</button>
+              <button type="button" id="go-return-notes">Stock Return Notes</button>
             </div>
           </section>
           <section class="section-card">
@@ -309,7 +311,9 @@
 
       var VENDOR_INVOICES_MENU_ID = "0x010000000000000000000000000000011133";
       var PURCHASE_ORDERS_TAB_MENU_ID = "0x010000000000000000000000000000011131";
+      var CHANGE_ORDERS_TAB_MENU_ID = "0x010000000000000000000000000000011132";
       var STOCK_RECEIPT_NOTE_TAB_MENU_ID = "0x010000000000000000000000000000011134";
+      var STOCK_RETURN_NOTES_TAB_MENU_ID = "0x010000000000000000000000000000011135";
       var PROJECTS_ITEMS_TAB_MENU_ID = "0x010000000000000000000000000000011138";
       var PROJECTS_COST_CODES_TAB_MENU_ID = "0x010000000000000000000000000000011139";
       var PROJECTS_ESTIMATES_TAB_MENU_ID = "0x010000000000000000000000000000011140";
@@ -425,8 +429,14 @@
       document.getElementById("go-purchase-orders").addEventListener("click", function () {
         openInNewTab("/purchase-orders", { tab: "purchase-orders", menuId: PURCHASE_ORDERS_TAB_MENU_ID });
       });
+      document.getElementById("go-change-orders").addEventListener("click", function () {
+        openInNewTab("/purchase-orders", { tab: "change-orders", menuId: CHANGE_ORDERS_TAB_MENU_ID });
+      });
       document.getElementById("go-receipt-notes").addEventListener("click", function () {
         openInNewTab("/purchase-orders", { tab: "stock-receipt-note", menuId: STOCK_RECEIPT_NOTE_TAB_MENU_ID });
+      });
+      document.getElementById("go-return-notes").addEventListener("click", function () {
+        openInNewTab("/purchase-orders", { tab: "stock-returns", menuId: STOCK_RETURN_NOTES_TAB_MENU_ID });
       });
 
       document.getElementById("go-config-project-types").addEventListener("click", function () {
