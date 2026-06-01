@@ -2,14 +2,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { freshSession, makeNimbleSession, staleSession } from '../../helpers/nimbleSessionFixture'
 
-const mockFetchServerSession = vi.fn()
+const mockFetchRouteSession = vi.fn()
+const mockEnsureAuthHydrated = vi.fn()
 const mockNavigateTo = vi.fn()
 const mockExchangeNimbleAuthId = vi.fn()
 const mockSyncNimbleSessionFromAuth = vi.fn()
 const mockLoadPrivileges = vi.fn().mockResolvedValue(undefined)
 
-vi.mock('../../../app/utils/auth-session', () => ({
-  fetchServerSession: (...args: unknown[]) => mockFetchServerSession(...args),
+vi.mock('../../../app/utils/routeAuth', () => ({
+  fetchRouteSession: (...args: unknown[]) => mockFetchRouteSession(...args),
+  ensureAuthHydrated: (...args: unknown[]) => mockEnsureAuthHydrated(...args),
+  hasNimbleLaunchContext: (to: { query: Record<string, unknown> }) =>
+    Boolean(
+      String(to.query.authId ?? '').trim()
+      || String(to.query.corporationId ?? '').trim()
+      || String(to.query.menuId ?? '').trim()
+      || String(to.query.launcherBridgeToken ?? '').trim(),
+    ),
 }))
 
 vi.mock('../../../app/utils/nimbleAuthIdExchange', () => ({
@@ -58,7 +67,8 @@ describe('nimble-init global middleware (authId exchange regression)', () => {
   beforeEach(async () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    mockFetchServerSession.mockResolvedValue(null)
+    mockFetchRouteSession.mockResolvedValue(null)
+    mockEnsureAuthHydrated.mockResolvedValue(undefined)
     mockNavigateTo.mockReturnValue(undefined)
     mockLoadPrivileges.mockResolvedValue(undefined)
     ;(await getAuthStore()).clear()
@@ -72,7 +82,6 @@ describe('nimble-init global middleware (authId exchange regression)', () => {
   })
 
   it('exchanges authId even when a stale server session cookie exists (regression)', async () => {
-    mockFetchServerSession.mockResolvedValue(staleSession)
     mockExchangeNimbleAuthId.mockResolvedValue(freshSession)
 
     const store = await getAuthStore()
@@ -85,24 +94,33 @@ describe('nimble-init global middleware (authId exchange regression)', () => {
     expect(mockSyncNimbleSessionFromAuth).toHaveBeenCalled()
   })
 
-  it('strips authId from the URL after a successful exchange', async () => {
+  it('strips authId from the URL after a successful exchange on the client', async () => {
     mockExchangeNimbleAuthId.mockResolvedValue(freshSession)
 
     await runNimbleInitMiddleware({ authId: 'strip-me', corporationId: 'corp-1' }, '/purchase-orders')
 
-    expect(mockNavigateTo).toHaveBeenCalledWith(
-      { path: '/purchase-orders', query: { corporationId: 'corp-1' } },
-      { replace: true },
-    )
+    if (import.meta.client) {
+      expect(mockNavigateTo).toHaveBeenCalledWith(
+        { path: '/purchase-orders', query: { corporationId: 'corp-1' } },
+        { replace: true },
+      )
+    }
+    else {
+      expect(mockNavigateTo).not.toHaveBeenCalled()
+    }
   })
 
   it('syncs cookie session when only corporationId is in the query (no authId)', async () => {
-    mockFetchServerSession.mockResolvedValue(staleSession)
+    mockEnsureAuthHydrated.mockImplementation(async () => {
+      const store = await getAuthStore()
+      store.setSession(staleSession)
+    })
 
     const store = await getAuthStore()
     await runNimbleInitMiddleware({ corporationId: 'corp-1' })
 
     expect(mockExchangeNimbleAuthId).not.toHaveBeenCalled()
+    expect(mockEnsureAuthHydrated).toHaveBeenCalled()
     expect(store.token).toBe('stale-cookie-token')
     expect(mockNavigateTo).not.toHaveBeenCalled()
   })

@@ -1,8 +1,6 @@
-import { fetchServerSession } from '~/utils/auth-session'
-import { exchangeNimbleAuthId } from '~/utils/nimbleAuthIdExchange'
-import { syncNimbleSessionFromAuth } from '~/utils/authToken'
 import { getSafeRedirect, DEFAULT_AUTHENTICATED_ROUTE } from '~/utils/safe-redirect'
 import { getPathForMenuId } from '~/utils/nimbleMenuIds'
+import { ensureAuthHydrated, hasNimbleLaunchContext } from '~/utils/routeAuth'
 
 function toMenuRedirect(menuPath: string | undefined, corporationId: string): string | null {
   if (!menuPath) return null
@@ -16,27 +14,13 @@ function toMenuRedirect(menuPath: string | undefined, corporationId: string): st
 /** For login page — redirect authenticated users away from guest routes. */
 export default defineNuxtRouteMiddleware(async (to) => {
   const authStore = useAuthStore()
-  const authId = String(to.query.authId ?? '').trim()
   const menuId = String(to.query.menuId ?? '').trim()
   const corporationId = String(to.query.corporationId ?? '').trim()
   const menuRedirect = toMenuRedirect(getPathForMenuId(menuId), corporationId)
 
-  if (authId) {
-    const freshSession = await exchangeNimbleAuthId(authId)
-    if (freshSession) {
-      authStore.setSession(freshSession)
-      syncNimbleSessionFromAuth()
-      return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect, DEFAULT_AUTHENTICATED_ROUTE))
-    }
-  }
-
-  const serverSession = await fetchServerSession()
-  if (serverSession?.token) {
-    if (!authStore.isAuthenticated || authStore.token !== serverSession.token) {
-      authStore.setSession(serverSession)
-      syncNimbleSessionFromAuth()
-    }
-    return navigateTo(menuRedirect || getSafeRedirect(to.query.redirect, DEFAULT_AUTHENTICATED_ROUTE))
+  // authId exchange is handled by nimble-init.global — only hydrate here.
+  if (hasNimbleLaunchContext(to) || import.meta.client) {
+    await ensureAuthHydrated()
   }
 
   if (authStore.isAuthenticated) {

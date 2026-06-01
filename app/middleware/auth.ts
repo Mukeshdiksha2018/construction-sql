@@ -1,34 +1,40 @@
-import { fetchServerSession } from '~/utils/auth-session'
-import { exchangeNimbleAuthId } from '~/utils/nimbleAuthIdExchange'
+import {
+  ensureAuthHydrated,
+  fetchRouteSession,
+  hasNimbleLaunchContext,
+} from '~/utils/routeAuth'
 import { syncNimbleSessionFromAuth } from '~/utils/authToken'
 
-/** Protects pages — requires login (aligned with server API auth cookie). */
+/**
+ * Protects pages — requires login.
+ * Nimble authId exchange runs in `01.nimble-init.global` only (one-time token).
+ */
 export default defineNuxtRouteMiddleware(async (to) => {
   const authStore = useAuthStore()
-  const authId = String(to.query.authId ?? '').trim()
 
-  // Fresh Nimble launch token — exchange before trusting any existing cookie/Pinia session.
-  if (authId) {
-    const freshSession = await exchangeNimbleAuthId(authId)
-    if (freshSession) {
-      authStore.setSession(freshSession)
-      syncNimbleSessionFromAuth()
-      return
-    }
+  // Nimble launch: wait for init-auth / persisted Pinia before redirecting to login.
+  if (hasNimbleLaunchContext(to) || import.meta.client) {
+    await ensureAuthHydrated()
   }
 
-  const serverSession = await fetchServerSession()
-  if (serverSession?.token) {
-    if (!authStore.isAuthenticated || authStore.token !== serverSession.token) {
-      authStore.setSession(serverSession)
-      syncNimbleSessionFromAuth()
-    }
+  if (authStore.isAuthenticated) {
     return
   }
 
-  // Cookie may be unavailable in a new tab (e.g. Nimble iframe) while Pinia still
-  // has a valid persisted token — allow navigation; API calls use Bearer auth.
+  const session = await fetchRouteSession()
+  if (session?.token) {
+    authStore.setSession(session)
+    syncNimbleSessionFromAuth()
+    return
+  }
+
+  // Cookie may be unavailable in iframe while Pinia still has a valid persisted token.
   if (authStore.isAuthenticated) {
+    return
+  }
+
+  // Still launching from Nimble — nimble-init may be exchanging authId; avoid login flash.
+  if (String(to.query.authId ?? '').trim()) {
     return
   }
 
