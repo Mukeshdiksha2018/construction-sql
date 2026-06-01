@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { freshSession, makeNimbleSession, staleSession } from '../../helpers/nimbleSessionFixture'
 
 const mockFetchServerSession = vi.fn()
 const mockNavigateTo = vi.fn()
 const mockExchangeNimbleAuthId = vi.fn()
+const mockSyncNimbleSessionFromAuth = vi.fn()
+
+let nimbleIntegrations = 'true'
 
 vi.mock('../../../app/utils/auth-session', () => ({
   fetchServerSession: (...args: unknown[]) => mockFetchServerSession(...args),
@@ -14,13 +18,13 @@ vi.mock('../../../app/utils/nimbleAuthIdExchange', () => ({
 }))
 
 vi.mock('../../../app/utils/authToken', () => ({
-  syncNimbleSessionFromAuth: vi.fn(),
+  syncNimbleSessionFromAuth: (...args: unknown[]) => mockSyncNimbleSessionFromAuth(...args),
 }))
 
 vi.stubGlobal('navigateTo', mockNavigateTo)
 vi.stubGlobal('defineNuxtRouteMiddleware', (fn: unknown) => fn)
 vi.stubGlobal('useRuntimeConfig', () => ({
-  public: { nimbleIntegrations: 'true' },
+  public: { nimbleIntegrations },
 }))
 
 async function getAuthStore() {
@@ -46,6 +50,7 @@ describe('auth middleware', () => {
   beforeEach(async () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    nimbleIntegrations = 'true'
     mockFetchServerSession.mockResolvedValue(null)
     mockNavigateTo.mockReturnValue(undefined)
     ;(await getAuthStore()).clear()
@@ -79,44 +84,54 @@ describe('auth middleware', () => {
   })
 
   it('exchanges authId before using an existing cookie session', async () => {
-    mockFetchServerSession.mockResolvedValue({
-      token: 'stale-cookie-token',
-      authID: '',
-      clientUrl: '',
-      clientFullUrl: '',
-      userID: '',
-      userName: '',
-      urlID: 0,
-      email: '',
-    })
-    mockExchangeNimbleAuthId.mockResolvedValue({
-      token: 'fresh-token',
-      authID: 'auth-1',
-      clientUrl: 'qa22',
-      clientFullUrl: '',
-      userID: 'user-1',
-      userName: 'Test',
-      urlID: 1,
-      email: 'test@example.com',
-    })
+    mockFetchServerSession.mockResolvedValue(staleSession)
+    mockExchangeNimbleAuthId.mockResolvedValue(freshSession)
 
     const store = await getAuthStore()
-    store.setSession({
-      token: 'stale-pinia-token',
-      authID: '',
-      clientUrl: '',
-      clientFullUrl: '',
-      userID: '',
-      userName: '',
-      urlID: 0,
-      email: '',
-    })
+    store.setSession(makeNimbleSession({ token: 'stale-pinia-token' }))
 
     await runAuthMiddleware('/projects', { authId: 'new-auth-guid' })
 
     expect(mockExchangeNimbleAuthId).toHaveBeenCalledWith('new-auth-guid')
+    expect(mockFetchServerSession).not.toHaveBeenCalled()
     expect(store.token).toBe('fresh-token')
+    expect(mockSyncNimbleSessionFromAuth).toHaveBeenCalled()
     expect(mockNavigateTo).not.toHaveBeenCalled()
+  })
+
+  it('does not exchange authId when nimbleIntegrations is false (password login mode)', async () => {
+    nimbleIntegrations = 'false'
+    mockFetchServerSession.mockResolvedValue(staleSession)
+
+    const store = await getAuthStore()
+    await runAuthMiddleware('/projects', { authId: 'should-be-ignored' })
+
+    expect(mockExchangeNimbleAuthId).not.toHaveBeenCalled()
+    expect(store.token).toBe('stale-cookie-token')
+    expect(mockNavigateTo).not.toHaveBeenCalled()
+  })
+
+  it('falls back to cookie session when authId exchange fails', async () => {
+    mockExchangeNimbleAuthId.mockResolvedValue(null)
+    mockFetchServerSession.mockResolvedValue(staleSession)
+
+    const store = await getAuthStore()
+    await runAuthMiddleware('/projects', { authId: 'invalid-auth-id' })
+
+    expect(mockExchangeNimbleAuthId).toHaveBeenCalledWith('invalid-auth-id')
+    expect(store.token).toBe('stale-cookie-token')
+    expect(mockNavigateTo).not.toHaveBeenCalled()
+  })
+
+  it('syncs server cookie into Pinia when no authId is present', async () => {
+    mockFetchServerSession.mockResolvedValue(freshSession)
+
+    const store = await getAuthStore()
+    await runAuthMiddleware('/projects')
+
+    expect(mockExchangeNimbleAuthId).not.toHaveBeenCalled()
+    expect(store.token).toBe('fresh-token')
+    expect(mockSyncNimbleSessionFromAuth).toHaveBeenCalled()
   })
 
   it('does not clear a persisted session when cookie check fails', async () => {

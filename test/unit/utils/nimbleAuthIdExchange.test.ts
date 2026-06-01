@@ -45,4 +45,52 @@ describe('exchangeNimbleAuthId', () => {
     const { exchangeNimbleAuthId } = await import('../../../app/utils/nimbleAuthIdExchange')
     expect(await exchangeNimbleAuthId('bad-id')).toBeNull()
   })
+
+  it('trims whitespace from authId before calling the API', async () => {
+    const session = {
+      token: 'fresh-token',
+      authID: 'auth-1',
+      clientUrl: 'qa22',
+      clientFullUrl: '',
+      userID: 'user-1',
+      userName: 'Test User',
+      urlID: 1,
+      email: 'test@example.com',
+    }
+    mockFetch.mockResolvedValue({ session })
+
+    const { exchangeNimbleAuthId } = await import('../../../app/utils/nimbleAuthIdExchange')
+    await exchangeNimbleAuthId('  auth-guid-123  ')
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/auth/exchange-oauth', {
+      method: 'POST',
+      body: { authId: 'auth-guid-123' },
+      credentials: 'include',
+    })
+  })
+
+  it('returns null when the API response has no token on the session', async () => {
+    mockFetch.mockResolvedValue({
+      session: {
+        token: '',
+        authID: 'auth-1',
+        clientUrl: 'qa22',
+        clientFullUrl: '',
+        userID: 'user-1',
+        userName: 'Test User',
+        urlID: 1,
+        email: 'test@example.com',
+      },
+    })
+
+    const { exchangeNimbleAuthId } = await import('../../../app/utils/nimbleAuthIdExchange')
+    expect(await exchangeNimbleAuthId('auth-guid')).toBeNull()
+  })
+
+  it('returns null when the API response omits session', async () => {
+    mockFetch.mockResolvedValue({})
+
+    const { exchangeNimbleAuthId } = await import('../../../app/utils/nimbleAuthIdExchange')
+    expect(await exchangeNimbleAuthId('auth-guid')).toBeNull()
+  })
 })

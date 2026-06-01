@@ -4,7 +4,8 @@ import { syncNimbleSessionFromAuth } from '~/utils/authToken'
 import { usePrivilegesStore } from '~/stores/privileges'
 
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (!import.meta.client) return
+  // Browser-only (Nimble launch query). Use typeof window so unit tests in happy-dom can cover this path.
+  if (typeof window === 'undefined') return
 
   const authId = String(to.query.authId ?? '').trim()
   const corporationId = String(to.query.corporationId ?? '').trim()
