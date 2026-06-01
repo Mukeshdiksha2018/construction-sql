@@ -1,4 +1,4 @@
-import { getChangeOrderInvoiceSummary } from '../../utils/changeOrders'
+import { getChangeOrderInvoiceSummary } from '../../utils/vendorInvoiceSummary'
 
 export default defineEventHandler(async (event) => {
   const { change_order_uuid } = getQuery(event)

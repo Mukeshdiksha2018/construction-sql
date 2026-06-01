@@ -420,7 +420,9 @@ describe('changeOrders server utils', () => {
         advance_paid: 0,
       })
 
-      const { getChangeOrderInvoiceSummary } = await importUtils()
+      const { getChangeOrderInvoiceSummary } = await import(
+        '../../../server/utils/vendorInvoiceSummary'
+      )
       const summary = await getChangeOrderInvoiceSummary('co-uuid-1')
 
       expect(mockGetChangeOrderInvoiceSummary).toHaveBeenCalledWith('co-uuid-1')

@@ -22,11 +22,14 @@ vi.mock('../../../server/utils/changeOrders', () => ({
   updateChangeOrder: (...a: unknown[]) => mockUpdateChangeOrder(...a),
   deleteChangeOrder: (...a: unknown[]) => mockDeleteChangeOrder(...a),
   generateNextCoNumber: (...a: unknown[]) => mockGenerateNextCoNumber(...a),
-  getChangeOrderInvoiceSummary: (...a: unknown[]) => mockGetChangeOrderInvoiceSummary(...a),
   uploadChangeOrderAttachments: (...a: unknown[]) => mockUploadAttachments(...a),
   removeChangeOrderAttachment: (...a: unknown[]) => mockRemoveAttachment(...a),
   getChangeOrderItems: (...a: unknown[]) => mockGetChangeOrderItems(...a),
   getLaborChangeOrderItems: (...a: unknown[]) => mockGetLaborChangeOrderItems(...a),
+}))
+
+vi.mock('../../../server/utils/vendorInvoiceSummary', () => ({
+  getChangeOrderInvoiceSummary: (...a: unknown[]) => mockGetChangeOrderInvoiceSummary(...a),
 }))
 
 const makeEvent = () =>

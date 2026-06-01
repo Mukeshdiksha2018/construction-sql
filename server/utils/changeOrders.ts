@@ -1245,6 +1245,3 @@ export async function removeChangeOrderAttachment(changeOrderUuid: string, attac
   }
 }
 
-// ─── Invoice Summary ────────────────────────────────────────────────────────────
-
-export { getChangeOrderInvoiceSummary } from './vendorInvoiceSummary'

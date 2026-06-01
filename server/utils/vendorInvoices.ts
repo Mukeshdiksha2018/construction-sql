@@ -3,7 +3,7 @@ import { createError } from 'h3'
 import { getPrisma } from './prisma'
 import { sanitizeAttachments } from './financialBreakdown'
 import {
-  buildFinancialBreakdown,
+  buildVendorInvoiceFinancialBreakdown,
   buildVendorInvoiceCoaAssignmentRows,
   decorateVendorInvoiceRecord,
   hasFinancialFields,
@@ -1161,7 +1161,7 @@ async function enrichListMetadata(rows: any[]) {
 }
 
 function buildInsertData(body: Record<string, any>, invoiceUuid: string, invoiceType: string) {
-  const financialBreakdown = buildFinancialBreakdown(body)
+  const financialBreakdown = buildVendorInvoiceFinancialBreakdown(body)
   return {
     uuid: invoiceUuid,
     corporation_uuid: body.corporation_uuid,
@@ -1416,7 +1416,7 @@ export async function updateVendorInvoice(uuid: string, body: Record<string, any
   }
 
   if (body.financial_breakdown !== undefined || hasFinancialFields(body)) {
-    updateData.financial_breakdown = stringifyJson(buildFinancialBreakdown(body))
+    updateData.financial_breakdown = stringifyJson(buildVendorInvoiceFinancialBreakdown(body))
   }
   if (body.attachments !== undefined) {
     updateData.attachments = stringifyJson(sanitizeAttachments(body.attachments))

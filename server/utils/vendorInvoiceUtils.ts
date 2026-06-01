@@ -1,7 +1,3 @@
-import { sanitizeAttachments } from './financialBreakdown'
-
-export { sanitizeAttachments }
-
 const toNumericOrNull = (value: any): number | null => {
   if (value === null || value === undefined || value === '') return null
   if (typeof value === 'number') {
@@ -42,7 +38,7 @@ const emptyTotals = () => ({
   total_invoice_amount: null,
 })
 
-export const buildFinancialBreakdown = (payload: any) => {
+export const buildVendorInvoiceFinancialBreakdown = (payload: any) => {
   if (
     payload &&
     typeof payload.financial_breakdown === 'object' &&
