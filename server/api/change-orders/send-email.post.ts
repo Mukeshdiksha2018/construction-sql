@@ -1,11 +1,11 @@
 import nodemailer from "nodemailer";
 import { readMultipartFormData } from "h3";
-import { getPrisma } from '~/server/utils/prisma'
+import { getPrisma } from '../../utils/prisma'
 import {
   appendSkippedAttachmentsNotice,
   filterCoAttachmentsExcludingUuids,
   loadChangeOrderEmailStorageAttachments,
-} from "~/server/utils/changeOrderEmailAttachments";
+} from '../../utils/changeOrderEmailAttachments'
 
 function parseEmailList(raw: string): string[] {
   if (!raw || !String(raw).trim()) return [];

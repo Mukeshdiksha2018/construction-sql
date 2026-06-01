@@ -198,4 +198,22 @@ export async function loadChangeOrderEmailStorageAttachments(
   return result;
 }
 
-export { appendSkippedAttachmentsNotice } from "~/server/utils/purchaseOrderEmailAttachments";
+function escapeHtml(text: string): string {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+export function appendSkippedAttachmentsNotice(
+  htmlBody: string,
+  skipped: Array<{ name: string; reason: string }>,
+): string {
+  if (!skipped.length) return htmlBody
+  const items = skipped
+    .map((s) => `<li>${escapeHtml(s.name)}: ${escapeHtml(s.reason)}</li>`)
+    .join('')
+  const notice = `<p><em>The following files could not be attached: </em></p><ul>${items}</ul>`
+  return `${htmlBody}${notice}`
+}
