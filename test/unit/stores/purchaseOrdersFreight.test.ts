@@ -55,7 +55,7 @@ function buildFreightNameMap(list: any[]): Record<string, string> {
 }
 
 async function getFreightStore() {
-  const { useFreightStore } = await import('../../../app/stores/freight')
+  const { useFreightStore } = await import('../../../app/stores/freightGlobal')
   return useFreightStore()
 }
 
