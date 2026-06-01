@@ -103,17 +103,17 @@ export interface ChangeOrderResponse {
   error?: string
 }
 
-export interface PaginationInfo {
-  page: number;
-  pageSize: number;
-  totalRecords: number;
-  totalPages: number;
-  hasMore: boolean;
+export interface ChangeOrderPaginationInfo {
+  page: number
+  pageSize: number
+  totalRecords: number
+  totalPages: number
+  hasMore: boolean
 }
 
 export interface ChangeOrdersResponse {
   data: ChangeOrder[]
-  pagination?: PaginationInfo
+  pagination?: ChangeOrderPaginationInfo
   error?: string
 }
 
@@ -129,7 +129,7 @@ export const useChangeOrdersStore = defineStore('changeOrders', () => {
   const isClient = typeof window !== 'undefined'
   
   // Pagination state
-  const paginationInfo = ref<Record<string, PaginationInfo>>({})
+  const paginationInfo = ref<Record<string, ChangeOrderPaginationInfo>>({})
   const loadedPages = ref<Record<string, Set<number>>>({})
 
   const resolveCurrentUserName = (): string => {
@@ -641,7 +641,7 @@ export const useChangeOrdersStore = defineStore('changeOrders', () => {
   /**
    * Get pagination info for a corporation
    */
-  const getPaginationInfo = (corporationUuid: string): PaginationInfo | null => {
+  const getPaginationInfo = (corporationUuid: string): ChangeOrderPaginationInfo | null => {
     return paginationInfo.value[corporationUuid] || null
   }
 

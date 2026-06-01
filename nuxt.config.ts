@@ -7,6 +7,9 @@ export default defineNuxtConfig({
   modules: ['@nuxt/ui', '@pinia/nuxt', 'nuxt-tiptap-editor'],
   vite: {
     plugins: [tailwindcss()],
+    optimizeDeps: {
+      include: ['dexie'],
+    },
   },
   css: ['~/assets/css/main.css'],
   ui: {
