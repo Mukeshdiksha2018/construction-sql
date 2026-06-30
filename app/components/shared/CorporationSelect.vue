@@ -97,11 +97,15 @@ const corporationOptions = computed(() =>
   }))
 )
 
-const corporationOptionsMap = computed(() => new Map(corporationOptions.value.map(c => [c.value, c])))
+function findCorporationOption(id: string | undefined) {
+  if (!id) return undefined
+  const normalized = id.toLowerCase()
+  return corporationOptions.value.find(c => String(c.value).toLowerCase() === normalized)
+}
 
 const updateSelectedCorporationObject = () => {
   selectedCorporationObject.value = selectedCorporation.value
-    ? corporationOptionsMap.value.get(selectedCorporation.value) || undefined
+    ? findCorporationOption(selectedCorporation.value)
     : undefined
 }
 
@@ -118,13 +122,22 @@ const handleSelection = (corporation: any) => {
     : corporation.value ?? corporation.uuid ?? corporation.id ?? undefined
   if (!resolvedValue) return
   selectedCorporation.value = resolvedValue
-  const option = corporationOptionsMap.value.get(resolvedValue)
+  const option = findCorporationOption(resolvedValue)
   selectedCorporationObject.value = option || (typeof corporation === 'object' ? corporation : { value: resolvedValue })
-  emit('update:modelValue', resolvedValue)
+  emit('update:modelValue', option?.value ?? resolvedValue)
   emit('change', selectedCorporationObject.value)
 }
 
-watch(() => props.modelValue, v => { selectedCorporation.value = v; updateSelectedCorporationObject() })
+watch(() => props.modelValue, (v) => {
+  if (!v) {
+    selectedCorporation.value = undefined
+    updateSelectedCorporationObject()
+    return
+  }
+  const match = findCorporationOption(v)
+  selectedCorporation.value = match?.value ?? v
+  updateSelectedCorporationObject()
+})
 watch(corporationOptions, () => updateSelectedCorporationObject(), { immediate: true })
 watch(selectedCorporation, () => updateSelectedCorporationObject())
 </script>

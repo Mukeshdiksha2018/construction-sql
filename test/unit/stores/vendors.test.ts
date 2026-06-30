@@ -6,27 +6,31 @@ import { useVendorStore } from '~/stores/vendors'
 
 const CORP_UUID = 'corp-test-123'
 
-function makeDTO(overrides: Record<string, unknown> = {}) {
+function makeSqlVendor(overrides: Record<string, unknown> = {}) {
   return {
-    vendorID: 'vendor-uuid-1',
-    vendorName: 'Acme Supplies',
-    corporationID: CORP_UUID,
-    corporationName: 'Test Corp',
-    clientName: 'qa22',
-    federalID: '12-3456789',
-    creditDays: 30,
-    creditDaysID: 'cd-uuid-1',
-    paymentMethodID: 'pm-uuid-1',
-    paymentMethodName: 'CHECK',
-    status: 1,
-    addressDetails: [],
-    contractDetails: [],
+    vendor_id: 'vendor-uuid-1',
+    name: 'Acme Supplies',
+    company_name: null,
+    corporation_id: CORP_UUID,
+    account_id: null,
+    status: 1 as const,
+    status_label: 'active' as const,
+    tax_id: '12-3456789',
+    contact_person_name: null,
+    credit_limit: null,
+    check_reference: null,
+    type: 1,
+    bid: '1',
+    created_by: null,
+    modified_by: null,
+    created_at: null,
+    modified_at: null,
     ...overrides,
   }
 }
 
-function makeApiResponse(vendors = [makeDTO()]) {
-  return { vendors, total: vendors.length }
+function makeApiResponse(vendors = [makeSqlVendor()]) {
+  return { vendors }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -47,14 +51,14 @@ describe('useVendorStore', () => {
   // ── fetchVendors ──────────────────────────────────────────────────────────
 
   describe('fetchVendors', () => {
-    it('calls the proxy endpoint with corporation_uuid', async () => {
+    it('calls the Nimble SQL endpoint with corporation_uuid', async () => {
       mockFetch.mockResolvedValue(makeApiResponse())
       const store = useVendorStore()
 
       await store.fetchVendors(CORP_UUID)
 
       expect(mockFetch).toHaveBeenCalledWith(
-        '/api/nimble/vendors',
+        '/api/nimble-vendors',
         { query: { corporation_uuid: CORP_UUID }, credentials: 'include' },
       )
     })
@@ -71,74 +75,81 @@ describe('useVendorStore', () => {
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
-    it('normalises the DTO: vendorID → uuid (lowercased)', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'V-ABC-UPPER' })]))
+    it('normalises vendor_id → uuid (lowercased)', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'V-ABC-UPPER' })]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
       expect(store.vendors[0]?.uuid).toBe('v-abc-upper')
     })
 
-    it('normalises vendorName → vendor_name', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorName: 'Northern Build Supply' })]))
+    it('normalises name → vendor_name', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ name: 'Northern Build Supply' })]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
       expect(store.vendors[0]?.vendor_name).toBe('Northern Build Supply')
     })
 
-    it('normalises corporationID → corporation_uuid (lowercased)', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ corporationID: 'CORP-XYZ-UPPER' })]))
+    it('normalises corporation_id → corporation_uuid (lowercased)', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ corporation_id: 'CORP-XYZ-UPPER' })]))
       const store = useVendorStore()
       await store.fetchVendors('corp-xyz-upper')
       expect(store.vendors[0]?.corporation_uuid).toBe('corp-xyz-upper')
     })
 
-    it('falls back to the queried corporationUuid when corporationID is missing, lowercased', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ corporationID: undefined })]))
-      const store = useVendorStore()
-      await store.fetchVendors('INJECTED-CORP')
-      expect(store.vendors[0]?.corporation_uuid).toBe('injected-corp')
-    })
-
-    it('normalises federalID → federal_id', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ federalID: '99-1234567' })]))
+    it('normalises tax_id → federal_id', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ tax_id: '99-1234567' })]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
       expect(store.vendors[0]?.federal_id).toBe('99-1234567')
     })
 
-    it('sets federal_id to null when federalID is absent', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ federalID: undefined })]))
+    it('normalises federal_id when present on SQL vendor', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({
+        tax_id: null,
+        federal_id: '11-2233445',
+      })]))
+      const store = useVendorStore()
+      await store.fetchVendors(CORP_UUID)
+      expect(store.vendors[0]?.federal_id).toBe('11-2233445')
+    })
+
+    it('sets federal_id to null when tax_id is absent', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ tax_id: null })]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
       expect(store.vendors[0]?.federal_id).toBeNull()
     })
 
-    it('normalises paymentMethodName → payment_method', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ paymentMethodName: 'ACH' })]))
+    it('sets payment_method to null (SQL vendors have no payment method on Business)', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor()]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
-      expect(store.vendors[0]?.payment_method).toBe('ACH')
+      expect(store.vendors[0]?.payment_method).toBeNull()
     })
 
     it('marks is_active = true when status === 1', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ status: 1 })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ status: 1, status_label: 'active' })]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
       expect(store.vendors[0]?.is_active).toBe(true)
     })
 
     it('marks is_active = false when status === 0', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ status: 0 })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ status: 0, status_label: 'inactive' })]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
       expect(store.vendors[0]?.is_active).toBe(false)
     })
 
-    it('marks is_active = false when status is absent', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ status: undefined })]))
+    it('excludes soft-deleted vendors (status === 3) from dropdown list', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([
+        makeSqlVendor({ vendor_id: 'active-v', status: 1, status_label: 'active' }),
+        makeSqlVendor({ vendor_id: 'deleted-v', status: 3, status_label: 'deleted' }),
+      ]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
-      expect(store.vendors[0]?.is_active).toBe(false)
+      expect(store.vendors).toHaveLength(1)
+      expect(store.vendors[0]?.uuid).toBe('active-v')
     })
 
     it('sets loading = false after a successful fetch', async () => {
@@ -149,13 +160,13 @@ describe('useVendorStore', () => {
     })
 
     it('handles an empty vendor list gracefully', async () => {
-      mockFetch.mockResolvedValue({ vendors: [], total: 0 })
+      mockFetch.mockResolvedValue({ vendors: [] })
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
       expect(store.vendors).toHaveLength(0)
     })
 
-    it('handles missing vendorContractMasterList key gracefully', async () => {
+    it('handles missing vendors key gracefully', async () => {
       mockFetch.mockResolvedValue({})
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
@@ -196,10 +207,10 @@ describe('useVendorStore', () => {
 
     it('replaces existing vendors for a corp on re-fetch', async () => {
       const store = useVendorStore()
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'old-v' })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'old-v' })]))
       await store.fetchVendors(CORP_UUID)
 
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'new-v' })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'new-v' })]))
       await store.fetchVendors(CORP_UUID, true)
 
       expect(store.vendors).toHaveLength(1)
@@ -207,11 +218,11 @@ describe('useVendorStore', () => {
     })
 
     it('keeps vendors for other corps when re-fetching one', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'v-c1', corporationID: 'corp-1' })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'v-c1', corporation_id: 'corp-1' })]))
       const store = useVendorStore()
       await store.fetchVendors('corp-1')
 
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'v-c2', corporationID: 'corp-2' })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'v-c2', corporation_id: 'corp-2' })]))
       await store.fetchVendors('corp-2')
 
       expect(store.vendors).toHaveLength(2)
@@ -269,9 +280,9 @@ describe('useVendorStore', () => {
   describe('getActive', () => {
     it('returns only active vendors across all corporations', async () => {
       mockFetch.mockResolvedValue(makeApiResponse([
-        makeDTO({ vendorID: 'a1', status: 1 }),
-        makeDTO({ vendorID: 'a2', status: 0 }),
-        makeDTO({ vendorID: 'a3', status: 1 }),
+        makeSqlVendor({ vendor_id: 'a1', status: 1, status_label: 'active' }),
+        makeSqlVendor({ vendor_id: 'a2', status: 0, status_label: 'inactive' }),
+        makeSqlVendor({ vendor_id: 'a3', status: 1, status_label: 'active' }),
       ]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
@@ -291,8 +302,8 @@ describe('useVendorStore', () => {
   describe('getVendorsForCorporation', () => {
     it('returns all vendors (active + inactive) for the given corp', async () => {
       mockFetch.mockResolvedValue(makeApiResponse([
-        makeDTO({ vendorID: 'v1', status: 1 }),
-        makeDTO({ vendorID: 'v2', status: 0 }),
+        makeSqlVendor({ vendor_id: 'v1', status: 1, status_label: 'active' }),
+        makeSqlVendor({ vendor_id: 'v2', status: 0, status_label: 'inactive' }),
       ]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
@@ -301,7 +312,7 @@ describe('useVendorStore', () => {
     })
 
     it('is case-insensitive on the corporation UUID', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO()]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor()]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
 
@@ -309,7 +320,7 @@ describe('useVendorStore', () => {
     })
 
     it('returns empty array for an unknown corporation', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO()]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor()]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
 
@@ -318,9 +329,9 @@ describe('useVendorStore', () => {
 
     it('does not return vendors from other corporations', async () => {
       const store = useVendorStore()
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'v-c1', corporationID: 'corp-1' })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'v-c1', corporation_id: 'corp-1' })]))
       await store.fetchVendors('corp-1')
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'v-c2', corporationID: 'corp-2' })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'v-c2', corporation_id: 'corp-2' })]))
       await store.fetchVendors('corp-2')
 
       const c1 = store.getVendorsForCorporation('corp-1')
@@ -334,8 +345,8 @@ describe('useVendorStore', () => {
   describe('getActiveForCorporation', () => {
     it('returns only active vendors for the given corp', async () => {
       mockFetch.mockResolvedValue(makeApiResponse([
-        makeDTO({ vendorID: 'v-act', status: 1 }),
-        makeDTO({ vendorID: 'v-ina', status: 0 }),
+        makeSqlVendor({ vendor_id: 'v-act', status: 1, status_label: 'active' }),
+        makeSqlVendor({ vendor_id: 'v-ina', status: 0, status_label: 'inactive' }),
       ]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
@@ -346,7 +357,7 @@ describe('useVendorStore', () => {
     })
 
     it('returns empty array when corp has no active vendors', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ status: 0 })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ status: 0, status_label: 'inactive' })]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
 
@@ -358,7 +369,7 @@ describe('useVendorStore', () => {
 
   describe('getVendorById', () => {
     it('finds a vendor by UUID (exact match)', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'find-me', vendorName: 'Target Vendor' })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'find-me', name: 'Target Vendor' })]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
 
@@ -366,7 +377,7 @@ describe('useVendorStore', () => {
     })
 
     it('is case-insensitive on UUID lookup', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'ABC123' })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'ABC123' })]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
 
@@ -374,7 +385,7 @@ describe('useVendorStore', () => {
     })
 
     it('returns undefined for an unknown UUID', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO()]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor()]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
 
@@ -390,12 +401,9 @@ describe('useVendorStore', () => {
   // ── UUID case-normalisation (pre-selection regression) ────────────────────
 
   describe('UUID case normalisation', () => {
-    it('stores vendorID as lowercase so DB-stored lowercase UUIDs match', async () => {
-      // Nimble returns uppercase vendorIDs; the DB stores them lowercased (via mapRow).
-      // VendorSelect looks up the UUID straight from the DB value, so both sides must
-      // use the same case.
+    it('stores vendor_id as lowercase so DB-stored lowercase UUIDs match', async () => {
       mockFetch.mockResolvedValue(makeApiResponse([
-        makeDTO({ vendorID: '67602259C7C97FBE41F1846ACE6C90320000' }),
+        makeSqlVendor({ vendor_id: '67602259C7C97FBE41F1846ACE6C90320000' }),
       ]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
@@ -407,7 +415,7 @@ describe('useVendorStore', () => {
     })
 
     it('getVendorById resolves the uppercase Nimble ID when stored lowercase', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'UPPER-ID' })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'UPPER-ID' })]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
 
@@ -422,7 +430,7 @@ describe('useVendorStore', () => {
 
   describe('getVendorName', () => {
     it('returns the vendor name for a known UUID', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'v1', vendorName: 'UltraTech Cement' })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'v1', name: 'UltraTech Cement' })]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
 
@@ -464,10 +472,10 @@ describe('useVendorStore', () => {
 
     it('updates vendor list after refresh', async () => {
       const store = useVendorStore()
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'v1' })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'v1' })]))
       await store.fetchVendors(CORP_UUID)
 
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO({ vendorID: 'v2' })]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ vendor_id: 'v2' })]))
       await store.refresh(CORP_UUID)
 
       expect(store.vendors[0]?.uuid).toBe('v2')
@@ -478,7 +486,7 @@ describe('useVendorStore', () => {
 
   describe('clear', () => {
     it('resets all state', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO()]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor()]))
       const store = useVendorStore()
       await store.fetchVendors(CORP_UUID)
       expect(store.vendors).toHaveLength(1)
@@ -500,7 +508,7 @@ describe('useVendorStore', () => {
     })
 
     it('clears vendors for all corporations', async () => {
-      mockFetch.mockResolvedValue(makeApiResponse([makeDTO()]))
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor()]))
       const store = useVendorStore()
       await store.fetchVendors('corp-1')
       await store.fetchVendors('corp-2')
@@ -508,6 +516,31 @@ describe('useVendorStore', () => {
 
       store.clear()
       expect(store.vendors).toHaveLength(0)
+    })
+  })
+
+  // ── vendor addresses ────────────────────────────────────────────────────
+
+  describe('vendor addresses', () => {
+    it('fetchVendorAddresses calls the addresses endpoint', async () => {
+      mockFetch.mockResolvedValue({ addresses: [{ vendor_address_id: 1 }] })
+      const store = useVendorStore()
+      const rows = await store.fetchVendorAddresses('vendor-1')
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/nimble-vendors/vendor-1/addresses',
+        { credentials: 'include' },
+      )
+      expect(rows).toHaveLength(1)
+    })
+
+    it('createVendorAddress posts payload', async () => {
+      mockFetch.mockResolvedValue({ address: { vendor_address_id: 2 } })
+      const store = useVendorStore()
+      await store.createVendorAddress('vendor-1', { name: 'HQ' })
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/nimble-vendors/vendor-1/addresses',
+        { method: 'POST', body: { name: 'HQ' }, credentials: 'include' },
+      )
     })
   })
 })

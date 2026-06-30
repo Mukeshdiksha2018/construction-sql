@@ -3,7 +3,7 @@ import { normalizeUTC } from './reportHelpers'
 import {
   isFullyPaidInvoiceStatus,
   isPartiallyPaidInvoiceStatus,
-} from '../../app/utils/invoiceReportPaymentTotals'
+} from '../../../app/utils/invoiceReportPaymentTotals'
 
 const prisma = getPrisma()
 
