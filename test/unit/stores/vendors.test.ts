@@ -103,6 +103,16 @@ describe('useVendorStore', () => {
       expect(store.vendors[0]?.federal_id).toBe('99-1234567')
     })
 
+    it('normalises federal_id when present on SQL vendor', async () => {
+      mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({
+        tax_id: null,
+        federal_id: '11-2233445',
+      })]))
+      const store = useVendorStore()
+      await store.fetchVendors(CORP_UUID)
+      expect(store.vendors[0]?.federal_id).toBe('11-2233445')
+    })
+
     it('sets federal_id to null when tax_id is absent', async () => {
       mockFetch.mockResolvedValue(makeApiResponse([makeSqlVendor({ tax_id: null })]))
       const store = useVendorStore()
@@ -506,6 +516,31 @@ describe('useVendorStore', () => {
 
       store.clear()
       expect(store.vendors).toHaveLength(0)
+    })
+  })
+
+  // ── vendor addresses ────────────────────────────────────────────────────
+
+  describe('vendor addresses', () => {
+    it('fetchVendorAddresses calls the addresses endpoint', async () => {
+      mockFetch.mockResolvedValue({ addresses: [{ vendor_address_id: 1 }] })
+      const store = useVendorStore()
+      const rows = await store.fetchVendorAddresses('vendor-1')
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/nimble-vendors/vendor-1/addresses',
+        { credentials: 'include' },
+      )
+      expect(rows).toHaveLength(1)
+    })
+
+    it('createVendorAddress posts payload', async () => {
+      mockFetch.mockResolvedValue({ address: { vendor_address_id: 2 } })
+      const store = useVendorStore()
+      await store.createVendorAddress('vendor-1', { name: 'HQ' })
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/nimble-vendors/vendor-1/addresses',
+        { method: 'POST', body: { name: 'HQ' }, credentials: 'include' },
+      )
     })
   })
 })

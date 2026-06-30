@@ -43,12 +43,32 @@ function bindInput(request: sql.Request, name: string, value: unknown) {
 export async function nimbleMssqlQueryParams<T = Record<string, unknown>>(
   queryText: string,
   inputs: Record<string, unknown> = {},
+  transaction?: sql.Transaction,
 ): Promise<T[]> {
-  const pool = await getNimbleMssqlPool()
-  const request = pool.request()
+  const request = transaction
+    ? new sql.Request(transaction)
+    : (await getNimbleMssqlPool()).request()
   for (const [name, value] of Object.entries(inputs)) {
     bindInput(request, name, value)
   }
   const result = await request.query<T>(queryText)
   return result.recordset ?? []
+}
+
+/** Run queries in a Nimble DB transaction. */
+export async function nimbleMssqlTransaction<T>(
+  fn: (transaction: sql.Transaction) => Promise<T>,
+): Promise<T> {
+  const pool = await getNimbleMssqlPool()
+  const transaction = new sql.Transaction(pool)
+  await transaction.begin()
+  try {
+    const result = await fn(transaction)
+    await transaction.commit()
+    return result
+  }
+  catch (error) {
+    await transaction.rollback()
+    throw error
+  }
 }

@@ -12,7 +12,7 @@
         />
       </div>
       <UButton
-        icon="i-material-symbols-add-rounded"
+        icon="i-heroicons-plus"
         size="xs"
         color="primary"
         variant="solid"
@@ -23,19 +23,42 @@
     </div>
 
     <p v-else class="text-muted mb-4">
-      Select a corporation to manage vendors.
+      Select a corporation in the top bar to manage vendors.
     </p>
 
     <div v-if="vendorStore.nimbleLoading">
-      <p class="text-muted text-sm py-8 text-center">
-        Loading vendors...
-      </p>
+      <div class="relative overflow-auto rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div class="bg-gray-50 dark:bg-gray-700">
+          <div
+            class="grid gap-4 px-2 py-2 text-sm font-bold text-gray-800 dark:text-gray-200 tracking-wider border-b border-gray-200 dark:border-gray-600"
+            style="grid-template-columns: repeat(8, minmax(0, 1fr));"
+          >
+            <div v-for="idx in 8" :key="idx" class="flex items-center gap-2">
+              <USkeleton class="h-4 w-4 rounded" />
+              <USkeleton class="h-4 w-16" />
+            </div>
+          </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+          <div
+            v-for="i in 8"
+            :key="i"
+            class="grid gap-4 px-2 py-1"
+            style="grid-template-columns: repeat(8, minmax(0, 1fr));"
+          >
+            <USkeleton v-for="j in 8" :key="j" class="h-4 w-20" />
+          </div>
+        </div>
+      </div>
     </div>
 
     <div v-else-if="vendorStore.nimbleError">
-      <p class="text-red-500">
-        Error: {{ vendorStore.nimbleError }}
-      </p>
+      <UAlert
+        icon="i-heroicons-exclamation-triangle"
+        color="error"
+        variant="soft"
+        :title="vendorStore.nimbleError"
+      />
     </div>
 
     <div v-else-if="filteredVendors.length">
@@ -56,7 +79,7 @@
         class="mt-4 flex flex-col sm:flex-row justify-between items-center gap-4"
       >
         <div class="flex items-center gap-2">
-          <span class="text-sm text-muted">Show:</span>
+          <span class="text-sm text-gray-600">Show:</span>
           <USelect
             v-model="pagination.pageSize"
             :items="pageSizeOptions"
@@ -73,7 +96,7 @@
           :total="table?.tableApi?.getFilteredRowModel().rows.length"
           @update:page="(p: number) => table?.tableApi?.setPageIndex(p - 1)"
         />
-        <div class="text-sm text-muted">
+        <div class="text-sm text-gray-600">
           Showing
           {{ (table?.tableApi?.getState().pagination.pageIndex || 0) * (table?.tableApi?.getState().pagination.pageSize || 10) + 1 }}
           to
@@ -85,7 +108,7 @@
       </div>
     </div>
 
-    <p v-else class="text-muted text-center py-12">
+    <p v-else-if="corpStore.selectedCorporation" class="text-muted text-center py-12">
       No vendors found.
     </p>
 
@@ -95,20 +118,26 @@
       @saved="handleSaved"
     />
 
-    <UModal
-      v-model:open="showDeleteModal"
-      title="Delete Vendor"
-      description="The vendor will be marked deleted in Nimble (Status = 3)."
-    >
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton color="neutral" variant="outline" @click="showDeleteModal = false">
-            Cancel
-          </UButton>
-          <UButton color="error" :loading="deleting" @click="confirmDelete">
+    <UModal v-model:open="showDeleteModal" :ui="{ footer: 'hidden' }">
+      <template #header>
+        <div class="flex items-center justify-between w-full gap-4">
+          <h3 class="text-lg font-semibold text-default">
             Delete Vendor
-          </UButton>
+          </h3>
+          <div class="flex items-center gap-2">
+            <UButton color="neutral" variant="soft" @click="showDeleteModal = false">
+              Cancel
+            </UButton>
+            <UButton color="error" :loading="deleting" @click="confirmDelete">
+              Delete Vendor
+            </UButton>
+          </div>
         </div>
+      </template>
+      <template #body>
+        <p class="text-sm text-muted">
+          The vendor will be marked deleted in Nimble (Status = 3). Historical purchase orders keep the vendor reference.
+        </p>
       </template>
     </UModal>
   </div>
@@ -123,7 +152,7 @@ import { useCorporationStore } from '~/stores/corporations'
 import { useChartOfAccountsStore } from '~/stores/chartOfAccounts'
 
 const UButton = resolveComponent('UButton')
-const UBadge = resolveComponent('UBadge')
+const UTooltip = resolveComponent('UTooltip')
 
 const vendorStore = useVendorStore()
 const corpStore = useCorporationStore()
@@ -183,6 +212,7 @@ const filteredVendors = computed(() => {
       v.name,
       v.company_name ?? '',
       v.tax_id ?? '',
+      v.federal_id ?? '',
       v.contact_person_name ?? '',
       corporationNameById.value[v.corporation_id] ?? '',
       accountLabelById.value[v.account_id ?? ''] ?? '',
@@ -193,10 +223,10 @@ const filteredVendors = computed(() => {
 
 const shouldShowPagination = computed(() => filteredVendors.value.length > 10)
 
-function statusBadgeColor(status: number) {
-  if (status === 1) return 'success'
-  if (status === 3) return 'error'
-  return 'neutral'
+function statusClass(status: number) {
+  if (status === 1) return 'bg-success/10 text-success'
+  if (status === 3) return 'bg-error/10 text-error'
+  return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
 }
 
 const columns: TableColumn<NimbleDbVendor>[] = [
@@ -231,11 +261,9 @@ const columns: TableColumn<NimbleDbVendor>[] = [
     accessorKey: 'status',
     header: 'Status',
     enableSorting: false,
-    cell: ({ row }) => h(UBadge, {
-      color: statusBadgeColor(row.original.status),
-      variant: 'soft',
-      size: 'sm',
-    }, () => row.original.status_label),
+    cell: ({ row }) => h('span', {
+      class: `inline-flex items-center px-2 py-1 gap-1 rounded-md text-xs font-medium ${statusClass(row.original.status)}`,
+    }, row.original.status_label),
   },
   {
     accessorKey: 'created_by',
@@ -253,25 +281,32 @@ const columns: TableColumn<NimbleDbVendor>[] = [
     id: 'actions',
     header: 'Actions',
     enableSorting: false,
+    meta: { class: { th: 'text-right sticky right-0 z-10 w-28', td: 'text-right sticky right-0 w-28' } },
     cell: ({ row }) => {
       if (row.original.status === 3) {
         return h('span', { class: 'text-xs text-muted' }, 'Deleted')
       }
-      return h('div', { class: 'flex justify-end gap-1' }, [
-        h(UButton, {
-          icon: 'i-heroicons-pencil-square',
-          size: 'xs',
-          color: 'neutral',
-          variant: 'ghost',
-          onClick: () => openEdit(row.original),
-        }),
-        h(UButton, {
-          icon: 'i-heroicons-trash',
-          size: 'xs',
-          color: 'error',
-          variant: 'ghost',
-          onClick: () => openDelete(row.original),
-        }),
+      return h('div', { class: 'flex justify-end space-x-2' }, [
+        h(UTooltip, { text: 'Edit Vendor' }, () => [
+          h(UButton, {
+            icon: 'tdesign:edit-filled',
+            size: 'xs',
+            variant: 'soft',
+            color: 'secondary',
+            class: 'hover:scale-105 transition-transform',
+            onClick: () => openEdit(row.original),
+          }),
+        ]),
+        h(UTooltip, { text: 'Delete Vendor' }, () => [
+          h(UButton, {
+            icon: 'mingcute:delete-fill',
+            size: 'xs',
+            variant: 'soft',
+            color: 'error',
+            class: 'hover:scale-105 transition-transform',
+            onClick: () => openDelete(row.original),
+          }),
+        ]),
       ])
     },
   },
@@ -320,11 +355,14 @@ async function confirmDelete() {
   }
 }
 
-async function handleSaved() {
+async function handleSaved(vendor?: NimbleDbVendor) {
   const corpId = corpStore.selectedCorporation?.id
   if (corpId) {
     await vendorStore.fetchNimbleDbVendors(corpId, true)
     await vendorStore.refresh(corpId)
+  }
+  if (vendor) {
+    editingVendor.value = vendor
   }
 }
 
@@ -332,7 +370,10 @@ function updatePageSize() {
   table.value?.tableApi?.setPageIndex(0)
 }
 
-watch(() => corpStore.selectedCorporation?.id, () => {
+watch(() => corpStore.selectedCorporation?.id, (corpId) => {
+  if (corpId) {
+    coaStore.fetchAccounts(corpId)
+  }
   loadVendors()
 })
 

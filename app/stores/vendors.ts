@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
-/** Vendor row from Nimble SQL `dbo.Business` API */
+/** Vendor row from Nimble SQL `dbo.Business` + `dbo.BusinessInfo` API */
 export interface NimbleDbVendor {
   vendor_id: string
   name: string
@@ -14,6 +14,11 @@ export interface NimbleDbVendor {
   contact_person_name: string | null
   credit_limit: number | null
   check_reference: string | null
+  federal_id: string | null
+  ssn: string | null
+  print_check_as: string | null
+  is_1099: boolean
+  credit_days_id: string | null
   type: number
   bid: string | null
   created_by: string | null
@@ -32,6 +37,59 @@ export interface NimbleVendorInputPayload {
   contact_person_name?: string | null
   credit_limit?: number | null
   check_reference?: string | null
+  federal_id?: string | null
+  ssn?: string | null
+  print_check_as?: string | null
+  is_1099?: boolean
+  credit_days_id?: string | null
+}
+
+/** Vendor address link row from `/api/nimble-vendors/:id/addresses` */
+export interface VendorAddressRecord {
+  vendor_address_id: number
+  vendor_id: string
+  address_id: string
+  contact_id: string
+  address_line_1: string | null
+  address_line_2: string | null
+  city: string | null
+  state_id: number | null
+  state_name: string | null
+  country_id: number | null
+  country_name: string | null
+  zip_code: string | null
+  contact_name: string | null
+  mobile_num: string | null
+  alternative_num: string | null
+  work_num: string | null
+  fax_num: string | null
+  email: string | null
+  website: string | null
+  address_type: number | null
+  business_type_id: string | null
+  is_default: boolean
+  status: number
+  status_label: 'inactive' | 'active'
+}
+
+export interface VendorAddressInputPayload {
+  name?: string | null
+  address?: string | null
+  address_line_2?: string | null
+  city?: string | null
+  country_id?: number | null
+  state_id?: number | null
+  zip_code?: string | null
+  business_type_id?: string | null
+  address_type?: number | null
+  mobile_num?: string | null
+  alternative_num?: string | null
+  work_num?: string | null
+  fax_num?: string | null
+  email?: string | null
+  website?: string | null
+  is_default?: boolean
+  is_active?: boolean
 }
 
 /** Normalised shape stored in state (dropdown / PO forms) */
@@ -54,7 +112,7 @@ function normaliseFromSql(dto: NimbleDbVendor): Vendor {
     uuid: dto.vendor_id.toLowerCase(),
     vendor_name: dto.name,
     corporation_uuid: dto.corporation_id.toLowerCase(),
-    federal_id: dto.tax_id ?? null,
+    federal_id: dto.federal_id ?? dto.tax_id ?? null,
     payment_method: null,
     is_active: dto.status === 1,
   }
@@ -241,6 +299,42 @@ export const useVendorStore = defineStore('vendors', () => {
     return vendor
   }
 
+  async function fetchVendorAddresses(vendorId: string): Promise<VendorAddressRecord[]> {
+    const data = await $fetch<{ addresses: VendorAddressRecord[] }>(
+      `/api/nimble-vendors/${vendorId}/addresses`,
+      { credentials: 'include' },
+    )
+    return data.addresses ?? []
+  }
+
+  async function createVendorAddress(vendorId: string, payload: VendorAddressInputPayload) {
+    const result = await $fetch<{ address: VendorAddressRecord }>(
+      `/api/nimble-vendors/${vendorId}/addresses`,
+      { method: 'POST', body: payload, credentials: 'include' },
+    )
+    return result.address
+  }
+
+  async function updateVendorAddress(
+    vendorId: string,
+    addressLinkId: number,
+    payload: VendorAddressInputPayload,
+  ) {
+    const result = await $fetch<{ address: VendorAddressRecord }>(
+      `/api/nimble-vendors/${vendorId}/addresses/${addressLinkId}`,
+      { method: 'PUT', body: payload, credentials: 'include' },
+    )
+    return result.address
+  }
+
+  async function deleteVendorAddress(vendorId: string, addressLinkId: number) {
+    const result = await $fetch<{ address: VendorAddressRecord }>(
+      `/api/nimble-vendors/${vendorId}/addresses/${addressLinkId}`,
+      { method: 'DELETE', credentials: 'include' },
+    )
+    return result.address
+  }
+
   async function refresh(corporationUuid?: string) {
     if (!corporationUuid) return
     fetchedCorps.value.delete(corporationUuid.toLowerCase())
@@ -276,6 +370,10 @@ export const useVendorStore = defineStore('vendors', () => {
     createNimbleVendor,
     updateNimbleVendor,
     deleteNimbleVendor,
+    fetchVendorAddresses,
+    createVendorAddress,
+    updateVendorAddress,
+    deleteVendorAddress,
     refresh,
     clear,
   }

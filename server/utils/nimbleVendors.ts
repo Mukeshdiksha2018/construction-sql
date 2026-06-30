@@ -26,6 +26,11 @@ export interface NimbleVendorDto {
   contact_person_name: string | null
   credit_limit: number | null
   check_reference: string | null
+  federal_id: string | null
+  ssn: string | null
+  print_check_as: string | null
+  is_1099: boolean
+  credit_days_id: string | null
   type: number
   bid: string | null
   created_by: string | null
@@ -44,6 +49,11 @@ export interface NimbleVendorInput {
   contact_person_name?: string | null
   credit_limit?: number | null
   check_reference?: string | null
+  federal_id?: string | null
+  ssn?: string | null
+  print_check_as?: string | null
+  is_1099?: boolean
+  credit_days_id?: string | null
 }
 
 type BusinessRow = {
@@ -58,6 +68,11 @@ type BusinessRow = {
   ContactPersonName: string | null
   CreditLimit: number | null
   CheckReference: string | null
+  FederalID: string | null
+  SSN: string | null
+  PrintCheckAs: string | null
+  Is1099: boolean | number | null
+  credit_days_id_hex: string | null
   created_by_hex: string | null
   modified_by_hex: string | null
   CreatedDateBy: Date | null
@@ -78,16 +93,21 @@ const BUSINESS_SELECT = `
     b.ContactPersonName,
     b.CreditLimit,
     b.CheckReference,
+    bi.FederalID,
+    bi.SSN,
+    bi.PrintCheckAs,
+    bi.Is1099,
+    LOWER(CONVERT(varchar(36), bi.CreditDaysID, 2)) AS credit_days_id_hex,
     LOWER(CONVERT(varchar(36), b.CreatedBy, 2)) AS created_by_hex,
     LOWER(CONVERT(varchar(36), b.ModifiedBy, 2)) AS modified_by_hex,
     b.CreatedDateBy,
     b.ModifiedDateBy,
     b.BID
   FROM dbo.Business b
+  LEFT JOIN dbo.BusinessInfo bi ON bi.ID = b.ID
 `
 
 function statusLabel(status: number): NimbleVendorStatusLabel {
-  // Status: 0 = inactive, 1 = active, 3 = soft-deleted
   if (status === 1) return 'active'
   if (status === 3) return 'deleted'
   return 'inactive'
@@ -116,6 +136,13 @@ function mapBusinessRow(row: BusinessRow): NimbleVendorDto {
     contact_person_name: row.ContactPersonName ?? null,
     credit_limit: row.CreditLimit != null ? Number(row.CreditLimit) : null,
     check_reference: row.CheckReference ?? null,
+    federal_id: row.FederalID ?? row.TaxID ?? null,
+    ssn: row.SSN ?? null,
+    print_check_as: row.PrintCheckAs ?? null,
+    is_1099: row.Is1099 === true || row.Is1099 === 1,
+    credit_days_id: row.credit_days_id_hex
+      ? normalizeNimbleHexId(row.credit_days_id_hex)
+      : null,
     type: row.Type,
     bid: row.BID != null ? String(row.BID) : null,
     created_by: row.created_by_hex ? normalizeNimbleHexId(row.created_by_hex) : null,
@@ -133,6 +160,10 @@ function parseStatus(value: unknown, fallback: NimbleVendorStatus = 1): NimbleVe
   const n = Number(value)
   if (n === 0 || n === 1 || n === 3) return n
   return fallback
+}
+
+function parseBool(value: unknown): boolean {
+  return value === true || value === 1 || value === '1' || value === 'true'
 }
 
 export function parseNimbleVendorBody(body: unknown, requireCorporation = true): NimbleVendorInput {
@@ -161,16 +192,71 @@ export function parseNimbleVendorBody(body: unknown, requireCorporation = true):
     creditLimit = n
   }
 
+  const federalId = safeString(raw.federal_id ?? raw.vendor_federal_id) || null
+
   return {
     corporation_id: corporationId,
     name,
     company_name: safeString(raw.company_name) || null,
     account_id: safeString(raw.account_id ?? raw.account_uuid) || null,
     status: parseStatus(raw.status, 1),
-    tax_id: safeString(raw.tax_id) || null,
+    tax_id: federalId || safeString(raw.tax_id) || null,
     contact_person_name: safeString(raw.contact_person_name) || null,
     credit_limit: creditLimit,
     check_reference: safeString(raw.check_reference) || null,
+    federal_id: federalId,
+    ssn: safeString(raw.ssn ?? raw.vendor_ssn) || null,
+    print_check_as: safeString(raw.print_check_as ?? raw.check_printed_as) || null,
+    is_1099: parseBool(raw.is_1099),
+    credit_days_id: safeString(raw.credit_days_id) || null,
+  }
+}
+
+async function upsertBusinessInfo(
+  businessId: Buffer,
+  payload: NimbleVendorInput,
+): Promise<void> {
+  const creditDaysId = optionalHexToNimbleBinary(payload.credit_days_id)
+  const existing = await nimbleMssqlQueryParams<{ cnt: number }>(
+    `SELECT COUNT(*) AS cnt FROM dbo.BusinessInfo WHERE ID = @id`,
+    { id: businessId },
+  )
+
+  if (Number(existing[0]?.cnt ?? 0) > 0) {
+    await nimbleMssqlQueryParams(
+      `UPDATE dbo.BusinessInfo SET
+        FederalID = @federalId,
+        SSN = @ssn,
+        PrintCheckAs = @printCheckAs,
+        Is1099 = @is1099,
+        CreditDaysID = @creditDaysId
+      WHERE ID = @id`,
+      {
+        id: businessId,
+        federalId: payload.federal_id ?? payload.tax_id ?? null,
+        ssn: payload.ssn ?? null,
+        printCheckAs: payload.print_check_as ?? null,
+        is1099: payload.is_1099 ? 1 : 0,
+        creditDaysId,
+      },
+    )
+  }
+  else {
+    await nimbleMssqlQueryParams(
+      `INSERT INTO dbo.BusinessInfo (
+        ID, FederalID, SSN, PrintCheckAs, Is1099, CreditDaysID
+      ) VALUES (
+        @id, @federalId, @ssn, @printCheckAs, @is1099, @creditDaysId
+      )`,
+      {
+        id: businessId,
+        federalId: payload.federal_id ?? payload.tax_id ?? null,
+        ssn: payload.ssn ?? null,
+        printCheckAs: payload.print_check_as ?? null,
+        is1099: payload.is_1099 ? 1 : 0,
+        creditDaysId,
+      },
+    )
   }
 }
 
@@ -262,7 +348,7 @@ export async function createNimbleVendor(
       corporationId,
       accountId,
       status: payload.status ?? 1,
-      taxId: payload.tax_id ?? null,
+      taxId: payload.federal_id ?? payload.tax_id ?? null,
       contactPersonName: payload.contact_person_name ?? null,
       creditLimit: payload.credit_limit ?? null,
       checkReference: payload.check_reference ?? null,
@@ -271,6 +357,8 @@ export async function createNimbleVendor(
       bid: nextBid,
     },
   )
+
+  await upsertBusinessInfo(id, payload)
 
   const created = await getNimbleVendor(nimbleBinaryToHex(id)!)
   if (!created) {
@@ -289,6 +377,7 @@ export async function updateNimbleVendor(
     throw createError({ statusCode: 404, statusMessage: 'Vendor not found' })
   }
 
+  const businessId = hexToNimbleBinary(id)
   const accountId = optionalHexToNimbleBinary(payload.account_id)
   const actor = actorBinary(actorUserId)
 
@@ -306,18 +395,20 @@ export async function updateNimbleVendor(
       ModifiedDateBy = GETUTCDATE()
     WHERE ID = @id AND Type = ${NIMBLE_BUSINESS_TYPE_VENDOR}`,
     {
-      id: hexToNimbleBinary(id),
+      id: businessId,
       name: payload.name,
       companyName: payload.company_name ?? null,
       accountId,
       status: payload.status ?? existing.status,
-      taxId: payload.tax_id ?? null,
+      taxId: payload.federal_id ?? payload.tax_id ?? null,
       contactPersonName: payload.contact_person_name ?? null,
       creditLimit: payload.credit_limit ?? null,
       checkReference: payload.check_reference ?? null,
       modifiedBy: actor,
     },
   )
+
+  await upsertBusinessInfo(businessId, payload)
 
   const updated = await getNimbleVendor(id)
   if (!updated) {
