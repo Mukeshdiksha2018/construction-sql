@@ -1,7 +1,7 @@
 <template>
   <div>
-    <div v-if="corpStore.selectedCorporation && !vendorStore.nimbleLoading" class="flex justify-end items-center mb-4">
-      <div class="flex-1 max-w-sm mr-2">
+    <div v-if="corpStore.selectedCorporation && !vendorStore.nimbleLoading" class="flex justify-end items-center mb-4 gap-2">
+      <div class="flex-1 max-w-sm">
         <UInput
           v-model="globalFilter"
           placeholder="Search vendors..."
@@ -11,6 +11,12 @@
           class="w-full"
         />
       </div>
+      <USelect
+        v-model="statusFilter"
+        :items="statusFilterOptions"
+        size="xs"
+        class="w-36"
+      />
       <UButton
         icon="i-heroicons-plus"
         color="primary"
@@ -53,9 +59,11 @@
         v-model:pagination="pagination"
         v-model:column-pinning="columnPinning"
         v-model:global-filter="globalFilter"
+        v-model:selected="selectedVendors"
         :pagination-options="paginationOptions"
         :data="filteredVendors"
         :columns="columns"
+        :selectable="true"
         class="max-h-[70vh] overflow-auto"
       />
 
@@ -166,6 +174,14 @@ const editingVendor = ref<NimbleDbVendor | null>(null)
 const vendorToDelete = ref<NimbleDbVendor | null>(null)
 const deleting = ref(false)
 const globalFilter = ref('')
+const selectedVendors = ref<NimbleDbVendor[]>([])
+const statusFilter = ref<'all' | 'active' | 'inactive'>('active')
+
+const statusFilterOptions = [
+  { label: 'All Statuses', value: 'all' },
+  { label: 'Active', value: 'active' },
+  { label: 'Inactive', value: 'inactive' },
+]
 
 const columnPinning = ref({ left: [], right: ['actions'] })
 const table = useTemplateRef('table')
@@ -191,9 +207,16 @@ const filteredVendors = computed(() => {
   const corpId = corpStore.selectedCorporation?.id
   if (!corpId) return []
 
-  const list = vendorStore
+  let list = vendorStore
     .getNimbleVendorsForCorporation(corpId)
     .filter(v => v.status !== 3)
+
+  if (statusFilter.value === 'active') {
+    list = list.filter(v => v.status === 1)
+  }
+  else if (statusFilter.value === 'inactive') {
+    list = list.filter(v => v.status === 0)
+  }
 
   if (!globalFilter.value.trim()) return list
 
@@ -204,6 +227,13 @@ const filteredVendors = computed(() => {
       v.company_name ?? '',
       v.tax_id ?? '',
       v.federal_id ?? '',
+      v.ssn ?? '',
+      v.mobile_num ?? '',
+      v.email ?? '',
+      v.address ?? '',
+      v.business_type ?? '',
+      v.account_number ?? '',
+      v.payment_method ?? '',
       v.contact_person_name ?? '',
       corporationNameById.value[v.corporation_id] ?? '',
       accountLabelById.value[v.account_id ?? ''] ?? '',
@@ -211,6 +241,18 @@ const filteredVendors = computed(() => {
     return fields.some(f => f.toLowerCase().includes(search))
   })
 })
+
+function formatAmount(value: number | null | undefined) {
+  return Number(value ?? 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+function truncateText(value: string | null | undefined, max = 24) {
+  if (!value) return '—'
+  return value.length > max ? `${value.slice(0, max)}…` : value
+}
 
 function vendorStatusConfig(status: number, statusLabel: string) {
   if (status === 1) return { label: 'Active', color: 'success' as const }
@@ -223,38 +265,106 @@ const columns = computed<TableColumn<NimbleDbVendor>[]>(() => [
     accessorKey: 'corporation_id',
     header: 'Corporation',
     enableSorting: false,
-    meta: { class: { th: 'text-left', td: 'text-left' } },
-    cell: ({ row }) => h('div', corporationNameById.value[row.original.corporation_id] || row.original.corporation_id),
+    meta: { class: { th: 'text-left min-w-[90px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'truncate max-w-[100px]' }, corporationNameById.value[row.original.corporation_id] || row.original.corporation_id),
   },
   {
     accessorKey: 'name',
     header: 'Vendor Name',
     enableSorting: false,
-    meta: { class: { th: 'text-left', td: 'text-left' } },
-    cell: ({ row }) => h('div', { class: 'font-medium text-default' }, row.original.name),
+    meta: { class: { th: 'text-left min-w-[110px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'font-medium text-default truncate max-w-[120px]' }, row.original.name),
   },
   {
-    accessorKey: 'company_name',
-    header: 'Company',
+    accessorKey: 'mobile_num',
+    header: 'Mobile',
     enableSorting: false,
-    meta: { class: { th: 'text-left', td: 'text-left' } },
-    cell: ({ row }) => h('div', row.original.company_name || 'N/A'),
+    meta: { class: { th: 'text-left min-w-[100px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'truncate max-w-[110px]' }, row.original.mobile_num || '—'),
   },
   {
-    accessorKey: 'account_id',
-    header: 'Chart of Account',
+    accessorKey: 'email',
+    header: 'Email ID',
     enableSorting: false,
-    meta: { class: { th: 'text-left', td: 'text-left' } },
+    meta: { class: { th: 'text-left min-w-[110px]', td: 'text-left' } },
     cell: ({ row }) => {
-      const id = row.original.account_id
-      return h('div', id ? (accountLabelById.value[id] || id) : 'N/A')
+      const email = row.original.email
+      if (!email) return h('div', '—')
+      return h('a', {
+        href: `mailto:${email}`,
+        class: 'text-primary hover:underline truncate max-w-[120px] block',
+        title: email,
+      }, truncateText(email, 18))
     },
+  },
+  {
+    accessorKey: 'address',
+    header: 'Address',
+    enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[140px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', {
+      class: 'truncate max-w-[160px]',
+      title: row.original.address ?? undefined,
+    }, truncateText(row.original.address, 28)),
+  },
+  {
+    accessorKey: 'business_type',
+    header: 'Business Type',
+    enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[100px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'truncate max-w-[110px]' }, row.original.business_type || '—'),
+  },
+  {
+    accessorKey: 'account_number',
+    header: 'Account Number',
+    enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[110px]', td: 'text-left' } },
+    cell: ({ row }) => {
+      const num = row.original.account_number
+      if (!num) return h('div', '—')
+      return h('span', { class: 'text-primary cursor-default' }, num)
+    },
+  },
+  {
+    accessorKey: 'federal_id',
+    header: 'Federal ID',
+    enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[100px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', row.original.federal_id || '—'),
+  },
+  {
+    accessorKey: 'ssn',
+    header: 'SSN',
+    enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[100px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', row.original.ssn || '—'),
+  },
+  {
+    accessorKey: 'is_1099',
+    header: '1099',
+    enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[70px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', row.original.is_1099 ? 'True' : 'False'),
+  },
+  {
+    accessorKey: 'total_due',
+    header: 'Total Due',
+    enableSorting: false,
+    meta: { class: { th: 'text-right min-w-[90px]', td: 'text-right' } },
+    cell: ({ row }) => h('div', { class: 'font-mono text-sm' }, formatAmount(row.original.total_due)),
+  },
+  {
+    accessorKey: 'payment_method',
+    header: 'Pay Method',
+    enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[90px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', row.original.payment_method || '—'),
   },
   {
     accessorKey: 'status',
     header: 'Status',
     enableSorting: false,
-    meta: { class: { th: 'text-left', td: 'text-left' } },
+    meta: { class: { th: 'text-left min-w-[90px]', td: 'text-left' } },
     cell: ({ row }) => {
       const config = vendorStatusConfig(row.original.status, row.original.status_label)
       return h(UBadge, {
@@ -263,20 +373,6 @@ const columns = computed<TableColumn<NimbleDbVendor>[]>(() => [
         size: 'sm',
       }, () => config.label)
     },
-  },
-  {
-    accessorKey: 'created_by',
-    header: 'Created By',
-    enableSorting: false,
-    meta: { class: { th: 'text-left', td: 'text-left' } },
-    cell: ({ row }) => h('div', { class: 'text-xs text-muted truncate max-w-[120px]' }, row.original.created_by || 'N/A'),
-  },
-  {
-    accessorKey: 'modified_by',
-    header: 'Modified By',
-    enableSorting: false,
-    meta: { class: { th: 'text-left', td: 'text-left' } },
-    cell: ({ row }) => h('div', { class: 'text-xs text-muted truncate max-w-[120px]' }, row.original.modified_by || 'N/A'),
   },
   {
     id: 'actions',

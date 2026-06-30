@@ -31,6 +31,13 @@ export interface NimbleVendorDto {
   print_check_as: string | null
   is_1099: boolean
   credit_days_id: string | null
+  mobile_num: string | null
+  email: string | null
+  address: string | null
+  business_type: string | null
+  account_number: string | null
+  payment_method: string | null
+  total_due: number
   type: number
   bid: string | null
   created_by: string | null
@@ -73,12 +80,39 @@ type BusinessRow = {
   PrintCheckAs: string | null
   Is1099: boolean | number | null
   credit_days_id_hex: string | null
+  AccountNumber: string | null
+  payment_method_name: string | null
+  business_type_name: string | null
+  mobile_num: string | null
+  email: string | null
+  address_line_1: string | null
+  address_city: string | null
+  address_zip: string | null
   created_by_hex: string | null
   modified_by_hex: string | null
   CreatedDateBy: Date | null
   ModifiedDateBy: Date | null
   BID: bigint | number | null
 }
+
+const BUSINESS_LIST_JOINS = `
+  OUTER APPLY (
+    SELECT TOP 1
+      c.Phone1,
+      c.Email,
+      a.Address1,
+      a.City,
+      a.ZipCode,
+      va.BusinessTypeID
+    FROM dbo.VendorAddress va
+    INNER JOIN dbo.Contact c ON c.ID = va.ContactID
+    INNER JOIN dbo.Address a ON a.ID = va.AdressID
+    WHERE va.BusinessID = b.ID AND ISNULL(va.Status, 1) = 1
+    ORDER BY CASE WHEN va.IsDefault = 1 THEN 0 ELSE 1 END, va.ID
+  ) defAddr
+  LEFT JOIN dbo.Lookup pm ON pm.ID = bi.PaymentMethodID
+  LEFT JOIN dbo.Lookup bt ON bt.ID = defAddr.BusinessTypeID
+`
 
 const BUSINESS_SELECT = `
   SELECT
@@ -98,6 +132,14 @@ const BUSINESS_SELECT = `
     bi.PrintCheckAs,
     bi.Is1099,
     LOWER(CONVERT(varchar(36), bi.CreditDaysID, 2)) AS credit_days_id_hex,
+    bi.AccountNumber,
+    pm.Value AS payment_method_name,
+    bt.Value AS business_type_name,
+    defAddr.Phone1 AS mobile_num,
+    defAddr.Email AS email,
+    defAddr.Address1 AS address_line_1,
+    defAddr.City AS address_city,
+    defAddr.ZipCode AS address_zip,
     LOWER(CONVERT(varchar(36), b.CreatedBy, 2)) AS created_by_hex,
     LOWER(CONVERT(varchar(36), b.ModifiedBy, 2)) AS modified_by_hex,
     b.CreatedDateBy,
@@ -105,6 +147,7 @@ const BUSINESS_SELECT = `
     b.BID
   FROM dbo.Business b
   LEFT JOIN dbo.BusinessInfo bi ON bi.ID = b.ID
+  ${BUSINESS_LIST_JOINS}
 `
 
 function statusLabel(status: number): NimbleVendorStatusLabel {
@@ -120,6 +163,15 @@ function isVendorRow(row: BusinessRow): boolean {
 function toIsoDate(value: Date | null | undefined): string | null {
   if (!value) return null
   return value instanceof Date ? value.toISOString() : String(value)
+}
+
+function formatListAddress(row: BusinessRow): string | null {
+  const parts = [
+    row.address_line_1?.trim(),
+    row.address_city?.trim(),
+    row.address_zip?.trim(),
+  ].filter(Boolean)
+  return parts.length ? parts.join(', ') : null
 }
 
 function mapBusinessRow(row: BusinessRow): NimbleVendorDto {
@@ -143,6 +195,13 @@ function mapBusinessRow(row: BusinessRow): NimbleVendorDto {
     credit_days_id: row.credit_days_id_hex
       ? normalizeNimbleHexId(row.credit_days_id_hex)
       : null,
+    mobile_num: row.mobile_num ?? null,
+    email: row.email ?? null,
+    address: formatListAddress(row),
+    business_type: row.business_type_name ?? null,
+    account_number: row.AccountNumber ?? null,
+    payment_method: row.payment_method_name ?? null,
+    total_due: 0,
     type: row.Type,
     bid: row.BID != null ? String(row.BID) : null,
     created_by: row.created_by_hex ? normalizeNimbleHexId(row.created_by_hex) : null,

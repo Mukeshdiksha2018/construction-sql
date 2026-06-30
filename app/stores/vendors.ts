@@ -19,6 +19,13 @@ export interface NimbleDbVendor {
   print_check_as: string | null
   is_1099: boolean
   credit_days_id: string | null
+  mobile_num: string | null
+  email: string | null
+  address: string | null
+  business_type: string | null
+  account_number: string | null
+  payment_method: string | null
+  total_due: number
   type: number
   bid: string | null
   created_by: string | null
@@ -113,7 +120,7 @@ function normaliseFromSql(dto: NimbleDbVendor): Vendor {
     vendor_name: dto.name,
     corporation_uuid: dto.corporation_id.toLowerCase(),
     federal_id: dto.federal_id ?? dto.tax_id ?? null,
-    payment_method: null,
+    payment_method: dto.payment_method ?? null,
     is_active: dto.status === 1,
   }
 }
