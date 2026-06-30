@@ -131,6 +131,7 @@ import { useVendorStore, type VendorAddressRecord } from '~/stores/vendors'
 
 const props = defineProps<{
   vendorId?: string | null
+  vendorName?: string | null
   address?: VendorAddressRecord | null
 }>()
 
@@ -212,7 +213,7 @@ function resetForm() {
   form.value = emptyForm()
   if (props.address) {
     form.value = {
-      name: props.address.contact_name ?? '',
+      name: props.address.contact_name?.trim() || props.vendorName?.trim() || '',
       address: props.address.address_line_1 ?? '',
       city: props.address.city ?? '',
       country_id: props.address.country_id ?? undefined,
@@ -228,6 +229,9 @@ function resetForm() {
       is_default: props.address.is_default,
       is_active: props.address.status === 1,
     }
+  }
+  else if (props.vendorName?.trim()) {
+    form.value.name = props.vendorName.trim()
   }
 }
 
@@ -299,13 +303,10 @@ async function submit() {
   }
 }
 
-watch(() => props.address, resetForm, { immediate: true })
-
-watch(open, async (isOpen) => {
-  if (isOpen) {
-    await loadCountries()
-    await loadStates(form.value.country_id)
-    resetForm()
-  }
-})
+watch([open, () => props.address, () => props.vendorName], async ([isOpen]) => {
+  if (!isOpen) return
+  resetForm()
+  await loadCountries()
+  await loadStates(form.value.country_id)
+}, { deep: true })
 </script>

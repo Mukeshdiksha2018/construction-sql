@@ -123,50 +123,88 @@
         </div>
 
         <div class="min-w-0">
-          <CustomAccordion
-            :items="accordionItems"
-            type="multiple"
-            :default-open="['address-contract']"
-          >
-            <template #trigger="{ item, isOpen }">
-              <div class="flex items-center justify-between w-full px-3 py-2">
-                <div class="flex items-center gap-2">
-                  <UIcon :name="item.icon" class="w-4 h-4 text-primary" />
-                  <span class="text-sm font-medium text-default">{{ item.label }}</span>
-                </div>
-                <UIcon
-                  :name="isOpen ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'"
-                  class="w-4 h-4 text-muted"
-                />
-              </div>
-            </template>
-
-            <template #content="{ item }">
-              <div class="px-3 pb-3">
-                <template v-if="item.key === 'address-contract'">
-                  <VendorsVendorAddressTable :vendor-id="vendorId" />
-
-                  <div class="mt-4 space-y-2 opacity-60">
-                    <div class="flex items-center justify-between">
-                      <h4 class="text-sm font-semibold text-default">
-                        Contract Details
-                      </h4>
-                      <UButton size="xs" color="primary" variant="soft" disabled>
-                        Add New Contract
-                      </UButton>
+          <div class="rounded-xl border border-default bg-white dark:bg-gray-900/40 shadow-sm overflow-hidden">
+            <CustomAccordion
+              :items="accordionItems"
+              type="multiple"
+              :default-open="['address-contract']"
+              class="w-full"
+            >
+              <template #trigger="{ item, isOpen }">
+                <div
+                  class="flex items-center justify-between w-full px-4 py-3 group transition-all duration-200 border-l-4"
+                  :class="isOpen
+                    ? 'bg-primary-50/80 dark:bg-primary-900/20 border-primary-500'
+                    : 'bg-gray-50/60 dark:bg-gray-800/40 border-transparent hover:bg-primary-50/50 dark:hover:bg-primary-900/10 hover:border-primary-300 dark:hover:border-primary-600'"
+                >
+                  <div class="flex items-center gap-3 min-w-0">
+                    <div
+                      class="flex items-center justify-center w-8 h-8 rounded-lg shrink-0 transition-colors"
+                      :class="isOpen
+                        ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/40 dark:text-primary-400'
+                        : 'bg-white dark:bg-gray-900 text-primary-500 border border-default/60 group-hover:border-primary-300 dark:group-hover:border-primary-600'"
+                    >
+                      <UIcon :name="item.icon" class="w-4 h-4" />
                     </div>
-                    <div class="py-6 text-center text-sm text-muted border border-dashed border-default rounded-md">
-                      Contract management coming in a later phase.
+                    <div class="min-w-0 text-left">
+                      <span
+                        class="text-sm font-semibold text-default transition-colors"
+                        :class="isOpen ? 'text-primary-700 dark:text-primary-300' : 'group-hover:text-primary-700 dark:group-hover:text-primary-300'"
+                      >
+                        {{ item.label }}
+                      </span>
+                      <p v-if="item.description" class="text-xs text-muted truncate mt-0.5">
+                        {{ item.description }}
+                      </p>
                     </div>
                   </div>
-                </template>
+                  <div class="flex items-center gap-2 shrink-0 ml-3">
+                    <UBadge
+                      v-if="item.comingSoon"
+                      label="Coming soon"
+                      color="neutral"
+                      variant="soft"
+                      size="xs"
+                    />
+                    <UIcon
+                      name="i-heroicons-chevron-right"
+                      class="w-4 h-4 text-primary-600 dark:text-primary-400 transition-transform duration-200"
+                      :class="{ 'rotate-90': isOpen }"
+                    />
+                  </div>
+                </div>
+              </template>
 
-                <p v-else class="text-sm text-muted py-2">
-                  Coming soon.
-                </p>
-              </div>
-            </template>
-          </CustomAccordion>
+              <template #content="{ item }">
+                <div class="px-4 pb-3 pt-2 bg-gradient-to-r from-primary-50/40 via-transparent to-transparent dark:from-primary-900/10 border-t border-default/40">
+                  <template v-if="item.key === 'address-contract'">
+                    <VendorsVendorAddressTable
+                      :vendor-id="vendorId"
+                      :vendor-name="vendorDisplayName"
+                    />
+
+                    <div class="mt-4 space-y-2 opacity-60">
+                      <div class="flex items-center justify-between">
+                        <h4 class="text-sm font-semibold text-default">
+                          Contract Details
+                        </h4>
+                        <UButton size="xs" color="primary" variant="soft" disabled>
+                          Add New Contract
+                        </UButton>
+                      </div>
+                      <div class="py-5 text-center text-sm text-muted border border-dashed border-default rounded-lg bg-white/60 dark:bg-gray-900/30">
+                        Contract management coming in a later phase.
+                      </div>
+                    </div>
+                  </template>
+
+                  <p v-else class="text-sm text-muted py-3 text-center">
+                    This section will be available in a future update.
+                  </p>
+                </div>
+              </template>
+            </CustomAccordion>
+          </div>
         </div>
       </div>
     </template>
@@ -200,10 +238,34 @@ const submitting = ref(false)
 const savedVendor = ref<NimbleDbVendor | null>(null)
 
 const accordionItems = [
-  { key: 'address-contract', label: 'Address & Contract Details', icon: 'i-heroicons-map-pin' },
-  { key: 'payment-preferences', label: 'Payment Preferences', icon: 'i-heroicons-credit-card' },
-  { key: 'additional-info', label: 'Additional Information', icon: 'i-heroicons-information-circle' },
-  { key: 'notes-attachments', label: 'Notes & Attachments', icon: 'i-heroicons-paper-clip' },
+  {
+    key: 'address-contract',
+    label: 'Address & Contract Details',
+    icon: 'i-heroicons-map-pin',
+    description: 'Vendor addresses and contract records',
+    comingSoon: false,
+  },
+  {
+    key: 'payment-preferences',
+    label: 'Payment Preferences',
+    icon: 'i-heroicons-credit-card',
+    description: 'Payment methods and billing preferences',
+    comingSoon: true,
+  },
+  {
+    key: 'additional-info',
+    label: 'Additional Information',
+    icon: 'i-heroicons-information-circle',
+    description: 'Extra vendor profile details',
+    comingSoon: true,
+  },
+  {
+    key: 'notes-attachments',
+    label: 'Notes & Attachments',
+    icon: 'i-heroicons-paper-clip',
+    description: 'Notes and supporting documents',
+    comingSoon: true,
+  },
 ]
 
 const emptyForm = () => ({
@@ -225,6 +287,21 @@ const vendorId = computed(() =>
   props.vendor?.vendor_id ?? savedVendor.value?.vendor_id ?? null,
 )
 
+const vendorDisplayName = computed(() =>
+  form.value.name
+  || props.vendor?.name
+  || savedVendor.value?.name
+  || '',
+)
+
+function resolveCorporationId(corporationId: string): string {
+  if (!corporationId) return ''
+  const match = corpStore.corporations.find(
+    c => c.id.toLowerCase() === corporationId.toLowerCase(),
+  )
+  return match?.id ?? corporationId
+}
+
 const creditDaySelectOptions = computed(() =>
   creditDaysOptions.value.map(o => ({
     label: o.label,
@@ -240,7 +317,7 @@ const isValid = computed(() =>
 
 function vendorToForm(vendor: NimbleDbVendor) {
   form.value = {
-    corporation_id: vendor.corporation_id,
+    corporation_id: resolveCorporationId(vendor.corporation_id),
     name: vendor.name,
     federal_id: vendor.federal_id ?? vendor.tax_id ?? '',
     ssn: vendor.ssn ?? '',
@@ -271,8 +348,10 @@ watch(() => corpStore.selectedCorporation?.id, (id) => {
 
 function onOpenChange(value: boolean) {
   if (value) {
-    refreshCreditDaysOptions()
-    resetForm()
+    corpStore.ensureReady().then(() => {
+      refreshCreditDaysOptions()
+      resetForm()
+    })
   }
   else {
     savedVendor.value = null

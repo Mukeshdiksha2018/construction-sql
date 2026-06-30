@@ -81,6 +81,7 @@
     <VendorsVendorAddressForm
       v-model="showForm"
       :vendor-id="vendorId"
+      :vendor-name="vendorName"
       :address="editingAddress"
       @saved="onAddressSaved"
     />
@@ -93,6 +94,7 @@ import { useVendorStore, type VendorAddressRecord } from '~/stores/vendors'
 
 const props = defineProps<{
   vendorId?: string | null
+  vendorName?: string | null
 }>()
 
 const vendorStore = useVendorStore()
