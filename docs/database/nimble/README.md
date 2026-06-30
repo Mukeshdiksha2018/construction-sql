@@ -5,7 +5,7 @@
 
 Read-only architecture snapshot of the Nimble Property MSSQL database. The running app and Prisma migrations use **construction accounting** (`NUXT_CONSTRUCTION_ACCOUNTING_CONNECTION_STRING` → `Database=supabase`).
 
-**Vendor master:** `dbo.Business` is the vendor table for the construction app. CRUD is implemented via `/api/nimble-vendors` (see [`.cursor/plans/nimble-vendors-crud.plan.md`](../../.cursor/plans/nimble-vendors-crud.plan.md)). Construction `vendor_uuid` fields store `Business.ID` as lowercase hex (36 chars, `0000` suffix).
+**Vendor master:** `dbo.Business` is the vendor table for the construction app. CRUD and dropdowns (`VendorSelect`) use `/api/nimble-vendors` (see [`.cursor/plans/nimble-vendors-crud.plan.md`](../../.cursor/plans/nimble-vendors-crud.plan.md)). Construction `vendor_uuid` fields store `Business.ID` as lowercase hex (36 chars, `0000` suffix).
 
 ## Files
 

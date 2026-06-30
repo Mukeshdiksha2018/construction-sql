@@ -1,24 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
-/** Raw shape returned by Nimble API3 /v1/VendorContractMaster/List */
-export interface NimbleVendorDTO {
-  vendorID?: string
-  vendorName?: string
-  corporationID?: string
-  corporationName?: string | null
-  clientName?: string | null
-  federalID?: string | null
-  creditDays?: number | null
-  creditDaysID?: string | null
-  paymentMethodID?: string | null
-  paymentMethodName?: string | null
-  /** 1 = active, 0 = inactive */
-  status?: number
-  addressDetails?: unknown[]
-  contractDetails?: unknown[]
-}
-
 /** Vendor row from Nimble SQL `dbo.Business` API */
 export interface NimbleDbVendor {
   vendor_id: string
@@ -67,17 +49,6 @@ export interface Vendor {
   vendor_country?: string | null
 }
 
-function normaliseFromApi(dto: NimbleVendorDTO, corporationUuid: string): Vendor {
-  return {
-    uuid: (dto.vendorID ?? '').toLowerCase(),
-    vendor_name: dto.vendorName ?? '',
-    corporation_uuid: (dto.corporationID ?? corporationUuid).toLowerCase(),
-    federal_id: dto.federalID ?? null,
-    payment_method: dto.paymentMethodName ?? null,
-    is_active: dto.status === 1,
-  }
-}
-
 function normaliseFromSql(dto: NimbleDbVendor): Vendor {
   return {
     uuid: dto.vendor_id.toLowerCase(),
@@ -87,11 +58,6 @@ function normaliseFromSql(dto: NimbleDbVendor): Vendor {
     payment_method: null,
     is_active: dto.status === 1,
   }
-}
-
-function useNimbleDbVendors(): boolean {
-  const config = useRuntimeConfig()
-  return String(config.public.useNimbleDbVendors).toLowerCase() === 'true'
 }
 
 export const useVendorStore = defineStore('vendors', () => {
@@ -145,36 +111,20 @@ export const useVendorStore = defineStore('vendors', () => {
     error.value = null
 
     try {
-      if (useNimbleDbVendors()) {
-        const data = await $fetch<{ vendors: NimbleDbVendor[] }>(
-          '/api/nimble-vendors',
-          {
-            query: { corporation_uuid: corporationUuid },
-            credentials: 'include',
-          },
-        )
+      const data = await $fetch<{ vendors: NimbleDbVendor[] }>(
+        '/api/nimble-vendors',
+        {
+          query: { corporation_uuid: corporationUuid },
+          credentials: 'include',
+        },
+      )
 
-        vendors.value = [
-          ...vendors.value.filter(v => v.corporation_uuid.toLowerCase() !== corp),
-          ...(data.vendors ?? [])
-            .filter(v => v.status !== 3)
-            .map(normaliseFromSql),
-        ]
-      }
-      else {
-        const data = await $fetch<{ vendors: NimbleVendorDTO[] }>(
-          '/api/nimble/vendors',
-          {
-            query: { corporation_uuid: corporationUuid },
-            credentials: 'include',
-          },
-        )
-
-        vendors.value = [
-          ...vendors.value.filter(v => v.corporation_uuid.toLowerCase() !== corp),
-          ...(data.vendors ?? []).map(dto => normaliseFromApi(dto, corporationUuid)),
-        ]
-      }
+      vendors.value = [
+        ...vendors.value.filter(v => v.corporation_uuid.toLowerCase() !== corp),
+        ...(data.vendors ?? [])
+          .filter(v => v.status !== 3)
+          .map(normaliseFromSql),
+      ]
       fetchedCorps.value.add(corp)
     }
     catch (err: unknown) {

@@ -18,12 +18,11 @@ Vendor master data is stored in **`dbo.Business`** on the Nimble database (`NUXT
 | `app/pages/vendors/index.vue` | Vendors page |
 | `app/components/vendors/VendorManagement.vue` | Table + modals |
 | `app/components/vendors/VendorForm.vue` | Create/edit form |
-| `app/stores/vendors.ts` | SQL CRUD + optional dropdown bridge |
+| `app/stores/vendors.ts` | SQL CRUD; `fetchVendors` / `VendorSelect` use `/api/nimble-vendors` |
 
 ## Env
 
 - `NUXT_NIMBLE_CONNECTION_STRING` — Nimble DB (read/write `Business`)
-- `NUXT_PUBLIC_USE_NIMBLE_DB_VENDORS=true` — use SQL list for `VendorSelect` dropdowns instead of Nimble API3
 
 ## Status values
 

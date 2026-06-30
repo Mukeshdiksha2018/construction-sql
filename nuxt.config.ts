@@ -41,8 +41,6 @@ export default defineNuxtConfig({
       nimbleIntegrations: process.env.NUXT_PUBLIC_NIMBLE_INTEGRATIONS || 'false',
       // NUXT_PUBLIC_NIMBLE_CORE_API_URL — Nimble Core API base (used for chart of accounts etc.)
       nimbleCoreApiUrl: '',
-      // NUXT_PUBLIC_USE_NIMBLE_DB_VENDORS — use SQL Business table for vendor dropdowns
-      useNimbleDbVendors: process.env.NUXT_PUBLIC_USE_NIMBLE_DB_VENDORS || process.env.NUXT_USE_NIMBLE_DB_VENDORS || 'false',
     },
   },
 })
