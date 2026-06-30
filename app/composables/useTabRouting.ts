@@ -8,6 +8,13 @@ export type ProjectsTabName = 'project-details' | 'items' | 'estimates' | 'cost-
 export type ConfigurationsTabName = 'project-types' | 'service-types' | 'terms-and-conditions'
 export type PurchaseOrdersTabName = 'purchase-orders' | 'stock-receipt-note'
 export type PayablesTabName = 'vendor-invoices' | 'bill-entry-payment' | 'print-checks'
+export type CorporationTabName =
+  | 'manage-corporation'
+  | 'profit-center'
+  | 'chart-of-accounts'
+  | 'locking-unlocking'
+  | 'bank-details'
+  | 'digital-signature'
 
 export type MastersTabName =
   | 'freight'
@@ -91,6 +98,45 @@ export const PAYABLES_TABS: TabConfig[] = [
     label: 'Print Checks',
     icon: 'i-heroicons-printer',
     value: 'print-checks',
+  },
+]
+
+export const CORPORATION_TABS: TabConfig[] = [
+  {
+    name: 'manage-corporation',
+    label: 'Manage Corporation',
+    icon: 'i-heroicons-building-office-2',
+    value: 'manage-corporation',
+  },
+  {
+    name: 'profit-center',
+    label: 'Profit Center',
+    icon: 'i-heroicons-chart-pie',
+    value: 'profit-center',
+  },
+  {
+    name: 'chart-of-accounts',
+    label: 'Chart of Accounts',
+    icon: 'i-heroicons-table-cells',
+    value: 'chart-of-accounts',
+  },
+  {
+    name: 'locking-unlocking',
+    label: 'Locking/Unlocking',
+    icon: 'i-heroicons-lock-closed',
+    value: 'locking-unlocking',
+  },
+  {
+    name: 'bank-details',
+    label: 'Bank Details',
+    icon: 'i-heroicons-building-library',
+    value: 'bank-details',
+  },
+  {
+    name: 'digital-signature',
+    label: 'Digital Signature',
+    icon: 'i-heroicons-pencil-square',
+    value: 'digital-signature',
   },
 ]
 
