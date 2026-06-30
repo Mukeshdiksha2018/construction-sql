@@ -38,15 +38,15 @@
     </template>
 
     <template #body>
-      <div class="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 max-w-[1600px] mx-auto w-full">
-        <div class="space-y-4 lg:sticky lg:top-0 lg:self-start">
-          <UCard variant="soft">
-            <h4 class="text-base font-bold text-default flex items-center gap-2 border-b border-default/60 pb-2 mb-4">
+      <div class="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4 max-w-[1600px] mx-auto w-full">
+        <div class="space-y-3 lg:sticky lg:top-0 lg:self-start">
+          <UCard variant="soft" :ui="{ body: 'p-3 sm:p-4' }">
+            <h4 class="text-base font-bold text-default flex items-center gap-2 border-b border-default/60 pb-2 mb-2">
               <UIcon name="i-heroicons-building-storefront" class="w-5 h-5 text-primary-500" />
               Vendor Profile
             </h4>
 
-            <div class="space-y-4">
+            <div class="space-y-2">
               <div>
                 <label class="block text-xs font-medium text-default mb-1">Corporation</label>
                 <CorporationSelect
@@ -91,21 +91,21 @@
                 <UInput v-model="form.print_check_as" variant="subtle" size="sm" class="w-full" />
               </div>
 
-              <div class="flex items-center justify-between py-1">
+              <div class="flex items-center justify-between">
                 <span class="text-xs font-medium text-default">1099 Vendor</span>
                 <USwitch v-model="form.is_1099" />
               </div>
             </div>
           </UCard>
 
-          <UCard variant="soft" class="opacity-60">
-            <h4 class="text-base font-bold text-default flex items-center gap-2 border-b border-default/60 pb-2 mb-4">
+          <UCard variant="soft" class="opacity-60" :ui="{ body: 'p-3 sm:p-4' }">
+            <h4 class="text-base font-bold text-default flex items-center gap-2 border-b border-default/60 pb-2 mb-2">
               <UIcon name="i-heroicons-banknotes" class="w-5 h-5 text-primary-500" />
               Opening Balance
               <span class="text-xs font-normal text-muted ml-auto">Coming soon</span>
             </h4>
 
-            <div class="space-y-3">
+            <div class="space-y-2">
               <div>
                 <label class="block text-xs font-medium text-default mb-1">Opening Balance</label>
                 <UInput disabled variant="subtle" size="sm" placeholder="—" class="w-full" />
@@ -129,7 +129,7 @@
             :default-open="['address-contract']"
           >
             <template #trigger="{ item, isOpen }">
-              <div class="flex items-center justify-between w-full px-3 py-3">
+              <div class="flex items-center justify-between w-full px-3 py-2">
                 <div class="flex items-center gap-2">
                   <UIcon :name="item.icon" class="w-4 h-4 text-primary" />
                   <span class="text-sm font-medium text-default">{{ item.label }}</span>
@@ -142,11 +142,11 @@
             </template>
 
             <template #content="{ item }">
-              <div class="px-3 pb-4">
+              <div class="px-3 pb-3">
                 <template v-if="item.key === 'address-contract'">
                   <VendorsVendorAddressTable :vendor-id="vendorId" />
 
-                  <div class="mt-6 space-y-2 opacity-60">
+                  <div class="mt-4 space-y-2 opacity-60">
                     <div class="flex items-center justify-between">
                       <h4 class="text-sm font-semibold text-default">
                         Contract Details
@@ -161,7 +161,7 @@
                   </div>
                 </template>
 
-                <p v-else class="text-sm text-muted py-4">
+                <p v-else class="text-sm text-muted py-2">
                   Coming soon.
                 </p>
               </div>
