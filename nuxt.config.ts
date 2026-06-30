@@ -24,6 +24,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     // MSSQL — server-side only (set NUXT_MSSQL_CONNECTION_STRING in .env)
     mssqlConnectionString: '',
+    // Nimble property MSSQL — server-side only (NUXT_NIMBLE_CONNECTION_STRING)
+    nimbleConnectionString: process.env.NUXT_NIMBLE_CONNECTION_STRING || '',
     // Nimble API5 base (NIMBLE_API_BASE_URL) — e.g. https://qa-api5.nimbleproperty.net
     nimbleApiBaseUrl: process.env.NIMBLE_API_BASE_URL || '',
     // Nimble API3 base (NIMBLE_API3_URL) — e.g. https://qa-api3.nimbleproperty.net (vendor data)
@@ -39,6 +41,8 @@ export default defineNuxtConfig({
       nimbleIntegrations: process.env.NUXT_PUBLIC_NIMBLE_INTEGRATIONS || 'false',
       // NUXT_PUBLIC_NIMBLE_CORE_API_URL — Nimble Core API base (used for chart of accounts etc.)
       nimbleCoreApiUrl: '',
+      // NUXT_PUBLIC_USE_NIMBLE_DB_VENDORS — use SQL Business table for vendor dropdowns
+      useNimbleDbVendors: process.env.NUXT_PUBLIC_USE_NIMBLE_DB_VENDORS || process.env.NUXT_USE_NIMBLE_DB_VENDORS || 'false',
     },
   },
 })

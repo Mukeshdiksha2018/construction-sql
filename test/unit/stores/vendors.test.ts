@@ -38,6 +38,9 @@ describe('useVendorStore', () => {
     setActivePinia(createPinia())
     mockFetch = vi.fn()
     vi.stubGlobal('$fetch', mockFetch)
+    vi.stubGlobal('useRuntimeConfig', () => ({
+      public: { useNimbleDbVendors: 'false' },
+    }))
   })
 
   afterEach(() => {
