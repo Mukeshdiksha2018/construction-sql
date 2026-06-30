@@ -356,11 +356,21 @@
                   <td class="py-1 px-2 text-default text-xs">{{ formatDate(row.submit_date) }}</td>
                   <td class="py-1 px-2 text-default text-xs font-medium">{{ row.po_number || row.co_number || '-' }}</td>
                   <td class="py-1 px-2 text-default text-xs">{{ row.vendor_name || '-' }}</td>
-                  <td class="py-1 px-2 text-right text-default text-xs">{{ formatCurrency(row.goods_amount) }}</td>
-                  <td class="py-1 px-2 text-right text-default text-xs">{{ formatCurrency(row.freight_amount) }}</td>
-                  <td class="py-1 px-2 text-right text-default text-xs">{{ formatCurrency(row.additional_charges) }}</td>
-                  <td class="py-1 px-2 text-right text-default text-xs">{{ formatCurrency(row.hst) }}</td>
-                  <td class="py-1 px-2 text-right text-default text-xs font-semibold">{{ formatCurrency(row.po_total) }}</td>
+                  <td class="py-1 px-2 text-right text-default text-xs">
+                    <ReportOrderPoAmountCell :row="row" :amount="row.goods_amount" />
+                  </td>
+                  <td class="py-1 px-2 text-right text-default text-xs">
+                    <ReportOrderPoAmountCell :row="row" :amount="row.freight_amount" />
+                  </td>
+                  <td class="py-1 px-2 text-right text-default text-xs">
+                    <ReportOrderPoAmountCell :row="row" :amount="row.additional_charges" />
+                  </td>
+                  <td class="py-1 px-2 text-right text-default text-xs">
+                    <ReportOrderPoAmountCell :row="row" :amount="row.hst" />
+                  </td>
+                  <td class="py-1 px-2 text-right text-default text-xs font-semibold">
+                    <ReportOrderPoAmountCell :row="row" :amount="row.po_total" />
+                  </td>
                   <td class="py-1 px-2 text-right text-default text-xs">{{ formatCurrency(row.total_invoiced) }}</td>
                   <td class="py-1 px-2 text-right text-default text-xs">{{ formatCurrency(row.holdback) }}</td>
                   <td class="py-1 px-2 text-right text-default text-xs">{{ formatCurrency(row.total_paid) }}</td>
@@ -370,11 +380,21 @@
                 <!-- Vendor Summary Row -->
                 <tr class="bg-gray-100 dark:bg-gray-800 border-b-2 border-gray-300 dark:border-gray-700 font-semibold">
                   <td colspan="3" class="py-2 px-2 text-default text-xs text-right">Total for {{ vendorGroup.vendor_name || 'N/A' }}:</td>
-                  <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendorGroup.vendor_totals.goods_amount) }}</td>
-                  <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendorGroup.vendor_totals.freight_amount) }}</td>
-                  <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendorGroup.vendor_totals.additional_charges) }}</td>
-                  <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendorGroup.vendor_totals.hst) }}</td>
-                  <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendorGroup.vendor_totals.po_total) }}</td>
+                  <td class="py-2 px-2 text-right text-default text-xs">
+                    <ReportVendorPoAmountCell :orders="vendorGroup.orders" field="goods_amount" />
+                  </td>
+                  <td class="py-2 px-2 text-right text-default text-xs">
+                    <ReportVendorPoAmountCell :orders="vendorGroup.orders" field="freight_amount" />
+                  </td>
+                  <td class="py-2 px-2 text-right text-default text-xs">
+                    <ReportVendorPoAmountCell :orders="vendorGroup.orders" field="additional_charges" />
+                  </td>
+                  <td class="py-2 px-2 text-right text-default text-xs">
+                    <ReportVendorPoAmountCell :orders="vendorGroup.orders" field="hst" />
+                  </td>
+                  <td class="py-2 px-2 text-right text-default text-xs">
+                    <ReportVendorPoAmountCell :orders="vendorGroup.orders" field="po_total" />
+                  </td>
                   <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendorGroup.vendor_totals.total_invoiced) }}</td>
                   <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendorGroup.vendor_totals.holdback) }}</td>
                   <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendorGroup.vendor_totals.total_paid) }}</td>
@@ -404,6 +424,10 @@ import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
 import ProjectSelect from '~/components/shared/ProjectSelect.vue'
 import CorporationSelect from '~/components/shared/CorporationSelect.vue'
 import VendorSelect from '~/components/shared/VendorSelect.vue'
+import ReportOrderPoAmountCell from '~/components/Reports/ReportOrderPoAmountCell.vue'
+import ReportVendorPoAmountCell from '~/components/Reports/ReportVendorPoAmountCell.vue'
+import { normalizePoCurrencyConversionFields } from '~/utils/poCurrencyConversion'
+import { formatReportPoAmountForExport } from '~/utils/reportPoCurrencyDisplay'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -888,7 +912,8 @@ const loadReport = async () => {
             holdback: holdback,
             total_paid: totalPaid,
             balance_to_invoice: balanceToInvoice,
-            status: po.status
+            status: po.status,
+            ...normalizePoCurrencyConversionFields(po),
           }
         } catch (error) {
           console.error('Error processing PO:', po.uuid, error)
@@ -1084,7 +1109,8 @@ const loadReport = async () => {
             holdback: holdback,
             total_paid: totalPaid,
             balance_to_invoice: balanceToInvoice,
-            status: co.status
+            status: co.status,
+            ...normalizePoCurrencyConversionFields(co),
           }
         } catch (error) {
           console.error('Error processing CO:', co.uuid, error)

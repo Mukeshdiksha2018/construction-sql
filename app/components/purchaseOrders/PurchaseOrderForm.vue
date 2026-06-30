@@ -245,18 +245,27 @@
                 Add
               </UBadge>
             </div>
-            <VendorSelect
-              ref="vendorSelectRef"
-              :model-value="form.vendor_uuid"
-              :corporation-uuid="props.form.corporation_uuid || corpStore.selectedCorporation?.uuid"
-              :disabled="!props.form.corporation_uuid && !corpStore.selectedCorporation || props.readonly"
-              :show-add-button="!props.readonly"
-              placeholder="Select vendor"
-              size="sm"
-              class="w-full"
-              @update:model-value="handleVendorChange"
-              @change="handleVendorChange"
-            />
+            <div class="flex items-center gap-2">
+              <VendorSelect
+                ref="vendorSelectRef"
+                :model-value="form.vendor_uuid"
+                :corporation-uuid="props.form.corporation_uuid || corpStore.selectedCorporation?.uuid"
+                :disabled="!props.form.corporation_uuid && !corpStore.selectedCorporation || props.readonly"
+                :show-add-button="!props.readonly"
+                placeholder="Select vendor"
+                size="sm"
+                class="flex-1 min-w-0"
+                @update:model-value="handleVendorChange"
+                @change="handleVendorChange"
+              />
+              <PoFromCurrencySelect
+                v-if="!loading"
+                v-model="poCurrencyFrom"
+                :disabled="props.readonly"
+                size="sm"
+                select-class="w-28 shrink-0"
+              />
+            </div>
           </div>
 
             <!-- Vendor Address -->
@@ -572,6 +581,28 @@
                 />
               </div>
             </template>
+
+            <!-- Exchange Rate (last field; shown when vendor currency is USD) -->
+            <div v-if="!loading && poCurrencyConversionEnabled" class="xl:col-span-2">
+              <label class="block text-xs font-medium text-default mb-1">
+                Exchange Rate
+              </label>
+              <div
+                class="p-3 rounded-md text-xs min-h-[50px] border transition-colors duration-150 bg-primary-50 text-primary-800 border-primary-100 dark:bg-primary-900/20 dark:text-primary-200 dark:border-primary-800"
+              >
+                <PoCurrencyConversionBar
+                  :enabled="poCurrencyConversionEnabled"
+                  v-model:from-currency="poCurrencyFrom"
+                  v-model:to-currency="poCurrencyTo"
+                  v-model:conversion-rate="poConversionRate"
+                  :corporation-uuid="form.corporation_uuid"
+                  hide-enable-checkbox
+                  hide-from-currency-select
+                  lock-to-currency
+                  :readonly="props.readonly"
+                />
+              </div>
+            </div>
             </template>
           </div>
           </UCard>
@@ -608,6 +639,10 @@
         :show-edit-selection="isImportingFromMaster && !isPurchaseOrderApproved"
         @edit-selection="handleEditMasterSelection"
         :readonly="props.readonly"
+        :po-currency-conversion-enabled="poCurrencyConversionEnabled"
+        :po-currency-from="poCurrencyFrom"
+        :po-currency-to="poCurrencyTo"
+        :po-conversion-rate="poConversionRate"
         @add-row="insertPoItemAfter"
         @remove-row="removePoItemAt"
         @cost-code-change="updatePoItemCostCode"
@@ -645,6 +680,10 @@
         :readonly="props.readonly"
         :used-quantities-by-item="usedQuantitiesByItem"
         :estimate-items="estimatePoItems"
+        :po-currency-conversion-enabled="poCurrencyConversionEnabled"
+        :po-currency-from="poCurrencyFrom"
+        :po-currency-to="poCurrencyTo"
+        :po-conversion-rate="poConversionRate"
         @add-row="insertPoItemAfter"
         @remove-row="removePoItemAt"
         @cost-code-change="updatePoItemCostCode"
@@ -706,6 +745,10 @@
         :show-edit-selection="isLaborPurchaseOrder && !isPurchaseOrderApproved"
         @edit-selection="handleEditLaborSelection"
         :readonly="props.readonly"
+        :po-currency-conversion-enabled="poCurrencyConversionEnabled"
+        :po-currency-from="poCurrencyFrom"
+        :po-currency-to="poCurrencyTo"
+        :po-conversion-rate="poConversionRate"
         @add-row="insertLaborPoItemAfter"
         @remove-row="removeLaborPoItemAt"
         @cost-code-change="updateLaborPoItemCostCode"
@@ -962,6 +1005,10 @@
             :item-total="itemTotal"
             :form-data="form"
             :read-only="props.readonly"
+            :po-currency-conversion-enabled="poCurrencyConversionEnabled"
+            :po-currency-from="poCurrencyFrom"
+            :po-currency-to="poCurrencyTo"
+            :po-conversion-rate="poConversionRate"
             :hide-charges="true"
             item-total-label="Item Total"
             total-label="Total PO Amount"
@@ -1209,6 +1256,10 @@
             :item-total="itemTotal"
             :form-data="form"
             :read-only="props.readonly"
+            :po-currency-conversion-enabled="poCurrencyConversionEnabled"
+            :po-currency-from="poCurrencyFrom"
+            :po-currency-to="poCurrencyTo"
+            :po-conversion-rate="poConversionRate"
             item-total-label="Item Total"
             total-label="Total PO Amount"
             @update="handleFinancialBreakdownUpdate"
@@ -1631,6 +1682,14 @@ import POLocationWiseMaterialTable from '~/components/purchaseOrders/POLocationW
 import PurchaseOrdersMasterItemsSelectionModal from '~/components/purchaseOrders/PurchaseOrdersMasterItemsSelectionModal.vue';
 import LaborItemsSelectionModal from '~/components/purchaseOrders/LaborItemsSelectionModal.vue';
 import FinancialBreakdown from '~/components/purchaseOrders/FinancialBreakdown.vue';
+import PoCurrencyConversionBar from '~/components/purchaseOrders/PoCurrencyConversionBar.vue';
+import PoFromCurrencySelect from '~/components/purchaseOrders/PoFromCurrencySelect.vue';
+import {
+  normalizePoCurrencyConversionFields,
+  syncPoCurrencyConversionForFromCurrency,
+  type PoCurrencyCode,
+} from '~/utils/poCurrencyConversion';
+import { usePoCurrencyFromSelection } from '~/composables/usePoCurrencyFromSelection';
 import VendorForm from '~/components/purchaseOrders/VendorForm.vue';
 import TermsAndConditionsSelect from '~/components/shared/TermsAndConditionsSelect.vue';
 import SpecialInstructionsSelect from '~/components/shared/SpecialInstructionsSelect.vue';
@@ -1976,6 +2035,67 @@ const saveQuickSpecialInstruction = async () => {
 }
 
 const { formatCurrency } = useCurrencyFormat();
+
+const updatePoCurrencyFields = (
+  patch: Partial<ReturnType<typeof normalizePoCurrencyConversionFields>>
+) => {
+  updateFormFields(
+    normalizePoCurrencyConversionFields({
+      ...(props.form as Record<string, unknown>),
+      ...patch,
+    })
+  );
+};
+
+const { applyFromCurrency: applyPoFromCurrency, prefillFromVendor: prefillPoCurrencyFromVendor, prefillWhenVendorAlreadySet: prefillPoCurrencyWhenVendorAlreadySet } =
+  usePoCurrencyFromSelection({
+    getForm: () => props.form as Record<string, unknown>,
+    updateCurrencyFields: (fields) => updatePoCurrencyFields(fields),
+    isNewDocument: () => !props.editingPurchaseOrder,
+    getCorporationUuid: () => props.form.corporation_uuid,
+  });
+
+const poCurrencyConversionEnabled = computed(
+  () => normalizePoCurrencyConversionFields(props.form).currency_from === 'USD'
+);
+
+const poCurrencyFrom = computed({
+  get: () => normalizePoCurrencyConversionFields(props.form).currency_from,
+  set: (currency_from: PoCurrencyCode) => {
+    void applyPoFromCurrency(currency_from);
+  },
+});
+
+const poCurrencyTo = computed({
+  get: () => normalizePoCurrencyConversionFields(props.form).currency_to,
+  set: (currency_to: PoCurrencyCode) =>
+    updatePoCurrencyFields({ currency_to }),
+});
+
+const poConversionRate = computed({
+  get: () => normalizePoCurrencyConversionFields(props.form).conversion_rate,
+  set: (conversion_rate: number) =>
+    updatePoCurrencyFields({ conversion_rate }),
+});
+
+function ensurePoCurrencyFieldsSynced() {
+  const fields = normalizePoCurrencyConversionFields(props.form);
+  const synced = syncPoCurrencyConversionForFromCurrency(fields.currency_from, {
+    conversionRate: fields.conversion_rate,
+  });
+  if (
+    fields.currency_conversion_enabled !== synced.currency_conversion_enabled ||
+    fields.currency_from !== synced.currency_from ||
+    fields.currency_to !== synced.currency_to
+  ) {
+    updatePoCurrencyFields(synced);
+  }
+}
+
+onMounted(() => {
+  ensurePoCurrencyFieldsSynced();
+  void prefillPoCurrencyWhenVendorAlreadySet();
+});
 
 const formatQuantity = (value: any) => {
   if (value === null || value === undefined) return '0';
@@ -6886,6 +7006,7 @@ const handleVendorChange = (value: any) => {
     updateFormFields({
       vendor_uuid: vendorUuid || '',
     });
+    void prefillPoCurrencyFromVendor(vendorUuid || '');
     return;
   }
 
@@ -6898,6 +7019,7 @@ const handleVendorChange = (value: any) => {
     removed_po_items: [],
     include_items: '',
   });
+  void prefillPoCurrencyFromVendor(vendorUuid || '');
 };
 
 // Removed PO items management (not needed currently)

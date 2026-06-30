@@ -42,9 +42,9 @@
               <th class="px-4 py-2 text-left">Cost Code</th>
               <th v-if="showLocationColumn" class="px-4 py-2 text-left">Location</th>
               <th v-if="showLocationColumn" class="px-4 py-2 text-left">Description</th>
-              <th v-if="showLaborBudgeted" class="px-4 py-2 text-right">Labor Budgeted Amount</th>
-              <th v-if="showLaborBudgeted" class="px-4 py-2 text-right">Remaining Amount</th>
-              <th class="px-4 py-2 text-right">PO Amount</th>
+              <th v-if="showLaborBudgeted" class="px-4 py-2 text-right">{{ laborBudgetedColumnHeader }}</th>
+              <th v-if="showLaborBudgeted" class="px-4 py-2 text-right">{{ remainingAmountColumnHeader }}</th>
+              <th class="px-4 py-2 text-right">{{ poAmountColumnHeader }}</th>
               <th class="w-1/12 px-4 py-2 text-right">Actions</th>
             </tr>
           </thead>
@@ -301,6 +301,7 @@ import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
 import CostCodeSelect from '~/components/shared/CostCodeSelect.vue'
 import CurrencyInput from '~/components/shared/CurrencyInput.vue'
 import LocationSelect from '~/components/shared/LocationSelect.vue'
+import { formatPoAmountColumnHeader, type PoCurrencyCode } from '~/utils/poCurrencyConversion'
 
 interface LaborPOItem {
   id?: string | number
@@ -331,6 +332,10 @@ const props = withDefaults(defineProps<{
   showLocationColumn?: boolean
   readonly?: boolean
   showEditSelection?: boolean
+  poCurrencyConversionEnabled?: boolean
+  poCurrencyFrom?: PoCurrencyCode
+  poCurrencyTo?: PoCurrencyCode
+  poConversionRate?: number
 }>(), {
   title: 'Labor PO Items',
   description: '',
@@ -345,6 +350,10 @@ const props = withDefaults(defineProps<{
   showLocationColumn: false,
   readonly: false,
   showEditSelection: false,
+  poCurrencyConversionEnabled: false,
+  poCurrencyFrom: 'CAD',
+  poCurrencyTo: 'USD',
+  poConversionRate: 1,
 })
 
 const hasItems = computed(() => Array.isArray(props.items) && props.items.length > 0)
@@ -363,6 +372,16 @@ const scopedCostCodeConfigurations = computed(() => {
 
 const { formatCurrency, currencySymbol } = useCurrencyFormat()
 const currencySymbolText = computed(() => unref(currencySymbol) || '')
+
+const laborBudgetedColumnHeader = computed(() =>
+  formatPoAmountColumnHeader('Labor Budgeted Amount', props.poCurrencyFrom)
+)
+const remainingAmountColumnHeader = computed(() =>
+  formatPoAmountColumnHeader('Remaining Amount', props.poCurrencyFrom)
+)
+const poAmountColumnHeader = computed(() =>
+  formatPoAmountColumnHeader('PO Amount', props.poCurrencyFrom)
+)
 
 const parseNumericInput = (value: any): number => {
   if (value === null || value === undefined) return 0

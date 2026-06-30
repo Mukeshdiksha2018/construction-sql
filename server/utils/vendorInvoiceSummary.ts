@@ -1,5 +1,10 @@
 import { getPrisma } from './prisma'
 import { accruedHoldbackFromProgressInvoice } from './vendorInvoiceAccruedHoldback'
+import {
+  advancePaidDeductionForBalance,
+  computeMaterialBalanceToBeInvoicedFromItems,
+  isMaterialOrderType,
+} from '../../app/utils/materialBalanceToBeInvoiced'
 
 const prisma = getPrisma()
 
@@ -49,96 +54,23 @@ function netVendorInvoiceAmountWithoutTaxes(invoice: {
   return totalAmount - taxTotal
 }
 
-function computeBalanceToBeInvoicedByPoItems(args: {
-  poItems: Array<{
-    uuid?: string
-    po_quantity?: unknown
-    po_unit_price?: unknown
-    unit_price?: unknown
-  }>
-  invoiceItems: Array<{ po_item_uuid?: string; invoice_quantity?: unknown }>
-  advancePaid: number
-}): number | null {
-  const { poItems, invoiceItems, advancePaid } = args
-
-  const hasUnitPrice =
-    poItems.some((it) => it?.po_unit_price !== null && it?.po_unit_price !== undefined) ||
-    poItems.some((it) => it?.unit_price !== null && it?.unit_price !== undefined)
-  const hasItemUuid = invoiceItems.some(
-    (it) => it?.po_item_uuid !== null && it?.po_item_uuid !== undefined,
+function sumProgressInvoicedValue(
+  invoices: Array<{ amount?: unknown; financial_breakdown?: unknown }> | null | undefined,
+  includeTaxes: boolean,
+): number {
+  if (!invoices?.length) return 0
+  return invoices.reduce(
+    (sum, invoice) =>
+      sum +
+      (includeTaxes ? toNum(invoice.amount) : netVendorInvoiceAmountWithoutTaxes(invoice)),
+    0,
   )
-
-  if (!hasUnitPrice || !hasItemUuid) return null
-
-  const invoicedQtyByItemUuid = new Map<string, number>()
-  for (const invIt of invoiceItems) {
-    if (!invIt?.po_item_uuid) continue
-    const prev = invoicedQtyByItemUuid.get(invIt.po_item_uuid) ?? 0
-    invoicedQtyByItemUuid.set(
-      invIt.po_item_uuid,
-      prev + toNum(invIt.invoice_quantity),
-    )
-  }
-
-  const remainingItemsAmount = poItems.reduce((sum, poIt) => {
-    if (!poIt?.uuid) return sum
-    const poQty = toNum(poIt.po_quantity)
-    const unitPrice = toNum(poIt.po_unit_price ?? poIt.unit_price)
-    const invoicedQty = invoicedQtyByItemUuid.get(poIt.uuid) ?? 0
-    const remainingQty = Math.max(0, poQty - invoicedQty)
-    return sum + remainingQty * unitPrice
-  }, 0)
-
-  return Math.max(0, remainingItemsAmount - advancePaid)
-}
-
-function computeBalanceToBeInvoicedByCoItems(args: {
-  coItems: Array<{
-    uuid?: string
-    co_quantity?: unknown
-    co_unit_price?: unknown
-    unit_price?: unknown
-  }>
-  invoiceItems: Array<{ co_item_uuid?: string; invoice_quantity?: unknown }>
-  advancePaid: number
-}): number | null {
-  const { coItems, invoiceItems, advancePaid } = args
-
-  const hasUnitPrice =
-    coItems.some((it) => it?.co_unit_price !== null && it?.co_unit_price !== undefined) ||
-    coItems.some((it) => it?.unit_price !== null && it?.unit_price !== undefined)
-  const hasItemUuid = invoiceItems.some(
-    (it) => it?.co_item_uuid !== null && it?.co_item_uuid !== undefined,
-  )
-
-  if (!hasUnitPrice || !hasItemUuid) return null
-
-  const invoicedQtyByItemUuid = new Map<string, number>()
-  for (const invIt of invoiceItems) {
-    if (!invIt?.co_item_uuid) continue
-    const prev = invoicedQtyByItemUuid.get(invIt.co_item_uuid) ?? 0
-    invoicedQtyByItemUuid.set(
-      invIt.co_item_uuid,
-      prev + toNum(invIt.invoice_quantity),
-    )
-  }
-
-  const remainingItemsAmount = coItems.reduce((sum, coIt) => {
-    if (!coIt?.uuid) return sum
-    const coQty = toNum(coIt.co_quantity)
-    const unitPrice = toNum(coIt.co_unit_price ?? coIt.unit_price)
-    const invoicedQty = invoicedQtyByItemUuid.get(coIt.uuid) ?? 0
-    const remainingQty = Math.max(0, coQty - invoicedQty)
-    return sum + remainingQty * unitPrice
-  }, 0)
-
-  return Math.max(0, remainingItemsAmount - advancePaid)
 }
 
 export async function getPurchaseOrderInvoiceSummary(purchaseOrderUuid: string) {
   const po = await prisma.purchaseOrderForm.findFirst({
     where: { uuid: purchaseOrderUuid, is_active: true },
-    select: { uuid: true, financial_breakdown: true },
+    select: { uuid: true, po_type: true, financial_breakdown: true },
   })
   if (!po) return null
 
@@ -179,10 +111,8 @@ export async function getPurchaseOrderInvoiceSummary(purchaseOrderUuid: string) 
     select: { amount: true, financial_breakdown: true, holdback: true },
   })
 
-  const invoicedValue = progressInvoices.reduce(
-    (sum, invoice) => sum + netVendorInvoiceAmountWithoutTaxes(invoice),
-    0,
-  )
+  const isLaborPO = String(po.po_type ?? '').toUpperCase() === 'LABOR'
+  const invoicedValue = sumProgressInvoicedValue(progressInvoices, isLaborPO)
 
   const holdbackAccruedOnProgress = progressInvoices.reduce(
     (sum, invoice) => sum + accruedHoldbackFromProgressInvoice(invoice),
@@ -210,7 +140,10 @@ export async function getPurchaseOrderInvoiceSummary(purchaseOrderUuid: string) 
 
   const grossBalanceRemaining = Math.max(
     0,
-    totalPOValue - advancePaid - invoicedValue - holdbackReleased,
+    totalPOValue -
+      advancePaidDeductionForBalance(po.po_type, advancePaid) -
+      invoicedValue -
+      holdbackReleased,
   )
 
   const balanceToBeInvoicedLegacy = Math.max(
@@ -256,11 +189,12 @@ export async function getPurchaseOrderInvoiceSummary(purchaseOrderUuid: string) 
 
   const qtyRemainingToBeInvoiced = Math.max(0, totalPOQuantity - invoicedQuantity)
 
-  const balanceToBeInvoicedByItems = computeBalanceToBeInvoicedByPoItems({
-    poItems: poItemRows,
-    invoiceItems: poInvoiceItemRows,
-    advancePaid,
-  })
+  const balanceToBeInvoicedByItems = isMaterialOrderType(po.po_type)
+    ? computeMaterialBalanceToBeInvoicedFromItems({
+        lineItems: poItemRows,
+        invoiceLineItems: poInvoiceItemRows,
+      })
+    : null
 
   const balanceToBeInvoiced = balanceToBeInvoicedByItems ?? balanceToBeInvoicedLegacy
 
@@ -282,7 +216,7 @@ export async function getPurchaseOrderInvoiceSummary(purchaseOrderUuid: string) 
 export async function getChangeOrderInvoiceSummary(changeOrderUuid: string) {
   const co = await prisma.changeOrder.findFirst({
     where: { uuid: changeOrderUuid, is_active: true },
-    select: { uuid: true, financial_breakdown: true },
+    select: { uuid: true, co_type: true, financial_breakdown: true },
   })
   if (!co) return null
 
@@ -323,10 +257,8 @@ export async function getChangeOrderInvoiceSummary(changeOrderUuid: string) {
     select: { amount: true, financial_breakdown: true, holdback: true },
   })
 
-  const invoicedValue = progressInvoices.reduce(
-    (sum, invoice) => sum + netVendorInvoiceAmountWithoutTaxes(invoice),
-    0,
-  )
+  const isLaborCO = String(co.co_type ?? '').toUpperCase() === 'LABOR'
+  const invoicedValue = sumProgressInvoicedValue(progressInvoices, isLaborCO)
 
   const holdbackAccruedOnProgress = progressInvoices.reduce(
     (sum, invoice) => sum + accruedHoldbackFromProgressInvoice(invoice),
@@ -354,7 +286,10 @@ export async function getChangeOrderInvoiceSummary(changeOrderUuid: string) {
 
   const grossBalanceRemaining = Math.max(
     0,
-    totalCOValue - advancePaid - invoicedValue - holdbackReleased,
+    totalCOValue -
+      advancePaidDeductionForBalance(co.co_type, advancePaid) -
+      invoicedValue -
+      holdbackReleased,
   )
 
   const balanceToBeInvoicedLegacy = Math.max(
@@ -397,11 +332,12 @@ export async function getChangeOrderInvoiceSummary(changeOrderUuid: string) {
 
   const qtyRemainingToBeInvoiced = Math.max(0, totalCOQuantity - invoicedQuantity)
 
-  const balanceToBeInvoicedByItems = computeBalanceToBeInvoicedByCoItems({
-    coItems: coItemRows,
-    invoiceItems: coInvoiceItemRows,
-    advancePaid,
-  })
+  const balanceToBeInvoicedByItems = isMaterialOrderType(co.co_type)
+    ? computeMaterialBalanceToBeInvoicedFromItems({
+        lineItems: coItemRows,
+        invoiceLineItems: coInvoiceItemRows,
+      })
+    : null
 
   const balanceToBeInvoiced = balanceToBeInvoicedByItems ?? balanceToBeInvoicedLegacy
 

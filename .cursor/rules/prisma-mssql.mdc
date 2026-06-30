@@ -1,0 +1,14 @@
+---
+description: Prisma and MSSQL migration conventions
+globs: prisma/**
+alwaysApply: false
+---
+
+# Prisma + MSSQL
+
+- UUID columns: `NVARCHAR(36)` with `LOWER(CONVERT(NVARCHAR(36), NEWID()))` default
+- `boolean` → `BIT`; monetary → `DECIMAL(18,2)`; rates → `DECIMAL(18,6)`
+- Match existing `@@map` / `@map` table and column names
+- One migration per logical change; commit `schema.prisma` + `prisma/migrations/`
+- Document Postgres→MSSQL differences in migration SQL comments
+- Postgres RPCs/triggers → application logic in `server/utils/` when porting

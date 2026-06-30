@@ -60,8 +60,8 @@
               <th class="px-4 py-2 text-left" :class="props.showLocationColumn ? 'w-1/4' : 'w-1/3'">Cost Code</th>
               <th v-if="props.showLocationColumn" class="w-1/5 px-4 py-2 text-left">Location</th>
               <th v-if="props.showLocationColumn" class="w-1/5 px-4 py-2 text-left">Description</th>
-              <th class="px-4 py-2 text-right" :class="props.showLocationColumn ? 'w-1/6' : 'w-1/4'">PO Amount</th>
-              <th class="px-4 py-2 text-right" :class="props.showLocationColumn ? 'w-1/6' : 'w-1/4'">CO Amount</th>
+              <th class="px-4 py-2 text-right" :class="props.showLocationColumn ? 'w-1/6' : 'w-1/4'">{{ poAmountColumnHeader }}</th>
+              <th class="px-4 py-2 text-right" :class="props.showLocationColumn ? 'w-1/6' : 'w-1/4'">{{ coAmountColumnHeader }}</th>
               <th class="w-[64px] px-4 py-2 text-right">Actions</th>
             </tr>
           </thead>
@@ -218,6 +218,7 @@
 <script setup lang="ts">
 import { computed, reactive, unref, watch } from 'vue'
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
+import { formatPoAmountColumnHeader, type PoCurrencyCode } from '~/utils/poCurrencyConversion'
 import LocationSelect from '~/components/shared/LocationSelect.vue'
 
 interface LaborCOItemDisplay {
@@ -242,6 +243,10 @@ const props = withDefaults(defineProps<{
   emptyMessage?: string
   readonly?: boolean
   showLocationColumn?: boolean
+  poCurrencyConversionEnabled?: boolean
+  poCurrencyFrom?: PoCurrencyCode
+  poCurrencyTo?: PoCurrencyCode
+  poConversionRate?: number
 }>(), {
   title: 'Labor Change Order Items',
   description: 'Original purchase order amounts shown for reference. Enter change order amounts.',
@@ -252,6 +257,10 @@ const props = withDefaults(defineProps<{
   emptyMessage: 'No labor items found.',
   readonly: false,
   showLocationColumn: true,
+  poCurrencyConversionEnabled: false,
+  poCurrencyFrom: 'CAD',
+  poCurrencyTo: 'USD',
+  poConversionRate: 1,
 })
 
 const emit = defineEmits<{
@@ -264,6 +273,13 @@ const emit = defineEmits<{
 const hasItems = computed(() => Array.isArray(props.items) && props.items.length > 0)
 const { formatCurrency, currencySymbol } = useCurrencyFormat()
 const currencySymbolText = computed(() => unref(currencySymbol) || '')
+
+const poAmountColumnHeader = computed(() =>
+  formatPoAmountColumnHeader('PO Amount', props.poCurrencyFrom)
+)
+const coAmountColumnHeader = computed(() =>
+  formatPoAmountColumnHeader('CO Amount', props.poCurrencyFrom)
+)
 
 const parseNumericInput = (value: any): number => {
   if (value === null || value === undefined) return 0

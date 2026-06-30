@@ -1353,6 +1353,10 @@ const isCoFormValid = computed(() => {
 
 // Use change orders store
 import { useChangeOrdersStore } from '~/stores/changeOrders'
+import {
+  normalizePoCurrencyConversionFields,
+  PO_CURRENCY_CONVERSION_DEFAULTS,
+} from '~/utils/poCurrencyConversion'
 const changeOrdersStore = useChangeOrdersStore()
 const changeOrders = computed(() => changeOrdersStore.changeOrders)
 const loading = computed(() => changeOrdersStore.loading)
@@ -2198,6 +2202,7 @@ const openCreateModal = async () => {
     revision_number: '',
     revision_notes: '',
     revision_date: null,
+    ...PO_CURRENCY_CONVERSION_DEFAULTS,
   }
   showFormModal.value = true
 }
@@ -2237,6 +2242,7 @@ const loadChangeOrderForModal = async (co: any, viewMode: boolean = false) => {
 
     coForm.value = {
       ...detailed,
+      ...normalizePoCurrencyConversionFields(detailed as Record<string, unknown>),
       quote_reference: detailed.quote_reference || '',
       audit_log: Array.isArray(detailed.audit_log) ? detailed.audit_log : [],
     };

@@ -52,9 +52,13 @@ describe('Purchase Order Print Page', () => {
           },
           PurchaseOrderPreview: {
             name: 'PurchaseOrderPreview',
-            props: ['purchaseOrderUuid'],
+            props: ['purchaseOrderUuid', 'printInToCurrency', 'hideCurrencyPrintControls'],
             emits: ['preview-ready'],
             template: '<div data-testid="po-preview">{{ purchaseOrderUuid }}</div>',
+          },
+          PoPreviewCurrencyPrintBar: {
+            name: 'PoPreviewCurrencyPrintBar',
+            template: '<div data-testid="po-preview-currency-print-bar" />',
           },
         },
       },

@@ -293,7 +293,7 @@
               <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-xs print:text-[10px]">
                 {{ item.description || '' }}
               </td>
-              <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px] font-mono font-semibold">{{ formatCurrency(item.po_amount || 0) }}</td>
+              <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px] font-mono font-semibold">{{ formatPoAmount(item.po_amount || 0) }}</td>
             </tr>
           </tbody>
           <tfoot>
@@ -304,7 +304,7 @@
               >
                 Total PO Amount:
               </td>
-              <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px] font-mono font-semibold">{{ formatCurrency(laborTotal) }}</td>
+              <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px] font-mono font-semibold">{{ formatPoAmount(laborTotal) }}</td>
             </tr>
           </tfoot>
         </table>
@@ -315,50 +315,50 @@
             <div class="space-y-1 print:space-y-0.5">
               <div class="flex justify-between text-xs print:text-[10px]">
                 <span class="font-semibold text-gray-700">Labor Total:</span>
-                <span class="font-mono">{{ formatCurrency(laborTotal) }}</span>
+                <span class="font-mono">{{ formatPoAmount(laborTotal) }}</span>
               </div>
               
               <template v-if="chargesTotal > 0">
                 <div v-if="freightChargesAmount > 0" class="flex justify-between text-xs print:text-[10px] pl-3 print:pl-2">
                   <span class="text-gray-600">Freight:</span>
-                  <span class="font-mono">{{ formatCurrency(freightChargesAmount) }}</span>
+                  <span class="font-mono">{{ formatPoAmount(freightChargesAmount) }}</span>
                 </div>
                 <div v-if="packingChargesAmount > 0" class="flex justify-between text-xs print:text-[10px] pl-3 print:pl-2">
                   <span class="text-gray-600">Packing:</span>
-                  <span class="font-mono">{{ formatCurrency(packingChargesAmount) }}</span>
+                  <span class="font-mono">{{ formatPoAmount(packingChargesAmount) }}</span>
                 </div>
                 <div v-if="customDutiesAmount > 0" class="flex justify-between text-xs print:text-[10px] pl-3 print:pl-2">
                   <span class="text-gray-600">Custom Duties:</span>
-                  <span class="font-mono">{{ formatCurrency(customDutiesAmount) }}</span>
+                  <span class="font-mono">{{ formatPoAmount(customDutiesAmount) }}</span>
                 </div>
                 <div v-if="otherChargesAmount > 0" class="flex justify-between text-xs print:text-[10px] pl-3 print:pl-2">
                   <span class="text-gray-600">Other:</span>
-                  <span class="font-mono">{{ formatCurrency(otherChargesAmount) }}</span>
+                  <span class="font-mono">{{ formatPoAmount(otherChargesAmount) }}</span>
                 </div>
                 <div class="flex justify-between text-xs print:text-[10px] border-t border-gray-200 pt-0.5 print:pt-0.5 mt-0.5 print:mt-0.5">
                   <span class="font-semibold text-gray-700">Charges Total:</span>
-                  <span class="font-mono font-semibold">{{ formatCurrency(chargesTotal) }}</span>
+                  <span class="font-mono font-semibold">{{ formatPoAmount(chargesTotal) }}</span>
                 </div>
               </template>
               
               <template v-if="taxTotal > 0">
                 <div v-if="salesTax1Amount > 0" class="flex justify-between text-xs print:text-[10px] pl-3 print:pl-2">
                   <span class="text-gray-600">Sales Tax 1:</span>
-                  <span class="font-mono">{{ formatCurrency(salesTax1Amount) }}</span>
+                  <span class="font-mono">{{ formatPoAmount(salesTax1Amount) }}</span>
                 </div>
                 <div v-if="salesTax2Amount > 0" class="flex justify-between text-xs print:text-[10px] pl-3 print:pl-2">
                   <span class="text-gray-600">Sales Tax 2:</span>
-                  <span class="font-mono">{{ formatCurrency(salesTax2Amount) }}</span>
+                  <span class="font-mono">{{ formatPoAmount(salesTax2Amount) }}</span>
                 </div>
                 <div class="flex justify-between text-xs print:text-[10px] border-t border-gray-200 pt-0.5 print:pt-0.5 mt-0.5 print:mt-0.5">
                   <span class="font-semibold text-gray-700">Tax Total:</span>
-                  <span class="font-mono font-semibold">{{ formatCurrency(taxTotal) }}</span>
+                  <span class="font-mono font-semibold">{{ formatPoAmount(taxTotal) }}</span>
                 </div>
               </template>
               
               <div class="flex justify-between text-sm print:text-xs font-bold border-t-2 border-gray-400 pt-1 print:pt-0.5 mt-1 print:mt-0.5">
                 <span class="text-gray-900">PO Total:</span>
-                <span class="font-mono">{{ formatCurrency(poTotal) }}</span>
+                <span class="font-mono">{{ formatPoAmount(poTotal) }}</span>
               </div>
             </div>
           </div>
@@ -400,7 +400,7 @@
               </td>
               <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-xs print:text-[10px]">{{ item.description || '' }}</td>
               <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-left text-xs print:text-[10px]">{{ resolveUnitDisplayForPoLwmItem(item) }}</td>
-              <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px] font-mono font-semibold">{{ formatCurrency(item.po_amount || 0) }}</td>
+              <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px] font-mono font-semibold">{{ formatPoAmount(item.po_amount || 0) }}</td>
             </tr>
           </tbody>
           <tfoot>
@@ -411,7 +411,7 @@
               >
                 Total:
               </td>
-              <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px] font-mono font-semibold">{{ formatCurrency(locationWiseMaterialTotal) }}</td>
+              <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px] font-mono font-semibold">{{ formatPoAmount(locationWiseMaterialTotal) }}</td>
             </tr>
           </tfoot>
         </table>
@@ -457,10 +457,10 @@
                 >
                   {{ resolveLocationName(item) }}
                 </td>
-                <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px] font-mono">{{ item.po_unit_price ? formatCurrency(item.po_unit_price) : '' }}</td>
+                <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px] font-mono">{{ item.po_unit_price ? formatPoAmount(item.po_unit_price) : '' }}</td>
                 <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-left text-xs print:text-[10px]">{{ resolveUnitDisplayForPoItem(item) }}</td>
                 <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px]">{{ formatQuantity(item.po_quantity) }}</td>
-                <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px] font-mono font-semibold">{{ item.po_total ? formatCurrency(item.po_total) : '' }}</td>
+                <td class="border border-gray-300 px-2 print:px-1 py-1 print:py-0.5 text-right text-xs print:text-[10px] font-mono font-semibold">{{ item.po_total ? formatPoAmount(item.po_total) : '' }}</td>
               </tr>
               <tr v-if="selectedApprovalChecksForPrint(item).length > 0">
                 <td class="border border-gray-300"></td>
@@ -500,30 +500,30 @@
               <!-- Item Total -->
               <div class="flex justify-between text-xs print:text-[10px]">
                 <span class="font-semibold text-gray-700">Item Total:</span>
-                <span class="font-mono">{{ formatCurrency(itemTotal) }}</span>
+                <span class="font-mono">{{ formatPoAmount(itemTotal) }}</span>
               </div>
               
               <!-- Charges Breakdown -->
               <template v-if="chargesTotal > 0">
                 <div v-if="freightChargesAmount > 0" class="flex justify-between text-xs print:text-[10px] pl-3 print:pl-2">
                   <span class="text-gray-600">Freight:</span>
-                  <span class="font-mono">{{ formatCurrency(freightChargesAmount) }}</span>
+                  <span class="font-mono">{{ formatPoAmount(freightChargesAmount) }}</span>
                 </div>
                 <div v-if="packingChargesAmount > 0" class="flex justify-between text-xs print:text-[10px] pl-3 print:pl-2">
                   <span class="text-gray-600">Packing:</span>
-                  <span class="font-mono">{{ formatCurrency(packingChargesAmount) }}</span>
+                  <span class="font-mono">{{ formatPoAmount(packingChargesAmount) }}</span>
                 </div>
                 <div v-if="customDutiesAmount > 0" class="flex justify-between text-xs print:text-[10px] pl-3 print:pl-2">
                   <span class="text-gray-600">Custom Duties:</span>
-                  <span class="font-mono">{{ formatCurrency(customDutiesAmount) }}</span>
+                  <span class="font-mono">{{ formatPoAmount(customDutiesAmount) }}</span>
                 </div>
                 <div v-if="otherChargesAmount > 0" class="flex justify-between text-xs print:text-[10px] pl-3 print:pl-2">
                   <span class="text-gray-600">Other:</span>
-                  <span class="font-mono">{{ formatCurrency(otherChargesAmount) }}</span>
+                  <span class="font-mono">{{ formatPoAmount(otherChargesAmount) }}</span>
                 </div>
                 <div class="flex justify-between text-xs print:text-[10px] border-t border-gray-200 pt-0.5 print:pt-0.5 mt-0.5 print:mt-0.5">
                   <span class="font-semibold text-gray-700">Charges Total:</span>
-                  <span class="font-mono font-semibold">{{ formatCurrency(chargesTotal) }}</span>
+                  <span class="font-mono font-semibold">{{ formatPoAmount(chargesTotal) }}</span>
                 </div>
               </template>
               
@@ -531,22 +531,22 @@
               <template v-if="taxTotal > 0">
                 <div v-if="salesTax1Amount > 0" class="flex justify-between text-xs print:text-[10px] pl-3 print:pl-2">
                   <span class="text-gray-600">Sales Tax 1:</span>
-                  <span class="font-mono">{{ formatCurrency(salesTax1Amount) }}</span>
+                  <span class="font-mono">{{ formatPoAmount(salesTax1Amount) }}</span>
                 </div>
                 <div v-if="salesTax2Amount > 0" class="flex justify-between text-xs print:text-[10px] pl-3 print:pl-2">
                   <span class="text-gray-600">Sales Tax 2:</span>
-                  <span class="font-mono">{{ formatCurrency(salesTax2Amount) }}</span>
+                  <span class="font-mono">{{ formatPoAmount(salesTax2Amount) }}</span>
                 </div>
                 <div class="flex justify-between text-xs print:text-[10px] border-t border-gray-200 pt-0.5 print:pt-0.5 mt-0.5 print:mt-0.5">
                   <span class="font-semibold text-gray-700">Tax Total:</span>
-                  <span class="font-mono font-semibold">{{ formatCurrency(taxTotal) }}</span>
+                  <span class="font-mono font-semibold">{{ formatPoAmount(taxTotal) }}</span>
                 </div>
               </template>
               
               <!-- Total PO Amount -->
               <div class="flex justify-between text-sm print:text-xs font-bold border-t-2 border-gray-400 pt-1 print:pt-0.5 mt-1 print:mt-0.5">
                 <span class="text-gray-900">PO Total:</span>
-                <span class="font-mono">{{ formatCurrency(poTotal) }}</span>
+                <span class="font-mono">{{ formatPoAmount(poTotal) }}</span>
               </div>
             </div>
           </div>
@@ -558,7 +558,7 @@
         <div class="flex justify-between items-center mb-2 print:mb-1.5">
           <h2 class="text-base print:text-sm font-bold text-gray-900">APPROVALS</h2>
           <div class="text-xs print:text-[10px] font-semibold text-gray-900">
-            APPROVED FOR PO Total : <span class="font-mono">{{ formatCurrency(poTotal) }}</span>
+            APPROVED FOR PO Total : <span class="font-mono">{{ formatPoAmount(poTotal) }}</span>
           </div>
         </div>
 
@@ -683,13 +683,20 @@ import {
 } from '~/utils/authToken'
 import { poPrintDebug, poPrintDebugWarn } from '~/utils/poPrintDebug'
 import { getVendorAddressByType } from '~/utils/vendorAddresses'
+import { usePoPreviewCurrencyFormat } from '~/composables/usePoPreviewCurrencyFormat'
 
 interface Props {
   purchaseOrder?: any
   purchaseOrderUuid?: string
+  /** When true, currency print toggle is rendered on the dedicated print page instead. */
+  hideCurrencyPrintControls?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  hideCurrencyPrintControls: false,
+})
+
+const printInToCurrency = defineModel<boolean>('printInToCurrency', { default: false })
 
 const emit = defineEmits<{
   'preview-ready': []
@@ -719,6 +726,13 @@ const shippingAddress = ref<any | null>(null)
 const billingAddress = ref<any | null>(null)
 const masterSpecByItemUuid = ref<Map<string, string>>(new Map())
 const masterSpecByTypeAndName = ref<Map<string, string>>(new Map())
+
+const {
+  currencyFields: poCurrencyFields,
+  currencyConversionEnabled: poCurrencyConversionEnabled,
+  conversionRateSummary: poConversionRateSummary,
+  formatOrderAmount: formatPoAmount,
+} = usePoPreviewCurrencyFormat(purchaseOrderDetail, printInToCurrency)
 
 const normalizeText = (value: unknown) => String(value || '').trim().toLowerCase()
 const buildTypeNameKey = (itemTypeUuid: unknown, itemName: unknown) =>
@@ -1823,6 +1837,9 @@ const deliveryDateDisplay = computed(() => {
 })
 
 const currencyDisplay = computed(() => {
+  if (poCurrencyConversionEnabled.value) {
+    return poCurrencyFields.value.currency_from
+  }
   return currencyCode.value || 'USD'
 })
 
@@ -2089,6 +2106,13 @@ onMounted(async () => {
   }
   
   if (!purchaseOrderDetail.value) load()
+})
+
+defineExpose({
+  orderCurrencyConversionEnabled: poCurrencyConversionEnabled,
+  orderCurrencyFrom: computed(() => poCurrencyFields.value.currency_from),
+  orderCurrencyTo: computed(() => poCurrencyFields.value.currency_to),
+  orderConversionRateSummary: poConversionRateSummary,
 })
 </script>
 

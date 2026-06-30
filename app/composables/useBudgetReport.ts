@@ -7,6 +7,13 @@ import { useChangeOrdersStore } from '~/stores/changeOrders'
 import { useBillEntriesStore } from '~/stores/billEntries'
 import { useProjectsStore } from '~/stores/projects'
 import dayjs from 'dayjs'
+import {
+  isFullyPaidInvoiceStatus,
+  isPartiallyPaidInvoiceStatus,
+  resolveBudgetReportPaidAmount,
+  type NimblePaidByInvoiceUuid,
+} from '~/utils/invoiceReportPaymentTotals'
+import { amountInPoToCurrency } from '~/utils/poCurrencyConversion'
 
 export interface BudgetReportRow {
   costCodeUuid: string
@@ -379,6 +386,12 @@ export const useBudgetReport = () => {
         return Number.isFinite(numeric) ? numeric : 0
       }
 
+      /** Convert PO/CO line totals to corporation-facing to-currency when conversion is enabled. */
+      const toBudgetReportOrderAmount = (
+        amount: number,
+        order: Record<string, unknown>,
+      ): number => amountInPoToCurrency(amount, order)
+
       // Bulk-fetch PO/CO line items and paid invoice lines for the project (few requests vs N+1)
       const bulkItemQuery = { project_uuid: projectUuid }
       const paidDataQuery: Record<string, string> = {
@@ -604,6 +617,12 @@ export const useBudgetReport = () => {
           : [],
         'vendor_invoice_uuid'
       )
+      const holdbackCostCodesByInvoice = groupItemsByKey(
+        Array.isArray(bulkPaidData?.holdback_cost_codes)
+          ? bulkPaidData.holdback_cost_codes
+          : [],
+        'vendor_invoice_uuid'
+      )
 
       // Get bill entries for this corporation (filtered by project if possible)
       // Note: Bill entries don't have direct project_uuid, so we'll use all approved bill entries
@@ -746,7 +765,10 @@ export const useBudgetReport = () => {
                 : 0;
 
             // Add item amount + proportional charges and taxes
-            existing.purchaseOrder += itemAmount + proportionalChargesAndTaxes;
+            existing.purchaseOrder += toBudgetReportOrderAmount(
+              itemAmount + proportionalChargesAndTaxes,
+              po,
+            );
             costCodeAmounts.set(costCodeUuid, existing);
           });
         }
@@ -797,7 +819,10 @@ export const useBudgetReport = () => {
                 : 0;
 
             // Add item amount + proportional charges and taxes
-            existing.purchaseOrder += itemAmount + proportionalChargesAndTaxes;
+            existing.purchaseOrder += toBudgetReportOrderAmount(
+              itemAmount + proportionalChargesAndTaxes,
+              po,
+            );
             costCodeAmounts.set(costCodeUuid, existing);
           });
         }
@@ -855,7 +880,10 @@ export const useBudgetReport = () => {
                 : 0;
 
             // Add item amount + proportional charges and taxes
-            existing.changeOrder += itemAmount + proportionalChargesAndTaxes;
+            existing.changeOrder += toBudgetReportOrderAmount(
+              itemAmount + proportionalChargesAndTaxes,
+              co,
+            );
             costCodeAmounts.set(costCodeUuid, existing);
           });
         }
@@ -905,19 +933,31 @@ export const useBudgetReport = () => {
                 : 0;
 
             // Add item amount + proportional charges and taxes
-            existing.changeOrder += itemAmount + proportionalChargesAndTaxes;
+            existing.changeOrder += toBudgetReportOrderAmount(
+              itemAmount + proportionalChargesAndTaxes,
+              co,
+            );
             costCodeAmounts.set(costCodeUuid, existing);
           });
         }
       });
+
+      let nimblePaidByInvoiceUuid: NimblePaidByInvoiceUuid =
+        bulkPaidData?.nimble_paid_by_invoice_uuid &&
+        typeof bulkPaidData.nimble_paid_by_invoice_uuid === 'object'
+          ? (bulkPaidData.nimble_paid_by_invoice_uuid as Record<string, number>)
+          : {}
 
       const applyPaidVendorInvoice = (fullInvoice: any) => {
         if (!fullInvoice) return
 
         const invoiceType = fullInvoice.invoice_type || ''
 
-            // Get the invoice total amount (includes all items, charges, and taxes)
-            const invoiceTotalAmount = parseFloat(fullInvoice.amount || "0") || 0;
+            const invoiceTotalAmount = resolveBudgetReportPaidAmount(
+              fullInvoice,
+              nimblePaidByInvoiceUuid
+            )
+            if (invoiceTotalAmount <= 0) return
 
             let totalItemAmount = 0;
             const costCodeItemAmounts = new Map<string, number>();
@@ -1031,14 +1071,23 @@ export const useBudgetReport = () => {
                     parseFloat(item.total || "0") ||
                     (parseFloat(item.unit_price || "0") || 0) *
                       (parseFloat(item.quantity || "0") || 0);
-                  totalItemAmount += itemAmount;
+                  addPaidLineToCostCodes(item.cost_code_uuid, itemAmount);
+                }
+              });
+            } else if (
+              invoiceType === "AGAINST_HOLDBACK_AMOUNT" &&
+              fullInvoice.holdback_cost_codes
+            ) {
+              const holdbackRows = Array.isArray(fullInvoice.holdback_cost_codes)
+                ? fullInvoice.holdback_cost_codes
+                : [];
 
-                  const currentAmount =
-                    costCodeItemAmounts.get(item.cost_code_uuid) || 0;
-                  costCodeItemAmounts.set(
-                    item.cost_code_uuid,
-                    currentAmount + itemAmount
+              holdbackRows.forEach((row: any) => {
+                if (row.cost_code_uuid && row.is_active !== false) {
+                  const releaseAmount = parseMoney(
+                    row.release_amount ?? row.releaseAmount
                   );
+                  addPaidLineToCostCodes(row.cost_code_uuid, releaseAmount);
                 }
               });
             }
@@ -1084,13 +1133,14 @@ export const useBudgetReport = () => {
               line_items: directLineItemsByInvoice.get(invoiceUuid) || [],
               advance_payment_cost_codes:
                 advanceCostCodesByInvoice.get(invoiceUuid) || [],
+              holdback_cost_codes:
+                holdbackCostCodesByInvoice.get(invoiceUuid) || [],
             })
           }
         } else {
           const vendorInvoiceQuery: Record<string, string> = {
             corporation_uuid: corporationUuid,
             project_uuid: projectUuid,
-            status: 'Paid',
           }
           if (startDate) vendorInvoiceQuery.bill_date_from = startDate
           if (endDate) vendorInvoiceQuery.bill_date_to = endDate
@@ -1104,7 +1154,8 @@ export const useBudgetReport = () => {
             Array.isArray(invoicesResponse?.data) ? invoicesResponse.data : []
           ).filter(
             (invoice: any) =>
-              invoice.status === 'Paid' &&
+              (isFullyPaidInvoiceStatus(invoice.status) ||
+                isPartiallyPaidInvoiceStatus(invoice.status)) &&
               invoice.is_active !== false &&
               invoice.project_uuid === projectUuid
           )
@@ -1112,6 +1163,29 @@ export const useBudgetReport = () => {
           paidInvoicesLegacy = paidInvoicesLegacy.filter((invoice: any) =>
             isWithinSelectedDateRange(invoice.bill_date)
           )
+
+          const legacyInvoiceUuids = paidInvoicesLegacy
+            .map((invoice: any) => String(invoice.uuid || '').trim())
+            .filter(Boolean)
+
+          if (legacyInvoiceUuids.length > 0) {
+            try {
+              const nimbleTotalsResponse: any = await apiFetch(
+                '/api/vendor-invoices/nimble-payment-totals',
+                {
+                  method: 'GET',
+                  query: { invoice_uuids: legacyInvoiceUuids.join(',') },
+                }
+              )
+              nimblePaidByInvoiceUuid =
+                nimbleTotalsResponse?.data &&
+                typeof nimbleTotalsResponse.data === 'object'
+                  ? nimbleTotalsResponse.data
+                  : {}
+            } catch {
+              nimblePaidByInvoiceUuid = {}
+            }
+          }
 
           await Promise.all(
             paidInvoicesLegacy.map(async (invoice: any) => {
@@ -1122,7 +1196,14 @@ export const useBudgetReport = () => {
                   { method: 'GET' }
                 )
                 if (fullInvoiceResponse?.data) {
-                  applyPaidVendorInvoice(fullInvoiceResponse.data)
+                  applyPaidVendorInvoice({
+                    ...fullInvoiceResponse.data,
+                    uuid: fullInvoiceResponse.data.uuid ?? invoice.uuid,
+                    status:
+                      fullInvoiceResponse.data.status ?? invoice.status,
+                    amount:
+                      fullInvoiceResponse.data.amount ?? invoice.amount,
+                  })
                 }
               } catch {
                 // ignore individual invoice errors

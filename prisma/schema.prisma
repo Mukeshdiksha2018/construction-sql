@@ -372,10 +372,11 @@ model Estimate {
   audit_log               String?   @db.NVarChar(Max)
   created_by              String?   @db.NVarChar(128)
   approved_by             String?   @db.NVarChar(128)
-  approved_at             DateTime? @db.DateTime2
-  is_active               Boolean   @default(true)
-  created_at              DateTime  @default(now()) @db.DateTime2
-  updated_at              DateTime  @updatedAt @db.DateTime2
+  approved_at                 DateTime? @db.DateTime2
+  last_handled_approval_type  Int?      @db.SmallInt
+  is_active                   Boolean   @default(true)
+  created_at                  DateTime  @default(now()) @db.DateTime2
+  updated_at                  DateTime  @updatedAt @db.DateTime2
 
   lineItems             EstimateLineItem[]
 
@@ -549,6 +550,11 @@ model PurchaseOrderForm {
   print_include_approved_by_vendor  Boolean?
   print_use_entity_name             Boolean?
   special_instruction_uuid          String?   @db.NVarChar(36)
+  currency_conversion_enabled       Boolean   @default(false)
+  currency_from                     String?   @db.NVarChar(10)
+  currency_to                       String?   @db.NVarChar(10)
+  conversion_rate                   Decimal?  @db.Decimal(18, 6)
+  last_handled_approval_type        Int?      @db.SmallInt
   is_active                         Boolean   @default(true)
   created_at                        DateTime  @default(now()) @db.DateTime2
   updated_at                        DateTime  @updatedAt @db.DateTime2
@@ -884,6 +890,11 @@ model ChangeOrder {
   revision_number                  String?   @db.NVarChar(50)
   revision_notes                   String?   @db.NVarChar(Max)
   revision_date                    DateTime? @db.DateTime2
+  currency_conversion_enabled      Boolean   @default(false)
+  currency_from                    String?   @db.NVarChar(10)
+  currency_to                      String?   @db.NVarChar(10)
+  conversion_rate                  Decimal?  @db.Decimal(18, 6)
+  last_handled_approval_type       Int?      @db.SmallInt
   is_active                        Boolean   @default(true)
   created_at                       DateTime  @default(now()) @db.DateTime2
   updated_at                       DateTime  @updatedAt @db.DateTime2
@@ -1042,6 +1053,7 @@ model VendorInvoice {
   removed_advance_payment_cost_codes  String?   @db.NVarChar(Max)
   holdback_fully_paid                 Boolean?
   nimble_jeid                         String?   @db.NVarChar(100)
+  last_handled_approval_type          Int?      @db.SmallInt
   created_at                          DateTime  @default(now()) @db.DateTime2
   updated_at                          DateTime  @updatedAt @db.DateTime2
 
@@ -1094,6 +1106,7 @@ model DirectVendorInvoiceLineItem {
   uom                 String?  @db.NVarChar(100)
   unit_label          String?  @db.NVarChar(100)
   unit_uuid           String?  @db.NVarChar(36)
+  gl_account_uuid     String?  @db.NVarChar(36)
   metadata            String?  @db.NVarChar(Max)
   is_active           Boolean  @default(true)
   created_at          DateTime @default(now()) @db.DateTime2
@@ -1102,6 +1115,7 @@ model DirectVendorInvoiceLineItem {
   vendorInvoice VendorInvoice @relation(fields: [vendor_invoice_uuid], references: [uuid], onDelete: Cascade)
 
   @@index([vendor_invoice_uuid])
+  @@index([gl_account_uuid])
   @@map("direct_vendor_invoice_line_items")
 }
 
@@ -1132,6 +1146,7 @@ model PurchaseOrderInvoiceItem {
   invoice_quantity    Decimal? @db.Decimal(18, 4)
   invoice_unit_price  Decimal? @db.Decimal(18, 4)
   invoice_total       Decimal? @db.Decimal(18, 2)
+  gl_account_uuid     String?  @db.NVarChar(36)
   metadata            String?  @db.NVarChar(Max)
   is_active           Boolean  @default(true)
   created_at          DateTime @default(now()) @db.DateTime2
@@ -1141,6 +1156,7 @@ model PurchaseOrderInvoiceItem {
 
   @@index([vendor_invoice_uuid])
   @@index([purchase_order_uuid])
+  @@index([gl_account_uuid])
   @@map("purchase_order_invoice_items_list")
 }
 
@@ -1171,6 +1187,7 @@ model ChangeOrderInvoiceItem {
   invoice_quantity    Decimal? @db.Decimal(18, 4)
   invoice_unit_price  Decimal? @db.Decimal(18, 4)
   invoice_total       Decimal? @db.Decimal(18, 2)
+  gl_account_uuid     String?  @db.NVarChar(36)
   metadata            String?  @db.NVarChar(Max)
   is_active           Boolean  @default(true)
   created_at          DateTime @default(now()) @db.DateTime2
@@ -1180,6 +1197,7 @@ model ChangeOrderInvoiceItem {
 
   @@index([vendor_invoice_uuid])
   @@index([change_order_uuid])
+  @@index([gl_account_uuid])
   @@map("change_order_invoice_items_list")
 }
 
@@ -1263,6 +1281,7 @@ model LaborInvoiceItem {
   cost_code_name      String?  @db.NVarChar(255)
   division_name       String?  @db.NVarChar(255)
   invoice_amount      Decimal? @db.Decimal(18, 2)
+  gl_account_uuid     String?  @db.NVarChar(36)
   approval_checks     String?  @db.NVarChar(Max)
   metadata            String?  @db.NVarChar(Max)
   is_active           Boolean  @default(true)
@@ -1272,6 +1291,7 @@ model LaborInvoiceItem {
   vendorInvoice VendorInvoice @relation(fields: [vendor_invoice_uuid], references: [uuid], onDelete: Cascade)
 
   @@index([vendor_invoice_uuid])
+  @@index([gl_account_uuid])
   @@map("labor_invoice_items_list")
 }
 

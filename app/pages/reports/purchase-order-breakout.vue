@@ -553,28 +553,31 @@
                       {{ formatCurrency(item.po_unit_price || item.co_unit_price || item.unit_price) }}
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs">
-                      {{ formatCurrency(item.po_total || item.co_total || item.total || (item.po_quantity || item.co_quantity || item.quantity || 0) * (item.po_unit_price || item.co_unit_price || item.unit_price || 0)) }}
+                      <ReportOrderPoAmountCell
+                        :row="po"
+                        :amount="item.po_total || item.co_total || item.total || (item.po_quantity || item.co_quantity || item.quantity || 0) * (item.po_unit_price || item.co_unit_price || item.unit_price || 0)"
+                      />
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs">
-                      {{ formatCurrency(getItemFreightAmount(item, po)) }}
+                      <ReportOrderPoAmountCell :row="po" :amount="getItemFreightAmount(item, po)" />
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs">
-                      {{ formatCurrency(getItemPackingAmount(item, po)) }}
+                      <ReportOrderPoAmountCell :row="po" :amount="getItemPackingAmount(item, po)" />
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs">
-                      {{ formatCurrency(getItemCustomsAmount(item, po)) }}
+                      <ReportOrderPoAmountCell :row="po" :amount="getItemCustomsAmount(item, po)" />
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs">
-                      {{ formatCurrency(getItemOtherAmount(item, po)) }}
+                      <ReportOrderPoAmountCell :row="po" :amount="getItemOtherAmount(item, po)" />
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs">
-                      {{ formatCurrency(0) }}
+                      <ReportOrderPoAmountCell :row="po" :amount="0" />
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs">
-                      {{ formatCurrency(getItemHSTAmount(item, po)) }}
+                      <ReportOrderPoAmountCell :row="po" :amount="getItemHSTAmount(item, po)" />
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs font-semibold">
-                      {{ formatCurrency(getItemExpectedCost(item, po)) }}
+                      <ReportOrderPoAmountCell :row="po" :amount="getItemExpectedCost(item, po)" />
                     </td>
                   </tr>
                 </template>
@@ -588,28 +591,31 @@
                     Total
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default">
-                    {{ formatCurrency(po.item_total || 0) }}
+                    <ReportOrderPoAmountCell :row="po" :amount="po.item_total || 0" />
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default">
-                    {{ formatCurrency(po.freight_charges_amount || 0) }}
+                    <ReportOrderPoAmountCell :row="po" :amount="po.freight_charges_amount || 0" />
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default">
-                    {{ formatCurrency(po.packing_charges_amount || 0) }}
+                    <ReportOrderPoAmountCell :row="po" :amount="po.packing_charges_amount || 0" />
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default">
-                    {{ formatCurrency(po.custom_duties_amount || 0) }}
+                    <ReportOrderPoAmountCell :row="po" :amount="po.custom_duties_amount || 0" />
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default">
-                    {{ formatCurrency(po.other_charges_amount || 0) }}
+                    <ReportOrderPoAmountCell :row="po" :amount="po.other_charges_amount || 0" />
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default">
-                    {{ formatCurrency(0) }}
+                    <ReportOrderPoAmountCell :row="po" :amount="0" />
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default">
-                    {{ formatCurrency((po.sales_tax_1_amount || 0) + (po.sales_tax_2_amount || 0)) }}
+                    <ReportOrderPoAmountCell
+                      :row="po"
+                      :amount="(po.sales_tax_1_amount || 0) + (po.sales_tax_2_amount || 0)"
+                    />
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default font-bold">
-                    {{ formatCurrency(getTotalExpectedCosts(po)) }}
+                    <ReportOrderPoAmountCell :row="po" :amount="getTotalExpectedCosts(po)" />
                   </td>
                 </tr>
                 
@@ -642,6 +648,8 @@ import ProjectSelect from '~/components/shared/ProjectSelect.vue'
 import CorporationSelect from '~/components/shared/CorporationSelect.vue'
 import VendorSelect from '~/components/shared/VendorSelect.vue'
 import LocationSelect from '~/components/shared/LocationSelect.vue'
+import ReportOrderPoAmountCell from '~/components/Reports/ReportOrderPoAmountCell.vue'
+import { formatReportPoAmountForExport } from '~/utils/reportPoCurrencyDisplay'
 import ItemCategorySelect from '~/components/shared/ItemCategorySelect.vue'
 import ItemTypeSelect from '~/components/shared/ItemTypeSelect.vue'
 import { useLocationsStore } from '~/stores/locations'

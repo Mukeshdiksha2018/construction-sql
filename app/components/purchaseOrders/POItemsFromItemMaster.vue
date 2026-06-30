@@ -28,6 +28,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import POItemsTableWithEstimates from '~/components/purchaseOrders/POItemsTableWithEstimates.vue'
+import type { PoCurrencyCode } from '~/utils/poCurrencyConversion'
 
 interface PurchaseOrderItemDisplay {
   id?: string | number
@@ -84,6 +85,10 @@ const props = withDefaults(defineProps<{
   hideApprovalChecks?: boolean
   hideLocation?: boolean
   hideModelNumber?: boolean
+  poCurrencyConversionEnabled?: boolean
+  poCurrencyFrom?: PoCurrencyCode
+  poCurrencyTo?: PoCurrencyCode
+  poConversionRate?: number
 }>(), {
   title: 'PO Items',
   description: '',
@@ -102,6 +107,10 @@ const props = withDefaults(defineProps<{
   hideApprovalChecks: false,
   hideLocation: false,
   hideModelNumber: false,
+  poCurrencyConversionEnabled: false,
+  poCurrencyFrom: 'CAD',
+  poCurrencyTo: 'USD',
+  poConversionRate: 1,
 })
 
 const emit = defineEmits<{

@@ -365,6 +365,7 @@
       :readonly="props.readonly"
       :model-value="advancePaymentCostCodes"
       :removed-cost-codes="removedAdvancePaymentCostCodes"
+      :consumed-advance-amounts-by-key="consumedAdvanceAmountsByKey"
       @update:model-value="handleAdvancePaymentCostCodesUpdate"
       @update:removed-cost-codes="handleRemovedCostCodesUpdate"
     />
@@ -428,7 +429,7 @@
 
     <!-- Validation Error Message for Zero To Be Invoiced (shown before tables) -->
     <UAlert
-      v-if="overInvoicedValidationError && hasAllItemsZeroToBeInvoiced"
+      v-if="showFormValidationErrors && overInvoicedValidationError && hasAllItemsZeroToBeInvoiced"
       color="error"
       variant="soft"
       class="mt-6"
@@ -631,7 +632,7 @@
 
     <!-- Validation error message when all holdback amounts are zero (shown outside the table container) -->
     <UAlert
-      v-if="isAgainstHoldback && holdbackValidationError"
+      v-if="showFormValidationErrors && isAgainstHoldback && holdbackValidationError"
       color="error"
       variant="soft"
       class="mt-6"
@@ -818,7 +819,15 @@
 
       <!-- Financial Breakdown (Right) -->
       <div class="w-full lg:flex-1 flex justify-start lg:justify-end">
-        <div class="w-full lg:w-auto lg:min-w-[520px]">
+        <div class="w-full lg:w-auto lg:min-w-[520px] space-y-3">
+          <UBanner
+            v-if="showFormValidationErrors && hasAdvancePaymentBelowConsumedError"
+            color="error"
+            icon="i-heroicons-exclamation-triangle"
+            title="Advance payment amounts cannot be reduced"
+            :description="advancePaymentBelowConsumedBannerDescription"
+            class="w-full rounded-lg"
+          />
           <FinancialBreakdown
             :item-total="advancePaymentTotal"
             :form-data="form"
@@ -1541,6 +1550,11 @@ import {
   computeRetainageAmountsByCostCode,
   resolveSourceItemsFromVendorInvoicePayload,
 } from '~/utils/holdbackRetainageByCostCode';
+import { applyPoCurrencyToVendorInvoiceLineItem } from '~/utils/poCurrencyConversion';
+import {
+  aggregateAdjustedAdvancePaymentAmounts,
+  validateAdvancePaymentNotBelowConsumed,
+} from '~/utils/adjustedAdvancePaymentAggregates';
 import POItemsTableWithEstimates from '~/components/purchaseOrders/POItemsTableWithEstimates.vue';
 import COItemsTableFromOriginal from '~/components/changeOrders/COItemsTableFromOriginal.vue';
 import InvoiceLocationWiseMaterialTable from '~/components/payables/InvoiceLocationWiseMaterialTable.vue';
@@ -3102,6 +3116,9 @@ interface PreviouslyAdjustedCostCode {
 }
 const previouslyAdjustedCostCodes = ref<PreviouslyAdjustedCostCode[]>([]);
 
+/** Amounts from this advance payment already adjusted on other PO/CO vendor invoices (edit floor). */
+const consumedAdvanceAmountsByKey = ref<Record<string, number>>({});
+
 interface PreviouslyReleasedCostCode {
   cost_code_uuid: string;
   cost_code_label?: string;
@@ -3162,6 +3179,24 @@ const fetchAllPreviouslyAdjustedCostCodes = async (poOrCoUuid: string, isCO = fa
   } catch (err: any) {
     console.error('[VendorInvoiceForm] Error fetching all previously adjusted cost codes:', err);
     previouslyAdjustedCostCodes.value = [];
+  }
+};
+
+const fetchConsumedAdvanceAmountsForEdit = async (advancePaymentInvoiceUuid: string) => {
+  if (!advancePaymentInvoiceUuid) {
+    consumedAdvanceAmountsByKey.value = {};
+    return;
+  }
+
+  try {
+    const response = await $fetch<{ data: any[] }>('/api/adjusted-advance-payment-cost-codes', {
+      query: { advance_payment_uuid: advancePaymentInvoiceUuid },
+    });
+    const records = Array.isArray(response?.data) ? response.data : [];
+    consumedAdvanceAmountsByKey.value = aggregateAdjustedAdvancePaymentAmounts(records);
+  } catch (err: any) {
+    console.error('[VendorInvoiceForm] Error fetching consumed advance amounts:', err);
+    consumedAdvanceAmountsByKey.value = {};
   }
 };
 
@@ -3293,6 +3328,20 @@ watch(
     // PO/CO-wide fetch; exclude current invoice when it has a uuid so "remaining" and "/ after" values
     // do not double-count this invoice's adjustments against the current input.
     await fetchAllPreviouslyAdjustedCostCodes(poOrCoUuid, isCO, newUuid || undefined);
+  },
+  { immediate: true }
+);
+
+watch(
+  [() => props.form.uuid, () => props.form.invoice_type, () => props.editingInvoice],
+  async ([newUuid, newInvoiceType, editingInvoice]) => {
+    const invoiceType = String(newInvoiceType || '').toUpperCase();
+    if (invoiceType !== 'AGAINST_ADVANCE_PAYMENT' || !editingInvoice || !newUuid) {
+      consumedAdvanceAmountsByKey.value = {};
+      return;
+    }
+
+    await fetchConsumedAdvanceAmountsForEdit(String(newUuid));
   },
   { immediate: true }
 );
@@ -3684,6 +3733,11 @@ const fetchPreviouslyInvoicedForOrder = async (args: {
   }
 };
 
+const applyOrderCurrencyToVendorInvoiceLineItem = (
+  item: Record<string, any>,
+  orderHeader: Record<string, any> | null | undefined,
+) => applyPoCurrencyToVendorInvoiceLineItem(item, orderHeader)
+
 // Fetch PO items and financial breakdown
 const fetchPOItems = async (poUuid: string) => {
   if (!poUuid) {
@@ -3952,7 +4006,9 @@ const fetchPOItems = async (poUuid: string) => {
     });
     
     // Create a completely new array with new object references to ensure Vue reactivity
-    poItems.value = filteredItems.map(item => ({ ...item }));
+    poItems.value = filteredItems.map((item) =>
+      applyOrderCurrencyToVendorInvoiceLineItem(item, poResponse?.data),
+    );
     
     // Immediately sync poItems to form.po_invoice_items for saving
     // This ensures the data is available even if the watcher hasn't fired yet
@@ -4705,7 +4761,9 @@ const fetchCOItems = async (coUuid: string) => {
     });
     
     // Create a completely new array with new object references to ensure Vue reactivity
-    coItems.value = filteredItems.map(item => ({ ...item }));
+    coItems.value = filteredItems.map((item) =>
+      applyOrderCurrencyToVendorInvoiceLineItem(item, coResponse?.data),
+    );
     
     // Immediately sync coItems to form.co_invoice_items for saving
     // This ensures the data is available even if the watcher hasn't fired yet
@@ -9456,6 +9514,29 @@ const hasMaterialPoFullAdvanceAdjustmentError = computed(() => {
 });
 
 // Check for over-adjusted advance payment amounts
+const advancePaymentBelowConsumedValidation = computed(() =>
+  validateAdvancePaymentNotBelowConsumed({
+    advancePaymentCostCodes: props.form.advance_payment_cost_codes,
+    financialBreakdown: props.form.financial_breakdown,
+    consumedByKey: consumedAdvanceAmountsByKey.value,
+  })
+);
+
+const hasAdvancePaymentBelowConsumedError = computed(() => {
+  if (!isAgainstAdvancePayment.value) return false;
+  if (!props.editingInvoice || !props.form.uuid) return false;
+  if (Object.keys(consumedAdvanceAmountsByKey.value).length === 0) return false;
+  return !advancePaymentBelowConsumedValidation.value.valid;
+});
+
+const advancePaymentBelowConsumedBannerDescription = computed(() => {
+  const errors = advancePaymentBelowConsumedValidation.value.errors;
+  if (errors.length === 0) {
+    return 'Amounts already adjusted in other vendor invoices cannot be reduced. Increase cost code or tax amounts before saving.';
+  }
+  return errors[0];
+});
+
 const hasAdvancePaymentValidationError = computed(() => {
   if (isAgainstPO.value) {
     const tableValidationError = poAdvancePaymentBreakdownRef.value?.hasValidationError ?? false;
@@ -9465,9 +9546,10 @@ const hasAdvancePaymentValidationError = computed(() => {
     const tableValidationError = coAdvancePaymentBreakdownRef.value?.hasValidationError ?? false;
     return tableValidationError || hasLaborCoFullAdvanceAdjustmentError.value;
   }
-  // Check for over-advanced amounts in "Against Advance Payment" invoices
-  if (isAgainstAdvancePayment.value && advancePaymentCostCodesTableRef.value) {
-    return advancePaymentCostCodesTableRef.value.hasValidationError ?? false;
+  // Check for over-advanced or below-consumed amounts in "Against Advance Payment" invoices
+  if (isAgainstAdvancePayment.value) {
+    const tableValidationError = advancePaymentCostCodesTableRef.value?.hasValidationError ?? false;
+    return tableValidationError || hasAdvancePaymentBelowConsumedError.value;
   }
   return false;
 });
@@ -9514,6 +9596,10 @@ const overInvoicedValidationError = computed(() => {
 
   if (hasInvoiceItemsLessThanAdvanceError.value) {
     return `Cannot save: ${invoiceItemsLessThanAdvanceBannerDescription.value}`;
+  }
+
+  if (hasAdvancePaymentBelowConsumedError.value) {
+    return `Cannot save: ${advancePaymentBelowConsumedBannerDescription.value}`;
   }
   
   const itemCount = overInvoicedItems.value.length;
@@ -9591,6 +9677,24 @@ const isHydratingForModalActions = computed(() => {
     isAdvanceDistributionHydrating
   );
 });
+
+/** Suppress validation banners until async PO/CO items and hydration finish loading. */
+const showFormValidationErrors = computed(() => {
+  if (isHydratingForModalActions.value) return false
+  if (
+    (isAgainstPO.value || isAgainstCO.value) &&
+    (
+      laborInvoiceItemsLoading.value ||
+      poItemsLoading.value ||
+      poLwmItemsLoading.value ||
+      coItemsLoading.value ||
+      coLwmItemsLoading.value
+    )
+  ) {
+    return false
+  }
+  return true
+})
 
 function sumAdvanceAllocationsExcludingTax(
   amounts: Record<string, Record<string, number>> | undefined,
@@ -10129,6 +10233,7 @@ defineExpose({
   hasCreditDaysValidationError,
   hasDueDateValidationError,
   isHydratingForModalActions,
+  showFormValidationErrors,
   getCoaBreakdownForSave,
   buildHoldbackCoaBreakdownForSave,
   holdbackReleaseAmountTotal,

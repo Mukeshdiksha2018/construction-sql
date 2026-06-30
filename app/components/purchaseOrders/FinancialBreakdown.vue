@@ -8,7 +8,14 @@
         <div>{{ itemTotalLabel }}</div>
         <div></div>
         <div></div>
-        <div class="text-right font-mono">{{ formatCurrency(itemTotal) }}</div>
+        <PoDualCurrencyDisplay
+          v-if="props.poCurrencyConversionEnabled"
+          :amount="itemTotal"
+          :from-currency="props.poCurrencyFrom"
+          :to-currency="props.poCurrencyTo"
+          :conversion-rate="props.poConversionRate"
+        />
+        <div v-else class="text-right font-mono">{{ formatCurrency(itemTotal) }}</div>
       </div>
 
       <!-- Advance Payment Deduction -->
@@ -112,7 +119,14 @@
       <div v-if="!hideCharges" class="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3 text-sm font-semibold text-default">
         <div class="uppercase text-xs tracking-wide text-muted">Charges Total</div>
         <div></div>
-        <div class="text-right font-mono">{{ formatCurrency(chargesTotal) }}</div>
+        <PoDualCurrencyDisplay
+          v-if="props.poCurrencyConversionEnabled"
+          :amount="chargesTotal"
+          :from-currency="props.poCurrencyFrom"
+          :to-currency="props.poCurrencyTo"
+          :conversion-rate="props.poConversionRate"
+        />
+        <div v-else class="text-right font-mono">{{ formatCurrency(chargesTotal) }}</div>
         <div></div>
         <div></div>
       </div>
@@ -189,7 +203,14 @@
       <div class="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3 text-sm font-semibold text-default">
         <div class="uppercase text-xs tracking-wide text-muted">Tax Total</div>
         <div></div>
-        <div class="text-right font-mono">{{ formatCurrency(taxTotal) }}</div>
+        <PoDualCurrencyDisplay
+          v-if="props.poCurrencyConversionEnabled"
+          :amount="taxTotal"
+          :from-currency="props.poCurrencyFrom"
+          :to-currency="props.poCurrencyTo"
+          :conversion-rate="props.poConversionRate"
+        />
+        <div v-else class="text-right font-mono">{{ formatCurrency(taxTotal) }}</div>
         <div></div>
         <div></div>
       </div>
@@ -198,7 +219,15 @@
         <div>{{ totalLabel }}</div>
         <div></div>
         <div></div>
-        <div v-if="!allowEditTotal" class="text-right font-mono text-primary-600">{{ formatCurrency(finalTotal) }}</div>
+        <PoDualCurrencyDisplay
+          v-if="!allowEditTotal && props.poCurrencyConversionEnabled"
+          class="text-primary-600"
+          :amount="finalTotal"
+          :from-currency="props.poCurrencyFrom"
+          :to-currency="props.poCurrencyTo"
+          :conversion-rate="props.poConversionRate"
+        />
+        <div v-else-if="!allowEditTotal" class="text-right font-mono text-primary-600">{{ formatCurrency(finalTotal) }}</div>
         <div v-else class="flex justify-end">
           <div class="flex flex-col items-end gap-1">
             <div class="relative">
@@ -221,6 +250,13 @@
                 @update:model-value="(value) => handleTotalAmountChange(value)"
               />
             </div>
+            <PoDualCurrencyDisplay
+              v-if="props.poCurrencyConversionEnabled"
+              :amount="parseNumericInput(displayTotal)"
+              :from-currency="props.poCurrencyFrom"
+              :to-currency="props.poCurrencyTo"
+              :conversion-rate="props.poConversionRate"
+            />
             <p
               v-if="totalInvoiceAmountError"
               class="text-xs text-error-600 dark:text-error-400"
@@ -511,6 +547,8 @@ import { useChartOfAccountsStore } from '~/stores/chartOfAccounts'
 import ChartOfAccountsSelect from '~/components/shared/ChartOfAccountsSelect.vue'
 import { allocateGlobalHoldbackProportionally } from '~/utils/allocateGlobalHoldbackProportionally'
 import { pipelineCoaModalItemAfterAdvances } from '~/utils/pipelineCoaModalItemAfterAdvances'
+import PoDualCurrencyDisplay from '~/components/purchaseOrders/PoDualCurrencyDisplay.vue'
+import type { PoCurrencyCode } from '~/utils/poCurrencyConversion'
 
 interface Props {
   itemTotal: number
@@ -547,6 +585,10 @@ interface Props {
    * Configure COA across item COA rows only (equal water-fill after cost advance), not on tax rows.
    */
   advanceTaxCreditsByLine?: Partial<Record<'sales_tax_1' | 'sales_tax_2', number>>
+  poCurrencyConversionEnabled?: boolean
+  poCurrencyFrom?: PoCurrencyCode
+  poCurrencyTo?: PoCurrencyCode
+  poConversionRate?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -567,6 +609,10 @@ const props = withDefaults(defineProps<Props>(), {
   showAccountConfig: false,
   advanceAmountsByRow: () => [],
   advanceTaxCreditsByLine: () => ({}),
+  poCurrencyConversionEnabled: false,
+  poCurrencyFrom: 'CAD',
+  poCurrencyTo: 'USD',
+  poConversionRate: 1,
 })
 
 const { formatCurrency, currencySymbol } = useCurrencyFormat()

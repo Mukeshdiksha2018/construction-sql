@@ -421,7 +421,10 @@
                           <span class="font-semibold">Status:</span> <span class="font-semibold text-primary-600 dark:text-primary-400">{{ po.status || 'N/A' }}</span>
                         </div>
                         <div>
-                          <span class="font-semibold">Total Amount:</span> <span class="font-semibold text-primary-600 dark:text-primary-400">{{ formatCurrency(po.item_total || 0) }}</span>
+                          <span class="font-semibold">Total Amount:</span>
+                          <span class="font-semibold text-primary-600 dark:text-primary-400 ml-1 inline-flex">
+                            <ReportOrderPoAmountCell :row="po" :amount="po.item_total || 0" />
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -446,8 +449,12 @@
                     <td class="py-1 px-2 text-default text-xs">{{ item.cost_code_name || item.cost_code_label || '-' }}</td>
                     <td v-if="isLocationWiseEnabled" class="py-1 px-2 text-default text-xs">{{ getItemLocationName(item) }}</td>
                     <td v-if="isLocationWiseEnabled" class="py-1 px-2 text-default text-xs">{{ getItemDescription(item) }}</td>
-                    <td class="py-1 px-2 text-right text-default text-xs">{{ formatCurrency(item.po_amount || 0) }}</td>
-                    <td class="py-1 px-2 text-right text-default text-xs font-semibold">{{ formatCurrency(item.po_amount || 0) }}</td>
+                    <td class="py-1 px-2 text-right text-default text-xs">
+                      <ReportOrderPoAmountCell :row="po" :amount="item.po_amount || 0" />
+                    </td>
+                    <td class="py-1 px-2 text-right text-default text-xs font-semibold">
+                      <ReportOrderPoAmountCell :row="po" :amount="item.po_amount || 0" />
+                    </td>
                   </tr>
                 </template>
 
@@ -457,10 +464,16 @@
                     PO Items Subtotal
                   </td>
                   <td class="py-1 px-2 text-right text-xs text-default">
-                    {{ formatCurrency(po.items.reduce((sum: number, it: any) => sum + (it.po_amount || 0), 0)) }}
+                    <ReportOrderPoAmountCell
+                      :row="po"
+                      :amount="po.items.reduce((sum: number, it: any) => sum + (it.po_amount || 0), 0)"
+                    />
                   </td>
                   <td class="py-1 px-2 text-right text-xs text-default">
-                    {{ formatCurrency(po.items.reduce((sum: number, it: any) => sum + (it.po_amount || 0), 0)) }}
+                    <ReportOrderPoAmountCell
+                      :row="po"
+                      :amount="po.items.reduce((sum: number, it: any) => sum + (it.po_amount || 0), 0)"
+                    />
                   </td>
                 </tr>
 
@@ -499,8 +512,12 @@
                         <td class="py-1 px-2 text-default text-xs">{{ item.cost_code_name || item.cost_code_label || '-' }}</td>
                         <td v-if="isLocationWiseEnabled" class="py-1 px-2 text-default text-xs">{{ getItemLocationName(item) }}</td>
                         <td v-if="isLocationWiseEnabled" class="py-1 px-2 text-default text-xs">{{ getItemDescription(item) }}</td>
-                        <td class="py-1 px-2 text-right text-default text-xs">{{ formatCurrency(item.co_amount || item.po_amount || 0) }}</td>
-                        <td class="py-1 px-2 text-right text-default text-xs font-semibold">{{ formatCurrency(item.co_amount || item.po_amount || 0) }}</td>
+                        <td class="py-1 px-2 text-right text-default text-xs">
+                          <ReportOrderPoAmountCell :row="co" :amount="item.co_amount || item.po_amount || 0" />
+                        </td>
+                        <td class="py-1 px-2 text-right text-default text-xs font-semibold">
+                          <ReportOrderPoAmountCell :row="co" :amount="item.co_amount || item.po_amount || 0" />
+                        </td>
                       </tr>
                     </template>
 
@@ -510,10 +527,16 @@
                         CO Items Subtotal — {{ co.co_number || 'N/A' }}
                       </td>
                       <td class="py-1 px-2 text-right text-xs text-default">
-                        {{ formatCurrency((co.labor_items || []).reduce((sum: number, it: any) => sum + (it.co_amount || it.po_amount || 0), 0)) }}
+                        <ReportOrderPoAmountCell
+                          :row="co"
+                          :amount="(co.labor_items || []).reduce((sum: number, it: any) => sum + (it.co_amount || it.po_amount || 0), 0)"
+                        />
                       </td>
                       <td class="py-1 px-2 text-right text-xs text-default">
-                        {{ formatCurrency((co.labor_items || []).reduce((sum: number, it: any) => sum + (it.co_amount || it.po_amount || 0), 0)) }}
+                        <ReportOrderPoAmountCell
+                          :row="co"
+                          :amount="(co.labor_items || []).reduce((sum: number, it: any) => sum + (it.co_amount || it.po_amount || 0), 0)"
+                        />
                       </td>
                     </tr>
                   </template>
@@ -530,10 +553,10 @@
                     Total
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default">
-                    {{ formatCurrency(po.item_total || 0) }}
+                    <ReportOrderPoAmountCell :row="po" :amount="po.item_total || 0" />
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default font-bold">
-                    {{ formatCurrency(po.item_total || 0) }}
+                    <ReportOrderPoAmountCell :row="po" :amount="po.item_total || 0" />
                   </td>
                 </tr>
                 
@@ -567,6 +590,8 @@ import ProjectSelect from '~/components/shared/ProjectSelect.vue'
 import CorporationSelect from '~/components/shared/CorporationSelect.vue'
 import VendorSelect from '~/components/shared/VendorSelect.vue'
 import LocationSelect from '~/components/shared/LocationSelect.vue'
+import ReportOrderPoAmountCell from '~/components/Reports/ReportOrderPoAmountCell.vue'
+import { formatReportPoAmountForExport } from '~/utils/reportPoCurrencyDisplay'
 
 const router = useRouter()
 
