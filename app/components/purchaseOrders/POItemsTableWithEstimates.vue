@@ -71,11 +71,11 @@
                   />
                 </div>
               </th>
-              <th class="w-4/12 px-4 py-2 text-right">Unit Price</th>
+              <th class="w-4/12 px-4 py-2 text-right">{{ unitPriceColumnHeader }}</th>
               <th v-if="showInvoiceValues" class="w-1/12 px-4 py-2 text-center">To Be Invoiced</th>
               <th v-if="false && showEstimateValues" class="w-1/12 px-4 py-2 text-right">Available Qty</th>
               <th class="w-3/12 px-4 py-2 text-right">Qty</th>
-              <th class="w-2/12 px-4 py-2 text-right">Total</th>
+              <th class="w-2/12 px-4 py-2 text-right">{{ totalColumnHeader }}</th>
               <th v-if="showActionsColumn" class="w-1/12 px-4 py-2 text-right">Actions</th>
             </tr>
           </thead>
@@ -949,6 +949,7 @@ import LocationSelect from '~/components/shared/LocationSelect.vue'
 import UOMSelect from '~/components/shared/UOMSelect.vue'
 import ApprovalChecksSelect from '~/components/shared/ApprovalChecksSelect.vue'
 import { useApprovalChecksStore } from '~/stores/approvalChecks'
+import { formatPoAmountColumnHeader, type PoCurrencyCode } from '~/utils/poCurrencyConversion'
 
 interface PurchaseOrderItemDisplay {
   id?: string | number
@@ -1020,6 +1021,10 @@ const props = withDefaults(defineProps<{
   showEditSelection?: boolean
   usedQuantitiesByItem?: Record<string, number>
   estimateItems?: any[]
+  poCurrencyConversionEnabled?: boolean
+  poCurrencyFrom?: PoCurrencyCode
+  poCurrencyTo?: PoCurrencyCode
+  poConversionRate?: number
 }>(), {
   title: 'PO Items',
   description: '',
@@ -1043,6 +1048,10 @@ const props = withDefaults(defineProps<{
   showEditSelection: false,
   usedQuantitiesByItem: () => ({}),
   estimateItems: () => [],
+  poCurrencyConversionEnabled: false,
+  poCurrencyFrom: 'CAD',
+  poCurrencyTo: 'USD',
+  poConversionRate: 1,
 })
 
 
@@ -1086,6 +1095,13 @@ const showActionsColumn = computed(() => !props.readonly)
 
 
 const { formatCurrency, currencySymbol } = useCurrencyFormat()
+
+const unitPriceColumnHeader = computed(() =>
+  formatPoAmountColumnHeader('Unit Price', props.poCurrencyFrom)
+)
+const totalColumnHeader = computed(() =>
+  formatPoAmountColumnHeader('Total', props.poCurrencyFrom)
+)
 
 const currencySymbolText = computed(() => unref(currencySymbol) || '')
 

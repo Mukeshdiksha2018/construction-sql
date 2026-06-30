@@ -96,6 +96,10 @@ export interface ChangeOrder {
   print_include_approved_by_vendor?: boolean | null
   /** Per-CO print: overrides corporation po_use_entity_name when true/false; null uses corporation default. */
   print_use_entity_name?: boolean | null
+  currency_conversion_enabled?: boolean
+  currency_from?: 'CAD' | 'USD' | null
+  currency_to?: 'CAD' | 'USD' | null
+  conversion_rate?: number | null
 }
 
 export interface ChangeOrderResponse {

@@ -72,7 +72,7 @@
               :key="row.id || index"
               :class="[
                 'align-middle transition-colors duration-150',
-                hasOverAdvancedAmount(row)
+                hasRowValidationError(row)
                   ? 'bg-error-50/50 dark:bg-error-900/20 border-l-4 border-error-500 hover:bg-error-50 dark:hover:bg-error-900/30'
                   : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
               ]"
@@ -238,6 +238,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, triggerRef } from 'vue'
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
+import {
+  amountInPoToCurrency,
+  normalizePoCurrencyConversionFields,
+  type PoCurrencyConversionFields,
+} from '~/utils/poCurrencyConversion'
+import { isAdvanceAmountBelowConsumed } from '~/utils/adjustedAdvancePaymentAggregates'
 import CostCodeSelect from '~/components/shared/CostCodeSelect.vue'
 import ChartOfAccountsSelect from '~/components/shared/ChartOfAccountsSelect.vue'
 
@@ -248,12 +254,15 @@ interface Props {
   readonly?: boolean
   modelValue?: any[]
   removedCostCodes?: any[] // Array of removed cost codes from saved data
+  /** Minimum advance amounts per cost_code_uuid already adjusted in other vendor invoices */
+  consumedAdvanceAmountsByKey?: Record<string, number>
 }
 
 const props = withDefaults(defineProps<Props>(), {
   readonly: false,
   modelValue: () => [],
-  removedCostCodes: () => []
+  removedCostCodes: () => [],
+  consumedAdvanceAmountsByKey: () => ({}),
 })
 
 const emit = defineEmits<{
@@ -384,11 +393,16 @@ const formatRemovedDate = (dateString: string) => {
 // Store the PO/CO type for use in processItems
 const poCoType = computed(() => props.poCoType)
 const poCoUuid = computed(() => props.poCoUuid)
+const orderCurrencyFields = ref<PoCurrencyConversionFields | null>(null)
+
+const toDisplayLineAmount = (amount: number | string | null | undefined): number =>
+  amountInPoToCurrency(amount, orderCurrencyFields.value)
 
 // Fetch PO items (including location-wise material items when available)
 const fetchPOItems = async (poUuid: string) => {
   try {
     const poResponse = await $fetch<{ data: any }>(`/api/purchase-order-forms/${poUuid}`)
+    orderCurrencyFields.value = normalizePoCurrencyConversionFields(poResponse?.data)
     const poType = poResponse?.data?.po_type?.toUpperCase()
 
     const apiUrl = poType === 'LABOR'
@@ -413,6 +427,7 @@ const fetchPOItems = async (poUuid: string) => {
 const fetchCOItems = async (coUuid: string) => {
   try {
     const coResponse = await $fetch<{ data: any }>(`/api/change-orders/${coUuid}`)
+    orderCurrencyFields.value = normalizePoCurrencyConversionFields(coResponse?.data)
     const coType = coResponse?.data?.co_type?.toUpperCase()
 
     const apiUrl = coType === 'LABOR'
@@ -703,10 +718,11 @@ const processItems = async () => {
       const itemTotal = props.poCoType === 'PO'
         ? (item.po_amount || item.po_total || item.total || 0)
         : (item.co_amount || item.co_total || item.total || 0)
+      const displayItemTotal = toDisplayLineAmount(itemTotal)
 
       if (costCodeMap.has(costCodeUuid)) {
         const existing = costCodeMap.get(costCodeUuid)!
-        existing.totalAmount += Number(itemTotal) || 0
+        existing.totalAmount += Number(displayItemTotal) || 0
         existing.items.push(item)
       } else {
         // Extract cost code number and name from item or metadata
@@ -728,7 +744,7 @@ const processItems = async () => {
           cost_code_label: costCodeLabel,
           cost_code_number: costCodeNumber,
           cost_code_name: costCodeName,
-          totalAmount: Number(itemTotal) || 0,
+          totalAmount: Number(displayItemTotal) || 0,
           items: [item]
         })
       }
@@ -1017,6 +1033,14 @@ const handleRemoveRow = (index: number) => {
   if (index < 0 || index >= costCodeRows.value.length) return
 
   const rowToRemove = costCodeRows.value[index]
+
+  if (rowToRemove.cost_code_uuid) {
+    const consumedMinimum =
+      props.consumedAdvanceAmountsByKey?.[String(rowToRemove.cost_code_uuid)] || 0
+    if (consumedMinimum > 0) {
+      return
+    }
+  }
   
   // If the row has a cost_code_uuid that came from PO/CO (not a user-added row),
   // store it in the removed array with full data for restoration
@@ -1552,17 +1576,18 @@ watch(
               const itemTotal = props.poCoType === 'PO'
                 ? (item.po_amount || item.po_total || item.total || 0)
                 : (item.co_amount || item.co_total || item.total || 0)
+              const displayItemTotal = toDisplayLineAmount(itemTotal)
               
               if (costCodeMap.has(costCodeUuid)) {
                 const existing = costCodeMap.get(costCodeUuid)!
-                existing.totalAmount += Number(itemTotal) || 0
+                existing.totalAmount += Number(displayItemTotal) || 0
               } else {
                 costCodeMap.set(costCodeUuid, {
                   cost_code_uuid: costCodeUuid,
                   cost_code_label: costCodeLabel,
                   cost_code_number: item.cost_code_number || '',
                   cost_code_name: item.cost_code_name || '',
-                  totalAmount: Number(itemTotal) || 0
+                  totalAmount: Number(displayItemTotal) || 0
                 })
               }
             })
@@ -1852,9 +1877,25 @@ const hasOverAdvancedAmount = (row: any): boolean => {
   return advanceAmount > totalAmount
 }
 
-// Check if any row has over-advanced amount (for validation)
+const getConsumedMinimumForRow = (row: any): number => {
+  const costCodeUuid = row?.cost_code_uuid
+  if (!costCodeUuid) return 0
+  return props.consumedAdvanceAmountsByKey?.[String(costCodeUuid)] || 0
+}
+
+const hasBelowConsumedAmount = (row: any): boolean => {
+  const minimum = getConsumedMinimumForRow(row)
+  if (minimum <= 0) return false
+  const advanceAmount = row.advanceAmount ?? row.advance_amount
+  return isAdvanceAmountBelowConsumed(advanceAmount, minimum)
+}
+
+const hasRowValidationError = (row: any): boolean =>
+  hasOverAdvancedAmount(row) || hasBelowConsumedAmount(row)
+
+// Check if any row has validation error (for parent component)
 const hasValidationError = computed(() => {
-  return costCodeRows.value.some((row: any) => hasOverAdvancedAmount(row))
+  return costCodeRows.value.some((row: any) => hasRowValidationError(row))
 })
 
 const tableRowsCount = computed(() => costCodeRows.value.length)

@@ -258,9 +258,15 @@
                 class="border-b border-gray-200 dark:border-gray-700"
               >
                 <td class="py-2 px-2 text-default text-xs">{{ vendor.vendorName }}</td>
-                <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendor.poAmount) }}</td>
-                <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendor.changeOrderAmount) }}</td>
-                <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendor.totalContractValue) }}</td>
+                <td class="py-2 px-2 text-right text-default text-xs">
+                  <ReportVendorCurrencyAggregateCell :aggregate="vendor.poAmountDual" />
+                </td>
+                <td class="py-2 px-2 text-right text-default text-xs">
+                  <ReportVendorCurrencyAggregateCell :aggregate="vendor.changeOrderAmountDual" />
+                </td>
+                <td class="py-2 px-2 text-right text-default text-xs">
+                  <ReportVendorCurrencyAggregateCell :aggregate="vendor.totalContractValueDual" />
+                </td>
                 <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendor.invoicedForVendor) }}</td>
                 <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendor.holdback) }}</td>
                 <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendor.tax) }}</td>
@@ -275,13 +281,13 @@
                   Total
                 </td>
                 <td class="py-2.5 px-2 text-sm md:text-base font-bold text-right text-gray-900 dark:text-gray-50">
-                  {{ formatCurrency(filteredReportData.totals.poAmount) }}
+                  <ReportVendorCurrencyAggregateCell :aggregate="filteredReportData.totals.poAmountDual" />
                 </td>
                 <td class="py-2.5 px-2 text-sm md:text-base font-bold text-right text-gray-900 dark:text-gray-50">
-                  {{ formatCurrency(filteredReportData.totals.changeOrderAmount) }}
+                  <ReportVendorCurrencyAggregateCell :aggregate="filteredReportData.totals.changeOrderAmountDual" />
                 </td>
                 <td class="py-2.5 px-2 text-sm md:text-base font-bold text-right text-gray-900 dark:text-gray-50">
-                  {{ formatCurrency(filteredReportData.totals.totalContractValue) }}
+                  <ReportVendorCurrencyAggregateCell :aggregate="filteredReportData.totals.totalContractValueDual" />
                 </td>
                 <td class="py-2.5 px-2 text-sm md:text-base font-bold text-right text-gray-900 dark:text-gray-50">
                   {{ formatCurrency(filteredReportData.totals.invoicedForVendor) }}
@@ -324,6 +330,10 @@ import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
 import ProjectSelect from '~/components/shared/ProjectSelect.vue'
 import CorporationSelect from '~/components/shared/CorporationSelect.vue'
 import VendorSelect from '~/components/shared/VendorSelect.vue'
+import ReportVendorCurrencyAggregateCell from '~/components/Reports/ReportVendorCurrencyAggregateCell.vue'
+import {
+  formatVendorCurrencyAggregateForExport,
+} from '~/utils/reportPoCurrencyDisplay'
 
 interface VendorReportData {
   vendorUuid: string

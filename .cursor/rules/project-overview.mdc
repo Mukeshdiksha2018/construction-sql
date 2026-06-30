@@ -1,0 +1,14 @@
+---
+description: Core project context for construction-sql (Nuxt 4 + Prisma + MSSQL)
+alwaysApply: true
+---
+
+# construction-sql overview
+
+- **Stack:** Nuxt 4 (`app/`), Nitro API (`server/api/`), Prisma 6 → MS SQL Server
+- **Reference:** `../construction-management` for business logic when porting (Supabase/PostgreSQL source)
+- **Auth:** Nimble session cookie only — no Supabase client, no self-service signup
+- **Print routes:** GET allowed without session (see `server/middleware/auth.ts`)
+- **Do not add:** Supabase SDK, pgmq, EntityUsage sync queue, inbound webhooks
+- **DB access:** Prisma via `getPrisma()`; raw `mssql` only where already used (projects)
+- **Migrations:** `prisma/schema.prisma` + `npm run db:migrate:dev` — never `db:push` in commits

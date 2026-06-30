@@ -1,0 +1,29 @@
+---
+description: How to port features from construction-management
+globs: app/**,server/**
+alwaysApply: false
+---
+
+# Porting from construction-management
+
+## Path remap
+
+| CM (source) | construction-sql |
+|---|---|
+| `pages/` | `app/pages/` |
+| `components/PurchaseOrders/` | `app/components/purchaseOrders/` |
+| `components/ChangeOrders/` | `app/components/changeOrders/` |
+| `components/Payables/` | `app/components/payables/` |
+| `components/Shared/` | `app/components/shared/` |
+| `components/Reports/` | `app/components/Reports/` |
+| `utils/` | `app/utils/` |
+| `composables/` | `app/composables/` |
+| `stores/` | `app/stores/` |
+
+## Rules
+
+1. **Merge diffs** into existing files — do not blind-overwrite ported modules
+2. **Supabase → Prisma:** replace `.from().select()` with Prisma queries; keep business logic identical
+3. **Storage:** use data URLs / JSON in MSSQL columns (no Supabase buckets)
+4. **Port tests** alongside features under `test/unit/`
+5. **Skip:** `server/api/webhooks/*`, entity-usage-sync, Supabase auth/users

@@ -1142,6 +1142,10 @@ import type { TableColumn } from '@nuxt/ui'
 import type { Column } from '@tanstack/vue-table'
 import { usePurchaseOrderResourcesStore } from '~/stores/purchaseOrderResources'
 import { useChangeOrdersStore } from '~/stores/changeOrders'
+import {
+  normalizePoCurrencyConversionFields,
+  PO_CURRENCY_CONVERSION_DEFAULTS,
+} from '~/utils/poCurrencyConversion'
 import { usePurchaseOrderPrint } from '~/composables/usePurchaseOrderPrint'
 import { useProjectsStore } from '~/stores/projects'
 import { useVendorStore } from '~/stores/vendors'
@@ -3582,7 +3586,8 @@ const openCreateModal = async () => {
     total_po_amount: 0,
     po_items: [],
     attachments: [],
-    removed_po_items: []
+    removed_po_items: [],
+    ...PO_CURRENCY_CONVERSION_DEFAULTS,
   }
   // Reset validation state - form will be invalid initially
   isFormValid.value = false
@@ -3625,6 +3630,7 @@ const loadPurchaseOrderForModal = async (po: any, viewMode: boolean = false) => 
     const detailedAny = detailed as any;
     poForm.value = {
       ...detailed,
+      ...normalizePoCurrencyConversionFields(detailed as Record<string, unknown>),
       po_type: detailed.po_type || "",
       po_type_uuid: detailed.po_type_uuid || "",
       credit_days: detailed.credit_days || "",
@@ -5470,7 +5476,11 @@ const handleRaiseChangeOrder = async () => {
   
   // Ensure we have valid poData - use poForm.value directly if poData is invalid
   const formData = poData && typeof poData === 'object' ? poData : poForm.value
-  
+  const poCurrencyConversion = normalizePoCurrencyConversionFields({
+    ...(formData as Record<string, unknown>),
+    ...(poForm.value as Record<string, unknown>),
+  })
+
   const changeOrderData: any = {
     // Required fields
     corporation_uuid: normalizeToNull(formData?.corporation_uuid || corporationStore.selectedCorporationId),
@@ -5486,6 +5496,12 @@ const handleRaiseChangeOrder = async () => {
     project_id: projectIdForCO ? projectIdForCO : normalizeToNull(formData?.project_id),
     vendor_uuid: normalizeToNull(formData?.vendor_uuid),
     original_purchase_order_uuid: normalizeToNull(formData?.uuid),
+
+    // Currency conversion — inherit from the source purchase order
+    currency_conversion_enabled: poCurrencyConversion.currency_conversion_enabled,
+    currency_from: poCurrencyConversion.currency_from,
+    currency_to: poCurrencyConversion.currency_to,
+    conversion_rate: poCurrencyConversion.conversion_rate,
     
     // Shipping and delivery
     credit_days: normalizeToNull(formData?.credit_days),

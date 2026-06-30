@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { normalizePoCurrencyConversionFields } from '../../app/utils/poCurrencyConversion'
 import { getPrisma } from './prisma'
 import {
   buildFinancialBreakdown,
@@ -371,6 +372,10 @@ function mapCORow(row: any): any {
     revision_number: row.revision_number ?? null,
     revision_notes: row.revision_notes ?? null,
     revision_date: toLocalDate(row.revision_date),
+    currency_conversion_enabled: row.currency_conversion_enabled ?? false,
+    currency_from: row.currency_from ?? null,
+    currency_to: row.currency_to ?? null,
+    conversion_rate: toNum(row.conversion_rate) ?? 1,
     is_active: row.is_active,
     created_at: row.created_at?.toISOString() ?? null,
     updated_at: row.updated_at?.toISOString() ?? null,
@@ -503,6 +508,49 @@ function mapCoLocationWiseItem(row: any): any {
     metadata: parseJson(row.metadata, {}),
     is_active: row.is_active,
   }
+}
+
+function coCurrencyDataFromInput(input: Record<string, unknown>) {
+  const currency = normalizePoCurrencyConversionFields(input)
+  return {
+    currency_conversion_enabled: currency.currency_conversion_enabled,
+    currency_from: currency.currency_from,
+    currency_to: currency.currency_to,
+    conversion_rate: currency.conversion_rate,
+  }
+}
+
+function coBodyHasCurrencyFields(input: Record<string, unknown>): boolean {
+  return (
+    input.currency_conversion_enabled === true ||
+    (input.currency_from != null && String(input.currency_from).trim() !== '') ||
+    (input.currency_to != null && String(input.currency_to).trim() !== '') ||
+    (input.conversion_rate != null && String(input.conversion_rate).trim() !== '')
+  )
+}
+
+async function resolveCoCurrencyForCreate(input: Record<string, unknown>) {
+  if (coBodyHasCurrencyFields(input)) {
+    return coCurrencyDataFromInput(input)
+  }
+  const poUuid = String(input.original_purchase_order_uuid || '').trim()
+  if (!poUuid) return coCurrencyDataFromInput(input)
+  const po = await prisma.purchaseOrderForm.findFirst({
+    where: { uuid: poUuid, is_active: true },
+    select: {
+      currency_conversion_enabled: true,
+      currency_from: true,
+      currency_to: true,
+      conversion_rate: true,
+    },
+  })
+  if (!po) return coCurrencyDataFromInput(input)
+  return coCurrencyDataFromInput({
+    currency_conversion_enabled: po.currency_conversion_enabled,
+    currency_from: po.currency_from,
+    currency_to: po.currency_to,
+    conversion_rate: po.conversion_rate,
+  })
 }
 
 // ─── CO Number Generation ─────────────────────────────────────────────────────
@@ -691,6 +739,7 @@ export async function createChangeOrder(input: any) {
     print_include_approved_by_vendor: normalizePrintBooleanFlag(input.print_include_approved_by_vendor),
     print_use_entity_name: normalizePrintBooleanFlag(input.print_use_entity_name),
     is_active: true,
+    ...(await resolveCoCurrencyForCreate(input)),
   }
 
   normalizeFkFields(insertData)
@@ -844,6 +893,16 @@ export async function updateChangeOrder(uuid: string, input: any) {
   }
   if ('print_use_entity_name' in input) {
     updateData.print_use_entity_name = normalizePrintBooleanFlag(input.print_use_entity_name)
+  }
+
+  const currencyFieldNames = [
+    'currency_conversion_enabled',
+    'currency_from',
+    'currency_to',
+    'conversion_rate',
+  ] as const
+  if (currencyFieldNames.some((f) => f in input)) {
+    Object.assign(updateData, coCurrencyDataFromInput(input))
   }
 
   const userInfo = getUserInfoFromBody(input)

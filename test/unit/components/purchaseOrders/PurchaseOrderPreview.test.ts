@@ -522,3 +522,81 @@ describe('PurchaseOrderPreview UOM display', () => {
     expect(wrapper.text()).toContain('FA-301')
   })
 })
+
+describe('PurchaseOrderPreview currency conversion print', () => {
+  const USwitchStub = {
+    template:
+      '<input type="checkbox" data-testid="currency-print-switch" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" />',
+    props: ['modelValue', 'size'],
+  }
+
+  function makeMaterialPo(overrides: Record<string, unknown> = {}) {
+    return {
+      uuid: 'po-1',
+      po_number: 'PO-001',
+      corporation_uuid: 'corp-1',
+      project_uuid: 'proj-1',
+      vendor_uuid: 'vendor-1',
+      entry_date: '2026-01-15',
+      po_type: 'MATERIAL',
+      po_items: [
+        {
+          item_name: 'Item 1',
+          description: 'Desc 1',
+          po_quantity: 10,
+          po_unit_price: 5,
+          po_total: 50,
+          unit_label: 'EA',
+          item_sequence: 'SEQ-001',
+        },
+      ],
+      labor_po_items: [],
+      charges: [],
+      tax_total: 0,
+      total_po_amount: 50,
+      status: 'approved',
+      ...overrides,
+    }
+  }
+
+  async function mountPreviewWithPo(overrides: Record<string, unknown> = {}) {
+    const component = (await import('~/components/purchaseOrders/PurchaseOrderPreview.vue')).default
+    return mount(component, {
+      props: {
+        purchaseOrder: makeMaterialPo(overrides),
+      },
+      global: {
+        stubs: {
+          UAlert: UAlertStub,
+          USwitch: USwitchStub,
+        },
+      },
+    })
+  }
+
+  it('does not show currency print switch in preview body', async () => {
+    const wrapper = await mountPreviewWithPo({
+      currency_conversion_enabled: true,
+      currency_from: 'CAD',
+      currency_to: 'USD',
+      conversion_rate: 1.35,
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="currency-print-switch"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="po-preview-currency-print-bar"]').exists()).toBe(false)
+  })
+
+  it('prints amounts in from currency when conversion is enabled', async () => {
+    const wrapper = await mountPreviewWithPo({
+      currency_conversion_enabled: true,
+      currency_from: 'CAD',
+      currency_to: 'USD',
+      conversion_rate: 1.35,
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toMatch(/\$50\.00/)
+    expect(wrapper.text()).not.toMatch(/\$67\.50/)
+  })
+})

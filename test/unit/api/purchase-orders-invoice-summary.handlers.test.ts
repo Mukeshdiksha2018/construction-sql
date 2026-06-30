@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { computeMaterialBalanceToBeInvoicedFromItems } from '~/utils/materialBalanceToBeInvoiced'
 
 const mockSummary = vi.fn()
 
@@ -45,5 +46,30 @@ describe('purchase-orders invoice-summary.get', () => {
 
     expect(mockSummary).toHaveBeenCalledWith('po-1', undefined)
     expect(result.data.total_po_value).toBe(1000)
+  })
+
+  describe('material balance to be invoiced (shared util)', () => {
+    it('computes balance from remaining qty * unit price for material PO line items', () => {
+      expect(
+        computeMaterialBalanceToBeInvoicedFromItems({
+          lineItems: [
+            { uuid: 'poItem-1', po_quantity: 10, po_unit_price: 100 },
+            { uuid: 'poItem-2', po_quantity: 5, po_unit_price: 200 },
+          ],
+          invoiceLineItems: [
+            { po_item_uuid: 'poItem-1', invoice_quantity: 3 },
+            { po_item_uuid: 'poItem-2', invoice_quantity: 2 },
+          ],
+        }),
+      ).toBe(1300)
+    })
+
+    it('returns null when unit prices are unavailable (legacy labor balance path)', () => {
+      expect(
+        computeMaterialBalanceToBeInvoicedFromItems({
+          lineItems: [{ uuid: 'poItem-1', po_quantity: 10 }],
+        }),
+      ).toBeNull()
+    })
   })
 })

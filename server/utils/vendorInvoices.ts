@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { createError } from 'h3'
 import { getPrisma } from './prisma'
+import {
+  aggregateAdjustedAdvancePaymentAmounts,
+  validateAdvancePaymentNotBelowConsumed,
+} from '../../app/utils/adjustedAdvancePaymentAggregates'
 import { sanitizeAttachments } from './financialBreakdown'
 import {
   buildVendorInvoiceFinancialBreakdown,
@@ -1200,6 +1204,37 @@ function normalizeEmptyUuids(data: Record<string, any>) {
   }
 }
 
+async function assertAdvancePaymentAmountsNotBelowConsumed(options: {
+  advancePaymentInvoiceUuid: string
+  advancePaymentCostCodes: unknown
+  financialBreakdown: unknown
+}) {
+  const { advancePaymentInvoiceUuid, advancePaymentCostCodes, financialBreakdown } = options
+  if (!advancePaymentInvoiceUuid) return
+
+  const rows = await prisma.adjustedAdvancePaymentCostCode.findMany({
+    where: { advance_payment_uuid: advancePaymentInvoiceUuid, is_active: true },
+  })
+
+  const consumedByKey = aggregateAdjustedAdvancePaymentAmounts(rows)
+  if (Object.keys(consumedByKey).length === 0) return
+
+  const validation = validateAdvancePaymentNotBelowConsumed({
+    advancePaymentCostCodes,
+    financialBreakdown,
+    consumedByKey,
+  })
+
+  if (!validation.valid) {
+    throw createError({
+      statusCode: 409,
+      statusMessage:
+        validation.errors[0] ||
+        'Advance payment amounts cannot be reduced below amounts already adjusted in other invoices.',
+    })
+  }
+}
+
 // ─── Exported API ──────────────────────────────────────────────────────────────
 
 export async function computeNextVendorInvoiceNumberForCorporation(
@@ -1337,6 +1372,15 @@ export async function createVendorInvoice(body: Record<string, any>) {
   normalizeEmptyUuids(insertData)
 
   const financialBreakdown = parseJson(insertData.financial_breakdown, {})
+
+  if (invoiceType === 'AGAINST_ADVANCE_PAYMENT') {
+    await assertAdvancePaymentAmountsNotBelowConsumed({
+      advancePaymentInvoiceUuid: invoiceUuid,
+      advancePaymentCostCodes: body.advance_payment_cost_codes,
+      financialBreakdown,
+    })
+  }
+
   const row = await prisma.vendorInvoice.create({ data: insertData })
 
   if (shouldPersistVendorInvoiceCoaAssignments(body)) {
@@ -1490,6 +1534,13 @@ export async function updateVendorInvoice(uuid: string, body: Record<string, any
 
   if (newInvoiceType === 'AGAINST_ADVANCE_PAYMENT') {
     if (body.advance_payment_cost_codes !== undefined) {
+      await assertAdvancePaymentAmountsNotBelowConsumed({
+        advancePaymentInvoiceUuid: row.uuid,
+        advancePaymentCostCodes: body.advance_payment_cost_codes,
+        financialBreakdown:
+          body.financial_breakdown ??
+          parseJson(row.financial_breakdown, {}),
+      })
       await persistAdvancePaymentCostCodes({
         vendorInvoiceUuid: row.uuid,
         corporationUuid: row.corporation_uuid,

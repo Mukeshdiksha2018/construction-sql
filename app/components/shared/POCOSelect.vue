@@ -86,6 +86,14 @@ import { usePurchaseOrdersStore } from '~/stores/purchaseOrders'
 import { useChangeOrdersStore } from '~/stores/changeOrders'
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
 import { useDateFormat } from '~/composables/useDateFormat'
+import {
+  amountInPoToCurrency,
+  computeLaborBalanceToBeInvoicedForDisplay,
+} from '~/utils/poCurrencyConversion'
+import {
+  computeMaterialBalanceToBeInvoicedFromItems,
+  isMaterialOrderType,
+} from '~/utils/materialBalanceToBeInvoiced'
 import type { TableColumn } from '@nuxt/ui'
 
 // Props
@@ -128,14 +136,109 @@ const emit = defineEmits<{
 // Stores
 const purchaseOrdersStore = usePurchaseOrdersStore()
 const changeOrdersStore = useChangeOrdersStore()
-const { formatCurrency, formatNumber } = useCurrencyFormat()
+const { formatCurrency } = useCurrencyFormat()
 const { formatDate } = useDateFormat()
 
 const formatQty = (value: number | undefined | null): string => {
   if (value === null || value === undefined) return '-'
   const num = typeof value === 'string' ? parseFloat(value) : value
   if (!Number.isFinite(num)) return '-'
-  return formatNumber(num, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  return new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(num)
+}
+
+type InvoiceSummaryAmounts = {
+  advancePaid: number
+  advancePaidNet?: number
+  invoicedValue: number
+  holdbackBalanceToBeInvoiced: number
+  balanceToBeInvoiced: number
+  totalOrderValue?: number
+  holdbackReleased?: number
+  poQuantity?: number
+  coQuantity?: number
+  invoicedQuantity?: number
+  qtyRemainingToBeInvoiced?: number
+}
+
+const displayAmountForOrder = (
+  order: Record<string, unknown> | null | undefined,
+  amount: number | null | undefined,
+): number => amountInPoToCurrency(amount, order)
+
+const resolveBalanceToBeInvoicedForDisplay = (
+  order: Record<string, unknown>,
+  orderType: string | undefined,
+  summary: InvoiceSummaryAmounts,
+  items: any[],
+): number => {
+  if (!isMaterialOrderType(orderType)) {
+    return computeLaborBalanceToBeInvoicedForDisplay(order, {
+      totalOrderValue: summary.totalOrderValue ?? 0,
+      advancePaidNet: summary.advancePaidNet ?? 0,
+      invoicedValue: summary.invoicedValue,
+      holdbackReleased: summary.holdbackReleased ?? 0,
+      holdbackBalanceToBeInvoiced: summary.holdbackBalanceToBeInvoiced,
+      fallbackBalance: summary.balanceToBeInvoiced,
+    })
+  }
+
+  let balance: number
+  if ((summary.invoicedQuantity ?? 0) > 0) {
+    balance = summary.balanceToBeInvoiced
+  } else if (!items.length) {
+    balance = summary.balanceToBeInvoiced
+  } else {
+    const computed = computeMaterialBalanceToBeInvoicedFromItems({ lineItems: items })
+    balance = computed ?? summary.balanceToBeInvoiced
+  }
+
+  return displayAmountForOrder(order, balance)
+}
+
+const mapInvoiceSummaryForDisplay = (
+  order: Record<string, unknown>,
+  summary: InvoiceSummaryAmounts,
+  items: any[] = [],
+  orderType?: string,
+): InvoiceSummaryAmounts => ({
+  advancePaid: displayAmountForOrder(order, summary.advancePaid),
+  invoicedValue: displayAmountForOrder(order, summary.invoicedValue),
+  holdbackBalanceToBeInvoiced: displayAmountForOrder(
+    order,
+    summary.holdbackBalanceToBeInvoiced,
+  ),
+  balanceToBeInvoiced: resolveBalanceToBeInvoicedForDisplay(
+    order,
+    orderType,
+    summary,
+    items,
+  ),
+  poQuantity: summary.poQuantity,
+  coQuantity: summary.coQuantity,
+  invoicedQuantity: summary.invoicedQuantity,
+  qtyRemainingToBeInvoiced: summary.qtyRemainingToBeInvoiced,
+})
+
+const shouldHideOrderFromPicker = (
+  orderType: string | undefined,
+  invoiceSummary: {
+    balanceToBeInvoiced?: number
+    qtyRemainingToBeInvoiced?: number
+  } | null,
+  optionValue: string,
+  currentModelValue: string | undefined,
+): boolean => {
+  if (!invoiceSummary) return false
+  if (currentModelValue === optionValue) return false
+
+  const normalizedType = String(orderType ?? '').toUpperCase()
+  if (normalizedType === 'LABOR') {
+    return (invoiceSummary.balanceToBeInvoiced ?? 0) <= 0
+  }
+  if (normalizedType === 'MATERIAL') {
+    return (invoiceSummary.qtyRemainingToBeInvoiced ?? 0) <= 0
+  }
+  return false
 }
 
 // Resolve components for table columns
@@ -492,11 +595,13 @@ const fetchPOInvoiceSummary = async (poUuid: string, forceRefresh: boolean = fal
     
     if (summary) {
       const result = {
-        // "Advance Paid" column: total advance invoice amount including sales taxes (API: advance_paid_including_taxes)
         advancePaid: summary.advance_paid_including_taxes ?? summary.advance_paid ?? 0,
+        advancePaidNet: summary.advance_paid ?? 0,
         invoicedValue: summary.invoiced_value || 0,
         holdbackBalanceToBeInvoiced: summary.holdback_balance_to_be_invoiced || 0,
         balanceToBeInvoiced: summary.balance_to_be_invoiced || 0,
+        totalOrderValue: summary.total_po_value || 0,
+        holdbackReleased: summary.holdback_released || 0,
         poQuantity: summary.total_po_quantity || 0,
         invoicedQuantity: summary.invoiced_quantity || 0,
         qtyRemainingToBeInvoiced: summary.qty_remaining_to_be_invoiced || 0
@@ -546,9 +651,12 @@ const fetchCOInvoiceSummary = async (coUuid: string, forceRefresh: boolean = fal
     if (summary) {
       const result = {
         advancePaid: summary.advance_paid_including_taxes ?? summary.advance_paid ?? 0,
+        advancePaidNet: summary.advance_paid ?? 0,
         invoicedValue: summary.invoiced_value || 0,
         holdbackBalanceToBeInvoiced: summary.holdback_balance_to_be_invoiced || 0,
         balanceToBeInvoiced: summary.balance_to_be_invoiced || 0,
+        totalOrderValue: summary.total_co_value || 0,
+        holdbackReleased: summary.holdback_released || 0,
         coQuantity: summary.total_co_quantity || 0,
         invoicedQuantity: summary.invoiced_quantity || 0,
         qtyRemainingToBeInvoiced: summary.qty_remaining_to_be_invoiced || 0
@@ -634,7 +742,7 @@ const poCoOptions = computed(() => {
   filteredPOs.forEach(po => {
     const poNumber = po.po_number || 'Unnamed PO';
     const vendorName = po.vendor_name || 'Unknown Vendor';
-    const amount = po.total_po_amount || 0;
+    const amount = displayAmountForOrder(po, po.total_po_amount || 0);
     const formattedAmount = formatCurrency(amount);
     
     // Get items from cache or use po_items if available
@@ -677,20 +785,18 @@ const poCoOptions = computed(() => {
     if (props.showInvoiceSummary) {
       const summaryCacheKey = `PO_SUMMARY:${po.uuid}`
       if (invoiceSummaryCache.value.has(summaryCacheKey)) {
-        invoiceSummary = invoiceSummaryCache.value.get(summaryCacheKey)!
-      }
-
-      // For material POs, hide rows only when there is no quantity remaining to be invoiced.
-      // Labor POs must remain visible regardless of remaining quantity.
-      const isMaterialPo = (po.po_type ?? '').toUpperCase() === 'MATERIAL'
-      const qtyRemaining = invoiceSummary?.qtyRemainingToBeInvoiced ?? 0
-      if (
-        invoiceSummary &&
-        isMaterialPo &&
-        qtyRemaining <= 0 &&
-        currentModelValue !== `PO:${po.uuid}`
-      ) {
-        return
+        const rawSummary = invoiceSummaryCache.value.get(summaryCacheKey)!
+        if (
+          shouldHideOrderFromPicker(
+            po.po_type,
+            rawSummary,
+            `PO:${po.uuid}`,
+            currentModelValue,
+          )
+        ) {
+          return
+        }
+        invoiceSummary = mapInvoiceSummaryForDisplay(po, rawSummary, poItems, po.po_type)
       }
     }
 
@@ -738,7 +844,7 @@ const poCoOptions = computed(() => {
     }
     const coNumber = co.co_number || 'Unnamed CO';
     const vendorName = co.vendor_name || 'Unknown Vendor';
-    const amount = co.total_co_amount || 0;
+    const amount = displayAmountForOrder(co, co.total_co_amount || 0);
     const formattedAmount = formatCurrency(amount);
     
     // Get items from cache or use co_items if available
@@ -781,20 +887,18 @@ const poCoOptions = computed(() => {
     if (props.showInvoiceSummary) {
       const summaryCacheKey = `CO_SUMMARY:${co.uuid}`
       if (invoiceSummaryCache.value.has(summaryCacheKey)) {
-        invoiceSummary = invoiceSummaryCache.value.get(summaryCacheKey)!
-      }
-
-      // For material COs, hide rows only when there is no quantity remaining to be invoiced.
-      // Labor COs must remain visible regardless of remaining quantity.
-      const isMaterialCo = (co.co_type ?? '').toUpperCase() === 'MATERIAL'
-      const qtyRemaining = invoiceSummary?.qtyRemainingToBeInvoiced ?? 0
-      if (
-        invoiceSummary &&
-        isMaterialCo &&
-        qtyRemaining <= 0 &&
-        currentModelValue !== `CO:${co.uuid}`
-      ) {
-        return
+        const rawSummary = invoiceSummaryCache.value.get(summaryCacheKey)!
+        if (
+          shouldHideOrderFromPicker(
+            co.co_type,
+            rawSummary,
+            `CO:${co.uuid}`,
+            currentModelValue,
+          )
+        ) {
+          return
+        }
+        invoiceSummary = mapInvoiceSummaryForDisplay(co, rawSummary, coItems, co.co_type)
       }
     }
 

@@ -1,3 +1,4 @@
+import { normalizePoCurrencyConversionFields } from '../../app/utils/poCurrencyConversion'
 import { getPrisma } from './prisma'
 
 const prisma = getPrisma()
@@ -96,6 +97,10 @@ function mapPORow(row: any): any {
     print_include_approved_by_vendor: row.print_include_approved_by_vendor ?? null,
     print_use_entity_name: row.print_use_entity_name ?? null,
     special_instruction_uuid: row.special_instruction_uuid ?? null,
+    currency_conversion_enabled: row.currency_conversion_enabled ?? false,
+    currency_from: row.currency_from ?? null,
+    currency_to: row.currency_to ?? null,
+    conversion_rate: toNum(row.conversion_rate) ?? 1,
     is_active: row.is_active,
     created_at: row.created_at?.toISOString() ?? null,
     updated_at: row.updated_at?.toISOString() ?? null,
@@ -355,6 +360,16 @@ export async function getPurchaseOrder(uuid: string) {
   return mapped
 }
 
+function poCurrencyDataFromInput(input: Record<string, unknown>) {
+  const currency = normalizePoCurrencyConversionFields(input)
+  return {
+    currency_conversion_enabled: currency.currency_conversion_enabled,
+    currency_from: currency.currency_from,
+    currency_to: currency.currency_to,
+    conversion_rate: currency.conversion_rate,
+  }
+}
+
 export async function createPurchaseOrder(input: any) {
   const poData = {
     corporation_uuid: input.corporation_uuid,
@@ -391,6 +406,7 @@ export async function createPurchaseOrder(input: any) {
     print_use_entity_name: normalizePrintBooleanFlag(input.print_use_entity_name),
     special_instruction_uuid: input.special_instruction_uuid ?? null,
     is_active: true,
+    ...poCurrencyDataFromInput(input),
   }
 
   const po = await prisma.purchaseOrderForm.create({ data: poData })
@@ -442,6 +458,16 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
     if (f in input) updateData[f] = stringifyJson(input[f])
   }
   if (input.po_type !== undefined) updateData.po_type = input.po_type ? String(input.po_type).toUpperCase() : null
+
+  const currencyFieldNames = [
+    'currency_conversion_enabled',
+    'currency_from',
+    'currency_to',
+    'conversion_rate',
+  ] as const
+  if (currencyFieldNames.some((f) => f in input)) {
+    Object.assign(updateData, poCurrencyDataFromInput(input))
+  }
 
   await prisma.purchaseOrderForm.update({ where: { uuid }, data: updateData })
   return getPurchaseOrder(uuid)

@@ -141,19 +141,34 @@
               Add
             </UBadge>
           </div>
-          <VendorSelect
-            ref="vendorSelectRef"
-            :model-value="form.vendor_uuid"
-            :corporation-uuid="form.corporation_uuid || corpStore.selectedCorporation?.uuid"
-            :disabled="!form.corporation_uuid && !corpStore.selectedCorporation || isReadOnly"
-            :show-add-button="!isReadOnly"
-            placeholder="Select vendor"
-            size="sm"
-            class="w-full"
-            @update:model-value="onVendorUpdate"
-            @change="onVendorUpdate"
-            @nimble-vendor-saved="emit('nimble-vendor-saved')"
-          />
+          <label
+            v-if="!loading"
+            class="block text-xs font-medium text-default w-28 shrink-0 mb-1"
+          >
+            Currency
+          </label>
+          <div class="flex items-center gap-2">
+            <VendorSelect
+              ref="vendorSelectRef"
+              :model-value="form.vendor_uuid"
+              :corporation-uuid="form.corporation_uuid || corpStore.selectedCorporation?.uuid"
+              :disabled="!form.corporation_uuid && !corpStore.selectedCorporation || isReadOnly"
+              :show-add-button="!isReadOnly"
+              placeholder="Select vendor"
+              size="sm"
+              class="flex-1 min-w-0"
+              @update:model-value="onVendorUpdate"
+              @change="onVendorUpdate"
+              @nimble-vendor-saved="emit('nimble-vendor-saved')"
+            />
+            <PoFromCurrencySelect
+              v-if="!loading"
+              v-model="coCurrencyFrom"
+              :disabled="isReadOnly"
+              size="sm"
+              select-class="w-28 shrink-0"
+            />
+          </div>
         </div>
 
         <!-- Created Date -->
@@ -556,6 +571,28 @@
             />
           </div>
         </template>
+
+        <!-- Exchange Rate (last field; shown when vendor currency is USD) -->
+        <div v-if="!loading && coCurrencyConversionEnabled" class="xl:col-span-2">
+          <label class="block text-xs font-medium text-default mb-1">
+            Exchange Rate
+          </label>
+          <div
+            class="p-3 rounded-md text-xs min-h-[50px] border transition-colors duration-150 bg-primary-50 text-primary-800 border-primary-100 dark:bg-primary-900/20 dark:text-primary-200 dark:border-primary-800"
+          >
+            <PoCurrencyConversionBar
+              :enabled="coCurrencyConversionEnabled"
+              v-model:from-currency="coCurrencyFrom"
+              v-model:to-currency="coCurrencyTo"
+              v-model:conversion-rate="coConversionRate"
+              :corporation-uuid="form.corporation_uuid"
+              hide-enable-checkbox
+              hide-from-currency-select
+              lock-to-currency
+              :readonly="isReadOnly"
+            />
+          </div>
+        </div>
         </template>
         </div>
         </UCard>
@@ -636,6 +673,10 @@
         :project-uuid="form.project_uuid"
         :scoped-locations="coScopedLocations"
         :hide-location="!projectEnableLocationWise"
+        :po-currency-conversion-enabled="coCurrencyConversionEnabled"
+        :po-currency-from="coCurrencyFrom"
+        :po-currency-to="coCurrencyTo"
+        :po-conversion-rate="coConversionRate"
         @co-unit-price-change="handleCoUnitPriceChange"
         @co-quantity-change="handleCoQuantityChange"
         @approval-checks-change="handleApprovalChecksChange"
@@ -662,6 +703,10 @@
         description="Original purchase order amounts shown for reference. Enter change order amounts."
         :show-location-column="projectEnableLocationWise"
         :readonly="isReadOnly"
+        :po-currency-conversion-enabled="coCurrencyConversionEnabled"
+        :po-currency-from="coCurrencyFrom"
+        :po-currency-to="coCurrencyTo"
+        :po-conversion-rate="coConversionRate"
         @co-amount-change="handleLaborCoAmountChange"
         @remove-row="removeLaborCoRow"
         @location-change="handleLaborLocationChange"
@@ -860,6 +905,10 @@
             :item-total="coItemTotal"
             :form-data="form"
             :read-only="isReadOnly"
+            :po-currency-conversion-enabled="coCurrencyConversionEnabled"
+            :po-currency-from="coCurrencyFrom"
+            :po-currency-to="coCurrencyTo"
+            :po-conversion-rate="coConversionRate"
             :hide-charges="true"
             item-total-label="CO Item Total"
             total-label="Total CO Amount"
@@ -1160,6 +1209,10 @@
             :item-total="coItemTotal"
             :form-data="form"
             :read-only="isReadOnly"
+            :po-currency-conversion-enabled="coCurrencyConversionEnabled"
+            :po-currency-from="coCurrencyFrom"
+            :po-currency-to="coCurrencyTo"
+            :po-conversion-rate="coConversionRate"
             item-total-label="CO Item Total"
             total-label="Total CO Amount"
             total-field-name="total_co_amount"
@@ -1579,7 +1632,15 @@ import FilePreview from '~/components/shared/FilePreview.vue'
 import COItemsTableFromOriginal from '~/components/changeOrders/COItemsTableFromOriginal.vue'
 import COLaborItemsTable from '~/components/changeOrders/COLaborItemsTable.vue'
 import COLocationWiseMaterialTable from '~/components/changeOrders/COLocationWiseMaterialTable.vue'
-import FinancialBreakdown from '~/components/PurchaseOrders/FinancialBreakdown.vue'
+import FinancialBreakdown from '~/components/purchaseOrders/FinancialBreakdown.vue'
+import PoCurrencyConversionBar from '~/components/purchaseOrders/PoCurrencyConversionBar.vue'
+import PoFromCurrencySelect from '~/components/purchaseOrders/PoFromCurrencySelect.vue'
+import {
+  normalizePoCurrencyConversionFields,
+  syncPoCurrencyConversionForFromCurrency,
+  type PoCurrencyCode,
+} from '~/utils/poCurrencyConversion'
+import { usePoCurrencyFromSelection } from '~/composables/usePoCurrencyFromSelection'
 import TermsAndConditionsSelect from '~/components/shared/TermsAndConditionsSelect.vue'
 import SpecialInstructionsSelect from '~/components/shared/SpecialInstructionsSelect.vue'
 import SpecialInstructionFormBody from '~/components/Configurations/SpecialInstructionFormBody.vue'
@@ -1641,6 +1702,73 @@ const costCodeConfigurationsStore = useCostCodeConfigurationsStore()
 const laborChangeOrderResourcesStore = useLaborChangeOrderResourcesStore()
 const laborChangeOrderItemsStore = useLaborChangeOrderItemsStore()
 const { formatCurrency } = useCurrencyFormat()
+
+const updateCoCurrencyFields = (
+  patch: Partial<ReturnType<typeof normalizePoCurrencyConversionFields>>
+) => {
+  updateForm(
+    normalizePoCurrencyConversionFields({
+      ...(props.form as Record<string, unknown>),
+      ...patch,
+    })
+  )
+}
+
+const { applyFromCurrency: applyCoFromCurrency, prefillFromVendor: prefillCoCurrencyFromVendor, prefillWhenVendorAlreadySet: prefillCoCurrencyWhenVendorAlreadySet } =
+  usePoCurrencyFromSelection({
+    getForm: () => props.form as Record<string, unknown>,
+    updateCurrencyFields: (fields) => updateCoCurrencyFields(fields),
+    isNewDocument: () => !props.form.uuid,
+    getCorporationUuid: () => props.form.corporation_uuid,
+  })
+
+const coCurrencyConversionEnabled = computed(
+  () => normalizePoCurrencyConversionFields(props.form).currency_from === 'USD'
+)
+
+const coCurrencyFrom = computed({
+  get: () => normalizePoCurrencyConversionFields(props.form).currency_from,
+  set: (currency_from: PoCurrencyCode) => {
+    void applyCoFromCurrency(currency_from)
+  },
+})
+
+const coCurrencyTo = computed({
+  get: () => normalizePoCurrencyConversionFields(props.form).currency_to,
+  set: (currency_to: PoCurrencyCode) =>
+    updateCoCurrencyFields({ currency_to }),
+})
+
+const coConversionRate = computed({
+  get: () => normalizePoCurrencyConversionFields(props.form).conversion_rate,
+  set: (conversion_rate: number) =>
+    updateCoCurrencyFields({ conversion_rate }),
+})
+
+function ensureCoCurrencyFieldsSynced() {
+  const fields = normalizePoCurrencyConversionFields(props.form)
+  const synced = syncPoCurrencyConversionForFromCurrency(fields.currency_from, {
+    conversionRate: fields.conversion_rate,
+  })
+  if (
+    fields.currency_conversion_enabled !== synced.currency_conversion_enabled ||
+    fields.currency_from !== synced.currency_from ||
+    fields.currency_to !== synced.currency_to
+  ) {
+    updateCoCurrencyFields(synced)
+  }
+}
+
+function isCoCurrencyFieldEmpty(value: unknown): boolean {
+  return value === undefined || value === null || value === ''
+}
+
+const CURRENCY_PREFILL_FIELDS = [
+  'currency_conversion_enabled',
+  'currency_from',
+  'currency_to',
+  'conversion_rate',
+] as const
 const { toUTCString, fromUTCString, getCurrentLocal } = useUTCDateFormat()
 const termsAndConditionsStore = useTermsAndConditionsStore()
 const specialInstructionsStore = useSpecialInstructionsStore()
@@ -2325,6 +2453,7 @@ const handleProjectChange = async (projectUuid?: string | null) => {
 const onVendorUpdate = (v: any) => {
   const value = typeof v === 'string' ? v : (v && v.value) ? String(v.value) : ''
   updateForm({ vendor_uuid: value })
+  void prefillCoCurrencyFromVendor(value)
 }
 
 // Generate next CO number suffix once project context is known.
@@ -2639,6 +2768,9 @@ const vendorAddressText = computed(() => {
 })
 
 onMounted(async () => {
+  ensureCoCurrencyFieldsSynced()
+  await prefillCoCurrencyWhenVendorAlreadySet()
+
   // Initialize corporation_uuid in form if not set
   if (!props.form.corporation_uuid && corpStore.selectedCorporation?.uuid) {
     updateForm({ corporation_uuid: corpStore.selectedCorporation.uuid })
@@ -4441,8 +4573,16 @@ const prefillFinancialsFromOriginalOrder = () => {
       }
     }
   })
+  CURRENCY_PREFILL_FIELDS.forEach((key) => {
+    const current: any = props.form as any
+    const poAny: any = po as any
+    if (isCoCurrencyFieldEmpty(current[key]) && poAny[key] !== undefined && poAny[key] !== null && poAny[key] !== '') {
+      updates[key] = poAny[key]
+    }
+  })
   if (Object.keys(updates).length > 0) {
     updateForm(updates)
+    queueMicrotask(() => ensureCoCurrencyFieldsSynced())
   }
 }
 

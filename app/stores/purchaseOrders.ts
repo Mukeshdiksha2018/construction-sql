@@ -95,6 +95,10 @@ export interface PurchaseOrder {
   print_include_approved_by_vendor?: boolean | null
   print_use_entity_name?: boolean | null
   special_instruction_uuid?: string | null
+  currency_conversion_enabled?: boolean
+  currency_from?: 'CAD' | 'USD' | null
+  currency_to?: 'CAD' | 'USD' | null
+  conversion_rate?: number | null
 }
 
 export interface CreatePurchaseOrderPayload extends Partial<PurchaseOrder> {
