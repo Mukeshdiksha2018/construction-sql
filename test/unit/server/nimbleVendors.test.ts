@@ -23,7 +23,6 @@ describe('nimbleVendors utilities', () => {
       contact_person_name: null,
       credit_limit: 1000,
       check_reference: null,
-      type: 1,
     })
   })
 

@@ -26,8 +26,13 @@ Vendor master data is stored in **`dbo.Business`** on the Nimble database (`NUXT
 
 ## Status values
 
-| `Business.Status` | Label |
-|-------------------|-------|
-| 0 | inactive |
-| 1 | active |
-| 3 | deleted (soft delete) |
+| `Business.Type` | Meaning |
+|-----------------|---------|
+| 0 | Customer |
+| 1 | Vendor (only these rows are returned by `/api/nimble-vendors`) |
+
+| `Business.Status` | Label | `is_active` in dropdowns |
+|-------------------|-------|--------------------------|
+| 0 | inactive | false |
+| 1 | active | true |
+| 3 | deleted (soft delete) | excluded from dropdowns |

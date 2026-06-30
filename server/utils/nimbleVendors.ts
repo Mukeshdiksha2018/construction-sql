@@ -7,6 +7,10 @@ import {
 } from './nimbleBinaryId'
 import { nimbleMssqlQueryParams } from './nimbleMssql'
 
+/** `dbo.Business.Type` — 0 = customer, 1 = vendor */
+export const NIMBLE_BUSINESS_TYPE_CUSTOMER = 0
+export const NIMBLE_BUSINESS_TYPE_VENDOR = 1
+
 export type NimbleVendorStatus = 0 | 1 | 3
 export type NimbleVendorStatusLabel = 'inactive' | 'active' | 'deleted'
 
@@ -40,7 +44,6 @@ export interface NimbleVendorInput {
   contact_person_name?: string | null
   credit_limit?: number | null
   check_reference?: string | null
-  type?: number
 }
 
 type BusinessRow = {
@@ -84,9 +87,14 @@ const BUSINESS_SELECT = `
 `
 
 function statusLabel(status: number): NimbleVendorStatusLabel {
+  // Status: 0 = inactive, 1 = active, 3 = soft-deleted
   if (status === 1) return 'active'
   if (status === 3) return 'deleted'
   return 'inactive'
+}
+
+function isVendorRow(row: BusinessRow): boolean {
+  return row.Type === NIMBLE_BUSINESS_TYPE_VENDOR
 }
 
 function toIsoDate(value: Date | null | undefined): string | null {
@@ -163,7 +171,6 @@ export function parseNimbleVendorBody(body: unknown, requireCorporation = true):
     contact_person_name: safeString(raw.contact_person_name) || null,
     credit_limit: creditLimit,
     check_reference: safeString(raw.check_reference) || null,
-    type: Number.isFinite(Number(raw.type)) ? Number(raw.type) : 1,
   }
 }
 
@@ -176,7 +183,7 @@ export interface ListNimbleVendorsOptions {
 export async function listNimbleVendors(options: ListNimbleVendorsOptions = {}): Promise<NimbleVendorDto[]> {
   const { corporationId, status, includeDeleted = false } = options
 
-  const conditions: string[] = ['1 = 1']
+  const conditions: string[] = [`b.Type = ${NIMBLE_BUSINESS_TYPE_VENDOR}`]
   const inputs: Record<string, unknown> = {}
 
   if (corporationId) {
@@ -205,11 +212,11 @@ export async function listNimbleVendors(options: ListNimbleVendorsOptions = {}):
 export async function getNimbleVendor(id: string): Promise<NimbleVendorDto | null> {
   const rows = await nimbleMssqlQueryParams<BusinessRow>(
     `${BUSINESS_SELECT}
-     WHERE b.ID = @id`,
+     WHERE b.ID = @id AND b.Type = ${NIMBLE_BUSINESS_TYPE_VENDOR}`,
     { id: hexToNimbleBinary(id) },
   )
   const row = rows[0]
-  return row ? mapBusinessRow(row) : null
+  return row && isVendorRow(row) ? mapBusinessRow(row) : null
 }
 
 function actorBinary(actorUserId: string | undefined): Buffer | null {
@@ -249,7 +256,7 @@ export async function createNimbleVendor(
     )`,
     {
       id,
-      type: payload.type ?? 1,
+      type: NIMBLE_BUSINESS_TYPE_VENDOR,
       name: payload.name,
       companyName: payload.company_name ?? null,
       corporationId,
@@ -297,7 +304,7 @@ export async function updateNimbleVendor(
       CheckReference = @checkReference,
       ModifiedBy = @modifiedBy,
       ModifiedDateBy = GETUTCDATE()
-    WHERE ID = @id`,
+    WHERE ID = @id AND Type = ${NIMBLE_BUSINESS_TYPE_VENDOR}`,
     {
       id: hexToNimbleBinary(id),
       name: payload.name,
@@ -335,7 +342,7 @@ export async function softDeleteNimbleVendor(
       Status = 3,
       ModifiedBy = @modifiedBy,
       ModifiedDateBy = GETUTCDATE()
-    WHERE ID = @id`,
+    WHERE ID = @id AND Type = ${NIMBLE_BUSINESS_TYPE_VENDOR}`,
     {
       id: hexToNimbleBinary(id),
       modifiedBy: actor,
