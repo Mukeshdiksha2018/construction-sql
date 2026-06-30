@@ -212,7 +212,7 @@ export const useVendorStore = defineStore('vendors', () => {
       const data = await $fetch<{ vendors: NimbleDbVendor[] }>(
         '/api/nimble-vendors',
         {
-          query: { corporation_uuid: corporationUuid, include_deleted: 'true' },
+          query: { corporation_uuid: corporationUuid },
           credentials: 'include',
         },
       )
