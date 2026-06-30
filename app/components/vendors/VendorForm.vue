@@ -1,7 +1,9 @@
 <template>
   <UModal
     v-model:open="open"
-    :ui="modalUi"
+    fullscreen
+    scrollable
+    :ui="{ footer: 'hidden' }"
     @update:open="onOpenChange"
   >
     <template #header>
@@ -36,7 +38,7 @@
     </template>
 
     <template #body>
-      <div class="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 max-w-[1600px] mx-auto w-full">
         <div class="space-y-4 border-r border-default pr-0 lg:pr-4">
           <h4 class="text-sm font-semibold text-default">
             Vendor Profile
@@ -186,12 +188,6 @@ const { creditDaysOptions, refreshCreditDaysOptions } = useCreditDaysOptions()
 
 const submitting = ref(false)
 const savedVendor = ref<NimbleDbVendor | null>(null)
-
-const modalUi = {
-  content: 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100vw-1rem)] max-w-6xl max-h-[calc(100dvh-1rem)] rounded-lg shadow-lg ring ring-default overflow-hidden',
-  body: 'p-4 sm:p-6 max-h-[calc(100dvh-12rem)] overflow-y-auto',
-  footer: 'hidden',
-}
 
 const accordionItems = [
   { key: 'address-contract', label: 'Address & Contract Details', icon: 'i-heroicons-map-pin' },
