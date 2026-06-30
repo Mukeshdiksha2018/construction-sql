@@ -39,77 +39,87 @@
 
     <template #body>
       <div class="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 max-w-[1600px] mx-auto w-full">
-        <div class="space-y-4 border-r border-default pr-0 lg:pr-4">
-          <h4 class="text-sm font-semibold text-default">
-            Vendor Profile
-          </h4>
+        <div class="space-y-4 lg:sticky lg:top-0 lg:self-start">
+          <UCard variant="soft">
+            <h4 class="text-base font-bold text-default flex items-center gap-2 border-b border-default/60 pb-2 mb-4">
+              <UIcon name="i-heroicons-building-storefront" class="w-5 h-5 text-primary-500" />
+              Vendor Profile
+            </h4>
 
-          <div>
-            <label class="block text-xs font-medium text-default mb-1">Corporation</label>
-            <CorporationSelect
-              v-model="form.corporation_id"
-              disabled
-              placeholder="Corporation"
-            />
-          </div>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-xs font-medium text-default mb-1">Corporation</label>
+                <CorporationSelect
+                  v-model="form.corporation_id"
+                  disabled
+                  placeholder="Corporation"
+                />
+              </div>
 
-          <div>
-            <label class="block text-xs font-medium text-default mb-1">
-              Vendor Name <span class="text-error">*</span>
-            </label>
-            <UInput v-model="form.name" variant="subtle" size="sm" class="w-full" />
-          </div>
+              <div>
+                <label class="block text-xs font-medium text-default mb-1">
+                  Vendor Name <span class="text-error">*</span>
+                </label>
+                <UInput v-model="form.name" variant="subtle" size="sm" class="w-full" />
+              </div>
 
-          <div>
-            <label class="block text-xs font-medium text-default mb-1">
-              Federal ID <span class="text-error">*</span>
-            </label>
-            <UInput v-model="form.federal_id" variant="subtle" size="sm" class="w-full" />
-          </div>
+              <div>
+                <label class="block text-xs font-medium text-default mb-1">
+                  Federal ID <span class="text-error">*</span>
+                </label>
+                <UInput v-model="form.federal_id" variant="subtle" size="sm" class="w-full" />
+              </div>
 
-          <div>
-            <label class="block text-xs font-medium text-default mb-1">SSN</label>
-            <UInput v-model="form.ssn" variant="subtle" size="sm" class="w-full" />
-          </div>
+              <div>
+                <label class="block text-xs font-medium text-default mb-1">SSN</label>
+                <UInput v-model="form.ssn" variant="subtle" size="sm" class="w-full" />
+              </div>
 
-          <div>
-            <label class="block text-xs font-medium text-default mb-1">Credit Days</label>
-            <USelect
-              v-model="form.credit_days_id"
-              :items="creditDaySelectOptions"
-              placeholder="Select credit days"
-              size="sm"
-              class="w-full"
-            />
-          </div>
+              <div>
+                <label class="block text-xs font-medium text-default mb-1">Credit Days</label>
+                <USelect
+                  v-model="form.credit_days_id"
+                  :items="creditDaySelectOptions"
+                  placeholder="Select credit days"
+                  size="sm"
+                  class="w-full"
+                />
+              </div>
 
-          <div>
-            <label class="block text-xs font-medium text-default mb-1">Check to be printed as</label>
-            <UInput v-model="form.print_check_as" variant="subtle" size="sm" class="w-full" />
-          </div>
+              <div>
+                <label class="block text-xs font-medium text-default mb-1">Check to be printed as</label>
+                <UInput v-model="form.print_check_as" variant="subtle" size="sm" class="w-full" />
+              </div>
 
-          <div class="flex items-center justify-between py-1">
-            <span class="text-xs font-medium text-default">1099 Vendor</span>
-            <USwitch v-model="form.is_1099" />
-          </div>
-
-          <div class="pt-2 border-t border-dashed border-default space-y-3 opacity-60">
-            <p class="text-xs text-muted">
-              Coming soon
-            </p>
-            <div>
-              <label class="block text-xs font-medium text-default mb-1">Opening Balance</label>
-              <UInput disabled variant="subtle" size="sm" placeholder="—" class="w-full" />
+              <div class="flex items-center justify-between py-1">
+                <span class="text-xs font-medium text-default">1099 Vendor</span>
+                <USwitch v-model="form.is_1099" />
+              </div>
             </div>
-            <div>
-              <label class="block text-xs font-medium text-default mb-1">As of Date</label>
-              <UInput disabled type="date" variant="subtle" size="sm" class="w-full" />
+          </UCard>
+
+          <UCard variant="soft" class="opacity-60">
+            <h4 class="text-base font-bold text-default flex items-center gap-2 border-b border-default/60 pb-2 mb-4">
+              <UIcon name="i-heroicons-banknotes" class="w-5 h-5 text-primary-500" />
+              Opening Balance
+              <span class="text-xs font-normal text-muted ml-auto">Coming soon</span>
+            </h4>
+
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-default mb-1">Opening Balance</label>
+                <UInput disabled variant="subtle" size="sm" placeholder="—" class="w-full" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-default mb-1">As of Date</label>
+                <UInput disabled type="date" variant="subtle" size="sm" class="w-full" />
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-default">Add to all corporations</span>
+                <USwitch disabled :model-value="false" />
+              </div>
             </div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-medium text-default">Add to all corporations</span>
-              <USwitch disabled :model-value="false" />
-            </div>
-          </div>
+          </UCard>
         </div>
 
         <div class="min-w-0">
