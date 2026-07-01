@@ -11,10 +11,9 @@
         />
       </div>
       <UButton
-        icon="i-material-symbols-add-rounded"
-        size="xs"
+        icon="i-heroicons-plus"
         color="primary"
-        variant="solid"
+        size="xs"
         @click="openModal"
       >
         Add PO Instruction
@@ -364,34 +363,32 @@ const columns: TableColumn<POInstruction>[] = [
     },
   },
   {
-    accessorKey: 'actions',
+    id: 'actions',
     header: 'Actions',
     enableSorting: false,
-    enableHiding: false,
-    meta: { class: { th: 'text-right sticky right-0 z-10 w-24', td: 'text-right sticky right-0 w-24' } },
-    cell: ({ row }) => {
-      const btns = [
-        h(UTooltip, { text: 'Edit PO Instruction' }, () => [
-          h(UButton, {
-            icon: 'i-lucide-pencil',
-            size: 'xs',
-            color: 'secondary',
-            variant: 'soft',
-            onClick: () => editPOInstruction(row.original),
-          }),
-        ]),
-        h(UTooltip, { text: 'Delete PO Instruction' }, () => [
-          h(UButton, {
-            icon: 'i-lucide-trash-2',
-            size: 'xs',
-            color: 'error',
-            variant: 'soft',
-            onClick: () => deletePOInstruction(row.original),
-          }),
-        ]),
-      ]
-      return h('div', { class: 'flex justify-end gap-1' }, btns)
-    },
+    meta: { class: { th: 'text-right sticky right-0 z-10 w-32', td: 'text-right sticky right-0 w-32' } },
+    cell: ({ row }) => h('div', { class: 'flex justify-end space-x-2' }, [
+      h(UTooltip, { text: 'Edit PO Instruction' }, () => [
+        h(UButton, {
+          icon: 'tdesign:edit-filled',
+          size: 'xs',
+          variant: 'soft',
+          color: 'secondary',
+          class: 'hover:scale-105 transition-transform',
+          onClick: () => editPOInstruction(row.original),
+        }, () => ''),
+      ]),
+      h(UTooltip, { text: 'Delete PO Instruction' }, () => [
+        h(UButton, {
+          icon: 'mingcute:delete-fill',
+          size: 'xs',
+          variant: 'soft',
+          color: 'error',
+          class: 'hover:scale-105 transition-transform',
+          onClick: () => deletePOInstruction(row.original),
+        }, () => ''),
+      ]),
+    ]),
   },
 ]
 

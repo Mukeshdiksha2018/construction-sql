@@ -1,13 +1,14 @@
 <template>
   <div>
     <div class="flex justify-end items-center mb-4 gap-2">
-      <div class="mr-1 flex-1 max-w-sm">
+      <div class="flex-1 max-w-sm">
         <UInput
           v-model="globalFilter"
           placeholder="Search credit days..."
           icon="i-heroicons-magnifying-glass"
           variant="subtle"
           size="xs"
+          class="w-full"
         />
       </div>
       <USelect
@@ -17,10 +18,9 @@
         class="w-36"
       />
       <UButton
-        icon="i-material-symbols-add-rounded"
-        size="xs"
+        icon="i-heroicons-plus"
         color="primary"
-        variant="solid"
+        size="xs"
         @click="openModal"
       >
         Add Credit Days
@@ -28,63 +28,44 @@
     </div>
 
     <div v-if="store.loading && !store.items.length">
-      <div class="relative overflow-auto rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <div class="bg-gray-50 dark:bg-gray-700">
-          <div class="grid grid-cols-4 gap-4 px-2 py-2 text-sm font-bold text-gray-800 dark:text-gray-200 tracking-wider border-b border-gray-200 dark:border-gray-600">
-            <div class="flex items-center gap-2">
-              <USkeleton class="h-4 w-24" />
-            </div>
-            <div class="flex items-center gap-2">
-              <USkeleton class="h-4 w-16" />
-            </div>
-            <div class="flex items-center gap-2">
-              <USkeleton class="h-4 w-16" />
-            </div>
-            <div class="flex items-center justify-center">
-              <USkeleton class="h-4 w-16" />
-            </div>
-          </div>
+      <div class="text-center py-12">
+        <div class="text-gray-400 mb-4">
+          <UIcon name="i-heroicons-arrow-path" class="w-12 h-12 mx-auto animate-spin" />
         </div>
-        <div class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-          <div v-for="i in 5" :key="i">
-            <div class="grid grid-cols-4 gap-4 px-2 py-1 text-xs">
-              <div><USkeleton class="h-4 w-40" /></div>
-              <div><USkeleton class="h-4 w-12" /></div>
-              <div><USkeleton class="h-4 w-16" /></div>
-              <div class="flex justify-end gap-1">
-                <USkeleton class="h-6 w-6 rounded" />
-                <USkeleton class="h-6 w-6 rounded" />
-              </div>
-            </div>
-          </div>
-        </div>
+        <p class="text-gray-500 text-lg">
+          Loading credit days...
+        </p>
       </div>
     </div>
 
     <div v-else-if="store.error && !filteredItems.length">
-      <p class="text-red-500">
-        Error: {{ store.error }}
-      </p>
+      <UAlert
+        icon="i-heroicons-exclamation-triangle"
+        color="error"
+        variant="soft"
+        :title="store.error"
+      />
     </div>
 
     <div v-else-if="filteredItems.length">
       <UTable
         ref="table"
+        sticky
         v-model:pagination="pagination"
         v-model:column-pinning="columnPinning"
         v-model:global-filter="globalFilter"
-        sticky
         :pagination-options="paginationOptions"
         :data="filteredItems"
         :columns="columns"
         class="max-h-[70vh] overflow-auto"
       />
+
       <div
-        v-if="shouldShowPagination"
+        v-if="shouldShowPagination(filteredItems.length).value"
         class="mt-4 flex flex-col sm:flex-row justify-between items-center gap-4"
       >
         <div class="flex items-center gap-2">
-          <span class="text-sm text-muted">Show:</span>
+          <span class="text-sm text-gray-600">Show:</span>
           <USelect
             v-model="pagination.pageSize"
             :items="pageSizeOptions"
@@ -92,30 +73,35 @@
             size="sm"
             variant="outline"
             class="w-32"
-            @change="updatePageSize"
+            @change="updatePageSize(table)"
           />
         </div>
-        <UPagination
-          :default-page="(table?.tableApi?.getState().pagination.pageIndex || 0) + 1"
-          :items-per-page="table?.tableApi?.getState().pagination.pageSize"
-          :total="table?.tableApi?.getFilteredRowModel().rows.length"
-          @update:page="(p: number) => table?.tableApi?.setPageIndex(p - 1)"
-        />
-        <div class="text-sm text-muted">
-          Showing
-          {{ (table?.tableApi?.getState().pagination.pageIndex || 0) * (table?.tableApi?.getState().pagination.pageSize || 10) + 1 }}
-          to
-          {{ Math.min(((table?.tableApi?.getState().pagination.pageIndex || 0) + 1) * (table?.tableApi?.getState().pagination.pageSize || 10), table?.tableApi?.getFilteredRowModel().rows.length || 0) }}
-          of
-          {{ table?.tableApi?.getFilteredRowModel().rows.length || 0 }}
-          credit days
+
+        <UPagination v-bind="getPaginationProps(table)" />
+
+        <div class="text-sm text-gray-600">
+          {{ getPageInfo(table, 'credit days').value }}
         </div>
       </div>
     </div>
 
-    <p v-else class="text-muted text-center py-12">
-      No credit days found.
-    </p>
+    <div v-else class="text-center py-12">
+      <div class="text-gray-400 mb-4">
+        <UIcon name="i-heroicons-calendar-days" class="w-12 h-12 mx-auto" />
+      </div>
+      <p class="text-gray-500 text-lg">
+        No credit days found
+      </p>
+      <p class="text-gray-400 text-sm mb-6">
+        Create your first credit days term to get started
+      </p>
+      <UButton
+        icon="i-heroicons-plus"
+        @click="openModal"
+      >
+        Add Credit Days
+      </UButton>
+    </div>
 
     <UModal
       v-model:open="showModal"
@@ -178,13 +164,36 @@
         </div>
       </template>
     </UModal>
+
+    <UModal v-model:open="showDeleteModal" :ui="{ footer: 'hidden' }">
+      <template #header>
+        <div class="flex items-center justify-between w-full gap-4">
+          <h3 class="text-lg font-semibold text-default">
+            Delete Credit Days
+          </h3>
+          <div class="flex items-center gap-2">
+            <UButton color="neutral" variant="soft" @click="showDeleteModal = false">
+              Cancel
+            </UButton>
+            <UButton color="error" :loading="deleting" @click="confirmDelete">
+              Delete Credit Days
+            </UButton>
+          </div>
+        </div>
+      </template>
+      <template #body>
+        <p class="text-sm text-muted">
+          The credit days term will be marked deleted in Nimble (Status = 3). Existing vendors keep their credit days reference.
+        </p>
+      </template>
+    </UModal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, h, onMounted, ref, resolveComponent, useTemplateRef } from 'vue'
-import { getPaginationRowModel } from '@tanstack/vue-table'
 import type { TableColumn } from '@nuxt/ui'
+import { useTableStandard } from '~/composables/useTableStandard'
 import { useCreditDaysOptions } from '~/composables/useCreditDaysOptions'
 import { useCreditDaysStore, type NimbleCreditDays } from '~/stores/creditDays'
 
@@ -196,9 +205,22 @@ const store = useCreditDaysStore()
 const toast = useToast()
 const { refreshCreditDaysOptions } = useCreditDaysOptions()
 
+const {
+  pagination,
+  paginationOptions,
+  pageSizeOptions,
+  updatePageSize,
+  getPaginationProps,
+  getPageInfo,
+  shouldShowPagination,
+} = useTableStandard()
+
 const showModal = ref(false)
+const showDeleteModal = ref(false)
 const editing = ref<NimbleCreditDays | null>(null)
+const itemToDelete = ref<NimbleCreditDays | null>(null)
 const saving = ref(false)
+const deleting = ref(false)
 const globalFilter = ref('')
 const statusFilter = ref<'all' | 'active' | 'inactive'>('active')
 
@@ -214,22 +236,8 @@ const form = ref({
   active: true,
 })
 
-const pagination = ref({ pageIndex: 0, pageSize: 10 })
 const columnPinning = ref({ left: [] as string[], right: ['actions'] })
-const paginationOptions = ref({ getPaginationRowModel: getPaginationRowModel() })
-const table = useTemplateRef<{ tableApi?: {
-  getState: () => { pagination: { pageIndex: number, pageSize: number } }
-  getFilteredRowModel: () => { rows: unknown[] }
-  setPageIndex: (n: number) => void
-  setPageSize: (n: number) => void
-} }>('table')
-
-const pageSizeOptions = [
-  { label: '10 per page', value: 10 },
-  { label: '25 per page', value: 25 },
-  { label: '50 per page', value: 50 },
-  { label: '100 per page', value: 100 },
-]
+const table = useTemplateRef('table')
 
 const modalUi = {
   content: 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100vw-1rem)] max-w-lg max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] rounded-lg shadow-lg ring ring-default overflow-hidden',
@@ -259,8 +267,6 @@ const filteredItems = computed(() => {
   })
 })
 
-const shouldShowPagination = computed(() => filteredItems.value.length > 10)
-
 const isFormValid = computed(() =>
   form.value.name.trim() !== ''
   && Number.isFinite(form.value.interval_days)
@@ -279,52 +285,53 @@ const columns: TableColumn<NimbleCreditDays>[] = [
     accessorKey: 'name',
     header: 'Name',
     enableSorting: false,
-    cell: ({ row }) => h('div', { class: 'text-default text-sm font-medium' }, row.original.name),
+    meta: { class: { th: 'text-left min-w-[140px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'font-medium text-default truncate max-w-[200px]' }, row.original.name),
   },
   {
     accessorKey: 'interval_days',
     header: 'Days',
     enableSorting: false,
-    cell: ({ row }) => h('div', { class: 'text-default text-sm font-mono' }, String(row.original.interval_days)),
+    meta: { class: { th: 'text-left min-w-[80px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'font-mono text-sm' }, String(row.original.interval_days)),
   },
   {
     accessorKey: 'status',
     header: 'Status',
     enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[90px]', td: 'text-left' } },
     cell: ({ row }) => {
       const config = statusConfig(row.original)
       return h(UBadge, { color: config.color, variant: 'soft', size: 'sm' }, () => config.label)
     },
   },
   {
-    accessorKey: 'actions',
+    id: 'actions',
     header: 'Actions',
     enableSorting: false,
-    enableHiding: false,
-    meta: { class: { th: 'text-right sticky right-0 z-10 w-24', td: 'text-right sticky right-0 w-24' } },
-    cell: ({ row }) => {
-      const btns = [
-        h(UTooltip, { text: 'Edit Credit Days' }, () => [
-          h(UButton, {
-            icon: 'i-lucide-pencil',
-            size: 'xs',
-            color: 'secondary',
-            variant: 'soft',
-            onClick: () => edit(row.original),
-          }),
-        ]),
-        h(UTooltip, { text: 'Delete Credit Days' }, () => [
-          h(UButton, {
-            icon: 'i-lucide-trash-2',
-            size: 'xs',
-            color: 'error',
-            variant: 'soft',
-            onClick: () => remove(row.original),
-          }),
-        ]),
-      ]
-      return h('div', { class: 'flex justify-end gap-1' }, btns)
-    },
+    meta: { class: { th: 'text-right sticky right-0 z-10 w-32', td: 'text-right sticky right-0 w-32' } },
+    cell: ({ row }) => h('div', { class: 'flex justify-end space-x-2' }, [
+      h(UTooltip, { text: 'Edit Credit Days' }, () => [
+        h(UButton, {
+          icon: 'tdesign:edit-filled',
+          size: 'xs',
+          variant: 'soft',
+          color: 'secondary',
+          class: 'hover:scale-105 transition-transform',
+          onClick: () => edit(row.original),
+        }, () => ''),
+      ]),
+      h(UTooltip, { text: 'Delete Credit Days' }, () => [
+        h(UButton, {
+          icon: 'mingcute:delete-fill',
+          size: 'xs',
+          variant: 'soft',
+          color: 'error',
+          class: 'hover:scale-105 transition-transform',
+          onClick: () => openDelete(row.original),
+        }, () => ''),
+      ]),
+    ]),
   },
 ]
 
@@ -356,6 +363,11 @@ function edit(item: NimbleCreditDays) {
     active: item.status === 1,
   }
   showModal.value = true
+}
+
+function openDelete(item: NimbleCreditDays) {
+  itemToDelete.value = item
+  showDeleteModal.value = true
 }
 
 function getErrorMessage(e: unknown): string {
@@ -398,20 +410,22 @@ async function save() {
   }
 }
 
-async function remove(item: NimbleCreditDays) {
+async function confirmDelete() {
+  if (!itemToDelete.value) return
+  deleting.value = true
   try {
-    await store.deleteCreditDays(item.credit_days_id)
+    await store.deleteCreditDays(itemToDelete.value.credit_days_id)
     await refreshDropdownCache()
     toast.add({ title: 'Success', description: 'Credit days deleted successfully', color: 'success' })
+    showDeleteModal.value = false
+    itemToDelete.value = null
   }
   catch (e: unknown) {
     toast.add({ title: 'Error', description: getErrorMessage(e), color: 'error' })
   }
-}
-
-function updatePageSize(newSize: { value?: number } | number) {
-  const size = typeof newSize === 'object' ? (newSize.value ?? 10) : newSize
-  table.value?.tableApi?.setPageSize(size)
+  finally {
+    deleting.value = false
+  }
 }
 
 onMounted(() => {

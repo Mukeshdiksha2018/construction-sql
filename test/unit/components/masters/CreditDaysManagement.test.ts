@@ -71,9 +71,10 @@ const UModalStub = {
 const UTableStub = { name: 'UTable', template: '<div data-testid="table" />' }
 const UPaginationStub = { name: 'UPagination', template: '<div />' }
 const USelectStub = { name: 'USelect', template: '<div />' }
-const USkeletonStub = { name: 'USkeleton', template: '<div />' }
 const UBadgeStub = { name: 'UBadge', template: '<div><slot /></div>' }
 const UTooltipStub = { name: 'UTooltip', template: '<div><slot /></div>' }
+const UAlertStub = { name: 'UAlert', props: ['title'], template: '<div>{{ title }}</div>' }
+const UIconStub = { name: 'UIcon', template: '<span />' }
 
 describe('CreditDaysManagement', () => {
   beforeEach(() => {
@@ -97,9 +98,10 @@ describe('CreditDaysManagement', () => {
           UTable: UTableStub,
           UPagination: UPaginationStub,
           USelect: USelectStub,
-          USkeleton: USkeletonStub,
           UBadge: UBadgeStub,
           UTooltip: UTooltipStub,
+          UAlert: UAlertStub,
+          UIcon: UIconStub,
         },
       },
     })
