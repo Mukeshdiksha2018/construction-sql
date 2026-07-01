@@ -11,10 +11,9 @@
         />
       </div>
       <UButton
-        icon="i-material-symbols-add-rounded"
-        size="xs"
+        icon="i-heroicons-plus"
         color="primary"
-        variant="solid"
+        size="xs"
         @click="openModal"
       >
         Add Location
@@ -250,57 +249,59 @@ const columns: TableColumn<Location>[] = [
     accessorKey: 'location_name',
     header: 'Name',
     enableSorting: false,
-    cell: ({ row }) => h('div', { class: 'font-medium text-default' }, row.original.location_name),
+    meta: { class: { th: 'text-left min-w-[140px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'font-medium text-default truncate max-w-[180px]' }, row.original.location_name),
   },
   {
     accessorKey: 'location_code',
     header: 'Code',
     enableSorting: false,
-    cell: ({ row }) => h('div', { class: 'text-default text-sm' }, row.original.location_code || '-'),
+    meta: { class: { th: 'text-left min-w-[100px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'text-default text-sm font-mono' }, row.original.location_code || '-'),
   },
   {
     accessorKey: 'description',
     header: 'Description',
     enableSorting: false,
-    cell: ({ row }) => h('div', { class: 'text-default text-sm truncate', style: 'max-width: 380px;' }, row.original.description || '-'),
+    meta: { class: { th: 'text-left min-w-[240px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'text-default text-sm truncate max-w-[380px]' }, row.original.description || '-'),
   },
   {
     accessorKey: 'active',
     header: 'Status',
     enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[90px]', td: 'text-left' } },
     cell: ({ row }) =>
       h(UBadge, { color: row.original.active ? 'success' : 'neutral', variant: 'soft', size: 'sm' }, () =>
         row.original.active ? 'Active' : 'Inactive'),
   },
   {
-    accessorKey: 'actions',
+    id: 'actions',
     header: 'Actions',
     enableSorting: false,
-    enableHiding: false,
-    meta: { class: { th: 'text-right sticky right-0 z-10 w-24', td: 'text-right sticky right-0 w-24' } },
-    cell: ({ row }) => {
-      const btns = [
-        h(UTooltip, { text: 'Edit Location' }, () => [
-          h(UButton, {
-            icon: 'i-lucide-pencil',
-            size: 'xs',
-            color: 'secondary',
-            variant: 'soft',
-            onClick: () => edit(row.original),
-          }),
-        ]),
-        h(UTooltip, { text: 'Delete Location' }, () => [
-          h(UButton, {
-            icon: 'i-lucide-trash-2',
-            size: 'xs',
-            color: 'error',
-            variant: 'soft',
-            onClick: () => remove(row.original),
-          }),
-        ]),
-      ]
-      return h('div', { class: 'flex justify-end gap-1' }, btns)
-    },
+    meta: { class: { th: 'text-right sticky right-0 z-10 w-32', td: 'text-right sticky right-0 w-32' } },
+    cell: ({ row }) => h('div', { class: 'flex justify-end space-x-2' }, [
+      h(UTooltip, { text: 'Edit Location' }, () => [
+        h(UButton, {
+          icon: 'tdesign:edit-filled',
+          size: 'xs',
+          variant: 'soft',
+          color: 'secondary',
+          class: 'hover:scale-105 transition-transform',
+          onClick: () => edit(row.original),
+        }, () => ''),
+      ]),
+      h(UTooltip, { text: 'Delete Location' }, () => [
+        h(UButton, {
+          icon: 'mingcute:delete-fill',
+          size: 'xs',
+          variant: 'soft',
+          color: 'error',
+          class: 'hover:scale-105 transition-transform',
+          onClick: () => remove(row.original),
+        }, () => ''),
+      ]),
+    ]),
   },
 ]
 

@@ -11,10 +11,9 @@
         />
       </div>
       <UButton
-        icon="i-material-symbols-add-rounded"
-        size="xs"
+        icon="i-heroicons-plus"
         color="primary"
-        variant="solid"
+        size="xs"
         @click="openModal"
       >
         Add Reason
@@ -218,52 +217,52 @@ const columns: TableColumn<Reason>[] = [
     accessorKey: 'reason',
     header: 'Reason',
     enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[300px]', td: 'text-left' } },
     cell: ({ row }) => {
       const value = row.original.reason || '-'
       if (value.length > 100) {
         return h(UTooltip, { text: value }, () =>
-          h('div', { class: 'text-default text-sm truncate cursor-help', style: 'max-width: 500px;' }, value))
+          h('div', { class: 'font-medium text-default truncate max-w-[500px] cursor-help' }, value))
       }
-      return h('div', { class: 'text-default text-sm whitespace-pre-wrap break-words', style: 'max-width: 500px;' }, value)
+      return h('div', { class: 'font-medium text-default whitespace-pre-wrap break-words max-w-[500px]' }, value)
     },
   },
   {
     accessorKey: 'active',
     header: 'Status',
     enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[90px]', td: 'text-left' } },
     cell: ({ row }) =>
       h(UBadge, { color: row.original.active ? 'success' : 'neutral', variant: 'soft', size: 'sm' }, () =>
         row.original.active ? 'Active' : 'Inactive'),
   },
   {
-    accessorKey: 'actions',
+    id: 'actions',
     header: 'Actions',
     enableSorting: false,
-    enableHiding: false,
-    meta: { class: { th: 'text-right sticky right-0 z-10 w-24', td: 'text-right sticky right-0 w-24' } },
-    cell: ({ row }) => {
-      const btns = [
-        h(UTooltip, { text: 'Edit Reason' }, () => [
-          h(UButton, {
-            icon: 'i-lucide-pencil',
-            size: 'xs',
-            color: 'secondary',
-            variant: 'soft',
-            onClick: () => edit(row.original),
-          }),
-        ]),
-        h(UTooltip, { text: 'Delete Reason' }, () => [
-          h(UButton, {
-            icon: 'i-lucide-trash-2',
-            size: 'xs',
-            color: 'error',
-            variant: 'soft',
-            onClick: () => remove(row.original),
-          }),
-        ]),
-      ]
-      return h('div', { class: 'flex justify-end gap-1' }, btns)
-    },
+    meta: { class: { th: 'text-right sticky right-0 z-10 w-32', td: 'text-right sticky right-0 w-32' } },
+    cell: ({ row }) => h('div', { class: 'flex justify-end space-x-2' }, [
+      h(UTooltip, { text: 'Edit Reason' }, () => [
+        h(UButton, {
+          icon: 'tdesign:edit-filled',
+          size: 'xs',
+          variant: 'soft',
+          color: 'secondary',
+          class: 'hover:scale-105 transition-transform',
+          onClick: () => edit(row.original),
+        }, () => ''),
+      ]),
+      h(UTooltip, { text: 'Delete Reason' }, () => [
+        h(UButton, {
+          icon: 'mingcute:delete-fill',
+          size: 'xs',
+          variant: 'soft',
+          color: 'error',
+          class: 'hover:scale-105 transition-transform',
+          onClick: () => remove(row.original),
+        }, () => ''),
+      ]),
+    ]),
   },
 ]
 

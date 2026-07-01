@@ -51,6 +51,7 @@ const mockFetchNimble = vi.fn()
 const mockRefresh = vi.fn()
 const mockDeleteNimbleVendor = vi.fn()
 const mockFetchAccounts = vi.fn()
+const mockRefreshCreditDaysOptions = vi.fn()
 const toastAdd = vi.fn()
 
 vi.mock('~/stores/vendors', () => ({
@@ -80,6 +81,12 @@ vi.mock('~/stores/chartOfAccounts', () => ({
 }))
 
 vi.stubGlobal('useToast', () => ({ add: toastAdd }))
+
+vi.mock('~/composables/useCreditDaysOptions', () => ({
+  useCreditDaysOptions: () => ({
+    refreshCreditDaysOptions: mockRefreshCreditDaysOptions,
+  }),
+}))
 
 function mountVendorManagement() {
   return mount(VendorManagement, {
@@ -123,6 +130,7 @@ describe('VendorManagement', () => {
     mockRefresh.mockReset().mockResolvedValue(undefined)
     mockDeleteNimbleVendor.mockReset().mockResolvedValue(undefined)
     mockFetchAccounts.mockReset().mockResolvedValue(undefined)
+    mockRefreshCreditDaysOptions.mockReset().mockResolvedValue(undefined)
     toastAdd.mockReset()
   })
 
@@ -131,6 +139,7 @@ describe('VendorManagement', () => {
 
     expect(mockFetchNimble).toHaveBeenCalledWith('corp-1', true)
     expect(mockFetchAccounts).toHaveBeenCalledWith('corp-1')
+    expect(mockRefreshCreditDaysOptions).toHaveBeenCalled()
   })
 
   it('shows add vendor controls when corporation is selected', async () => {

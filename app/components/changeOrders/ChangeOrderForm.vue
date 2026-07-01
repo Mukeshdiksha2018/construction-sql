@@ -486,15 +486,13 @@
           />
         </div>
 
-        <!-- Is Revised -->
-        <!-- Is Revised (only when editing an existing CO) -->
+        <!-- Is Revised: shown for approval-level users or when already revised -->
         <div
           v-if="
             form.uuid && (
+              props.allowRevise ||
               Boolean(form.is_revised) ||
-              Boolean(form.revision_date) ||
-              (String(form.status || '').toLowerCase() !== 'ready' &&
-                String(form.status || '').toLowerCase() !== 'approved')
+              Boolean(form.revision_date)
             )
           "
         >
@@ -1672,10 +1670,13 @@ interface Props {
   form: any
   loading?: boolean
   readonly?: boolean
+  /** When true, the "Is Revised" checkbox is shown for approval-level users editing an existing CO. */
+  allowRevise?: boolean
 }
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
-  readonly: false
+  readonly: false,
+  allowRevise: false,
 })
 const emit = defineEmits<{ 'update:form': [value: any]; 'nimble-vendor-saved': [] }>()
 

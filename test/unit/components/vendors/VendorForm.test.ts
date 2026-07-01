@@ -91,6 +91,11 @@ function mountVendorForm(props: Record<string, unknown> = {}) {
           props: ['modelValue', 'disabled'],
           template: '<div data-testid="corporation-select" :data-value="modelValue" :data-disabled="String(disabled)" />',
         },
+        CreditDaysSelect: {
+          props: ['modelValue'],
+          emits: ['update:modelValue'],
+          template: '<div data-testid="credit-days-select" :data-credit-days-id="modelValue?.credit_days_id || \'\'" />',
+        },
         CustomAccordion: {
           props: ['items'],
           template: `
@@ -153,6 +158,18 @@ describe('VendorForm', () => {
     expect(wrapper.text()).toContain('Edit Vendor')
     expect(wrapper.text()).not.toContain('Save & New')
     expect(wrapper.find('[data-testid="corporation-select"]').attributes('data-value')).toBe('CORP-UPPER')
+  })
+
+  it('loads credit days before populating edit form', async () => {
+    const vendor = makeNimbleDbVendor({
+      vendor_id: 'edit-cd',
+      credit_days_id: 'CD-UPPER-ID',
+    })
+    const wrapper = await mountVendorForm({ vendor })
+    await openModalAndReset(wrapper)
+
+    expect(mockRefreshCreditDaysOptions).toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="credit-days-select"]').attributes('data-credit-days-id')).toBe('cd-upper-id')
   })
 
   it('initializes create form from selected corporation on open', async () => {

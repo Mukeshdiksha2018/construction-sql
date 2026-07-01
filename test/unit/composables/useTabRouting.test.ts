@@ -81,6 +81,7 @@ describe('useTabRouting', () => {
       'po-instruction',
       'location',
       'reason',
+      'credit-days',
     ])
   })
 

@@ -169,8 +169,9 @@ const selectedOption = computed<CreditDaysOption | undefined>(() => {
   const id = props.modelValue?.credit_days_id;
   if (!v && !id) return undefined;
   if (id) {
-    const byId = creditDaysOptions.value.find((opt) => String(opt.id || '') === String(id));
-    if (byId) return byId;
+    const idLower = String(id).toLowerCase()
+    const byId = creditDaysOptions.value.find((opt) => String(opt.id || '').toLowerCase() === idLower)
+    if (byId) return byId
   }
   const target = String(v || '').toLowerCase();
   let found = creditDaysOptions.value.find((opt) => String(opt.value).toLowerCase() === target);
@@ -208,7 +209,6 @@ function openAddModal() {
 async function saveAndSelect() {
   if (!isAddFormValid.value) return;
   const token = String(nimbleSession.token || '').trim();
-  if (!token) return;
 
   isCreating.value = true;
   const toast = useToast();
@@ -219,9 +219,8 @@ async function saveAndSelect() {
       error?: string;
     }>('/api/nimble/credit-days', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       body: {
         name: String(addForm.value.name).trim(),
         interval: Number(addForm.value.interval),

@@ -145,6 +145,7 @@
 import { computed, h, onMounted, ref, resolveComponent, useTemplateRef, watch } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
 import { useTableStandard } from '~/composables/useTableStandard'
+import { useCreditDaysOptions } from '~/composables/useCreditDaysOptions'
 import { useVendorStore, type NimbleDbVendor } from '~/stores/vendors'
 import { useCorporationStore } from '~/stores/corporations'
 import { useChartOfAccountsStore } from '~/stores/chartOfAccounts'
@@ -157,6 +158,7 @@ const vendorStore = useVendorStore()
 const corpStore = useCorporationStore()
 const coaStore = useChartOfAccountsStore()
 const toast = useToast()
+const { refreshCreditDaysOptions } = useCreditDaysOptions()
 
 const {
   pagination,
@@ -470,6 +472,7 @@ onMounted(() => {
   if (corpId) {
     coaStore.fetchAccounts(corpId)
   }
+  void refreshCreditDaysOptions()
   loadVendors()
 })
 </script>

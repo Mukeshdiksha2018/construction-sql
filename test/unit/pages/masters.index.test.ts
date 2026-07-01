@@ -12,6 +12,7 @@ const refreshTabState = vi.fn()
 vi.stubGlobal('definePageMeta', vi.fn())
 vi.stubGlobal('useRuntimeConfig', () => runtimeConfig)
 vi.stubGlobal('useRoute', () => route)
+vi.stubGlobal('useRouter', () => ({ push: vi.fn(), replace: vi.fn() }))
 
 vi.mock('~/composables/useTabRouting', () => ({
   MASTERS_TABS: [
@@ -20,6 +21,7 @@ vi.mock('~/composables/useTabRouting', () => ({
     { name: 'po-instruction', label: 'PO Instruction', icon: '', value: 'po-instruction' },
     { name: 'location', label: 'Location', icon: '', value: 'location' },
     { name: 'reason', label: 'Reason', icon: '', value: 'reason' },
+    { name: 'credit-days', label: 'Credit Days', icon: '', value: 'credit-days' },
   ],
   useTabRouting: () => ({
     currentTab,
@@ -33,17 +35,21 @@ vi.mock('~/composables/useTabRouting', () => ({
       { name: 'po-instruction', label: 'PO Instruction', icon: '', value: 'po-instruction' },
       { name: 'location', label: 'Location', icon: '', value: 'location' },
       { name: 'reason', label: 'Reason', icon: '', value: 'reason' },
+      { name: 'credit-days', label: 'Credit Days', icon: '', value: 'credit-days' },
     ],
   }),
 }))
 
 const stubs = {
   ClientOnly: { template: '<div><slot /></div>' },
-  MastersFreight: { template: '<div data-testid="masters-freight" />' },
-  MastersApprovalChecks: { template: '<div data-testid="masters-approval-checks" />' },
-  MastersPOInstruction: { template: '<div data-testid="masters-po-instruction" />' },
-  MastersLocation: { template: '<div data-testid="masters-location" />' },
-  MastersReason: { template: '<div data-testid="masters-reason" />' },
+  UTabs: {
+    props: ['modelValue', 'items'],
+    template: '<div data-testid="masters-tabs"><slot name="content" :item="{ value: modelValue, label: \'\' }" /></div>',
+  },
+  MastersTabContent: {
+    props: ['tab'],
+    template: '<div :data-testid="`masters-tab-${tab}`" />',
+  },
 }
 
 describe('masters index page', () => {
@@ -62,18 +68,28 @@ describe('masters index page', () => {
     const wrapper = mount(component, { global: { stubs } })
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="masters-approval-checks"]').exists()).toBe(true)
-    expect(wrapper.find('u-tabs-stub').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="masters-tab-approval-checks"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="masters-tabs"]').exists()).toBe(false)
   })
 
-  it('renders current tab when Nimble integration is disabled', async () => {
+  it('renders tab bar when Nimble integration is disabled', async () => {
     runtimeConfig.public.nimbleIntegrations = 'false'
     currentTab.value = 'location'
     const component = (await import('../../../app/pages/masters/index.vue')).default
     const wrapper = mount(component, { global: { stubs } })
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="masters-location"]').exists()).toBe(true)
-    expect(wrapper.find('u-tabs-stub').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="masters-tabs"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="masters-tab-location"]').exists()).toBe(true)
+  })
+
+  it('renders credit days tab when selected', async () => {
+    runtimeConfig.public.nimbleIntegrations = 'false'
+    currentTab.value = 'credit-days'
+    const component = (await import('../../../app/pages/masters/index.vue')).default
+    const wrapper = mount(component, { global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="masters-tab-credit-days"]').exists()).toBe(true)
   })
 })
