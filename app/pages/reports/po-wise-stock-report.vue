@@ -1,19 +1,9 @@
 <template>
-  <div class="h-[88vh] print:h-auto">
+  <div class="po-wise-stock-report h-[88vh] print:h-auto">
     <!-- Header section - hidden in print -->
     <div class="mb-2 print:hidden">
-      <div class="flex items-center justify-between gap-4 flex-wrap">
-        <!-- Left side: Back button -->
-        <div class="flex items-center gap-3">
-          <UButton
-            color="neutral"
-            variant="solid"
-            icon="i-heroicons-arrow-left"
-            @click="goBack"
-          />
-        </div>
-
-        <!-- Right side: Corporation, Project, Vendor Selection, Date Range, Show and Print buttons -->
+      <div class="flex items-center justify-end gap-4 flex-wrap">
+        <!-- Corporation, Project, Vendor Selection, Date Range, Show and Print buttons -->
         <div class="flex items-end gap-3 flex-wrap">
           <!-- Corporation Select -->
           <div class="flex flex-col gap-1">
@@ -78,24 +68,14 @@
             <label class="text-sm font-medium text-default whitespace-nowrap">
               Start Date <span class="text-red-500">*</span>
             </label>
-            <UPopover :popper="{ placement: 'bottom-start' }">
-              <UButton
-                icon="i-heroicons-calendar"
-                size="sm"
-                variant="outline"
-                class="w-48"
-              >
-                {{ startDateDisplayText }}
-              </UButton>
-              <template #content>
-                <UCalendar
-                  v-model="startDateValue"
-                  :min-value="undefined"
-                  :max-value="endDateValue || undefined"
-                  class="p-2"
-                />
-              </template>
-            </UPopover>
+            <DatePickerField
+              :model-value="startDateValue"
+              :max-value="endDateValue"
+              size="sm"
+              placeholder="MM/DD/YYYY"
+              class="w-48"
+              @update:model-value="(v) => { startDateValue = v }"
+            />
           </div>
 
           <!-- End Date -->
@@ -103,24 +83,14 @@
             <label class="text-sm font-medium text-default whitespace-nowrap">
               End Date <span class="text-red-500">*</span>
             </label>
-            <UPopover :popper="{ placement: 'bottom-start' }">
-              <UButton
-                icon="i-heroicons-calendar"
-                size="sm"
-                variant="outline"
-                class="w-48"
-              >
-                {{ endDateDisplayText }}
-              </UButton>
-              <template #content>
-                <UCalendar
-                  v-model="endDateValue"
-                  :min-value="startDateValue || undefined"
-                  :max-value="undefined"
-                  class="p-2"
-                />
-              </template>
-            </UPopover>
+            <DatePickerField
+              :model-value="endDateValue"
+              :min-value="startDateValue"
+              size="sm"
+              placeholder="MM/DD/YYYY"
+              class="w-48"
+              @update:model-value="(v) => { endDateValue = v }"
+            />
           </div>
 
           <!-- Stacked Advanced + Show buttons -->
@@ -166,27 +136,27 @@
                   <!-- Start Date -->
                   <div class="flex flex-col gap-1.5">
                     <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Start Date <span class="text-red-500">*</span></label>
-                    <UPopover :popper="{ placement: 'bottom-start' }">
-                      <UButton icon="i-heroicons-calendar" size="sm" variant="outline" class="w-full justify-start">
-                        {{ startDateDisplayText }}
-                      </UButton>
-                      <template #content>
-                        <UCalendar v-model="startDateValue" :min-value="undefined" :max-value="endDateValue || undefined" class="p-2" />
-                      </template>
-                    </UPopover>
+                    <DatePickerField
+                      :model-value="startDateValue"
+                      :max-value="endDateValue"
+                      size="sm"
+                      placeholder="MM/DD/YYYY"
+                      class="w-full"
+                      @update:model-value="(v) => { startDateValue = v }"
+                    />
                   </div>
 
                   <!-- End Date -->
                   <div class="flex flex-col gap-1.5">
                     <label class="text-xs font-medium text-gray-700 dark:text-gray-300">End Date <span class="text-red-500">*</span></label>
-                    <UPopover :popper="{ placement: 'bottom-start' }">
-                      <UButton icon="i-heroicons-calendar" size="sm" variant="outline" class="w-full justify-start">
-                        {{ endDateDisplayText }}
-                      </UButton>
-                      <template #content>
-                        <UCalendar v-model="endDateValue" :min-value="startDateValue || undefined" :max-value="undefined" class="p-2" />
-                      </template>
-                    </UPopover>
+                    <DatePickerField
+                      :model-value="endDateValue"
+                      :min-value="startDateValue"
+                      size="sm"
+                      placeholder="MM/DD/YYYY"
+                      class="w-full"
+                      @update:model-value="(v) => { endDateValue = v }"
+                    />
                   </div>
 
                   <!-- Vendor -->
@@ -225,21 +195,6 @@
                     />
                   </div>
 
-                  <!-- Item Division -->
-                  <div class="flex flex-col gap-1.5">
-                    <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Item Division</label>
-                    <ItemDivisionSelect
-                      v-model="drawerDivision"
-                      :corporation-uuid="selectedCorporationId || undefined"
-                      :category="drawerCategory || ''"
-                      placeholder="All Divisions"
-                      size="sm"
-                      class-name="w-full"
-                      :disabled="!selectedCorporationId"
-                      :show-add-button="false"
-                    />
-                  </div>
-
                   <!-- Item Type -->
                   <div class="flex flex-col gap-1.5">
                     <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Item Type</label>
@@ -248,7 +203,6 @@
                       :corporation-uuid="selectedCorporationId || undefined"
                       :project-uuid="selectedProjectId || undefined"
                       :category="drawerCategory || undefined"
-                      :item-division-uuid="drawerDivision || undefined"
                       placeholder="All Types"
                       size="sm"
                       class-name="w-full"
@@ -290,7 +244,7 @@
               class="w-full"
               @click="exportReportToCsv"
             >
-              Export CSV
+              Export Excel
             </UButton>
 
             <UButton
@@ -344,14 +298,14 @@
           <table class="w-full border-collapse text-xs">
             <thead>
               <tr class="bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700">
-                <th v-for="i in 20" :key="i" class="text-left py-2 px-2 font-semibold text-xs text-default">
+                <th v-for="i in 19" :key="i" class="text-left py-2 px-2 font-semibold text-xs text-default">
                   <USkeleton class="h-3 w-20" />
                 </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="i in 5" :key="i" class="border-b border-gray-200 dark:border-gray-700">
-                <td v-for="j in 20" :key="j" class="py-1 px-2 text-default text-xs">
+                <td v-for="j in 19" :key="j" class="py-1 px-2 text-default text-xs">
                   <USkeleton class="h-3 w-20" />
                 </td>
               </tr>
@@ -368,7 +322,7 @@
           PO Wise Stock Report
         </h1>
 
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto print:overflow-visible">
           <table class="w-full border-collapse text-xs print:text-sm">
             <thead>
               <tr class="bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700">
@@ -385,7 +339,6 @@
                 <th class="text-left py-2 px-2 font-semibold text-xs text-default">PO Date</th>
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">Ordered Quantity</th>
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">Received Quantity</th>
-                <th class="text-right py-2 px-2 font-semibold text-xs text-default">Returned Quantity</th>
                 <th class="text-left py-2 px-2 font-semibold text-xs text-default">Invoice Number</th>
                 <th class="text-left py-2 px-2 font-semibold text-xs text-default">Invoice Date</th>
                 <th class="text-left py-2 px-2 font-semibold text-xs text-default">Status</th>
@@ -398,7 +351,7 @@
               <template v-for="po in filteredReportData.data" :key="po.uuid">
                 <!-- PO Header -->
                 <tr class="bg-gray-50 dark:bg-gray-900 border-b-2 border-gray-400 dark:border-gray-600">
-                  <td class="py-2 px-2 font-bold text-xs text-default" colspan="20">
+                  <td class="py-2 px-2 font-bold text-xs text-default" colspan="19">
                     <div class="flex items-center justify-between">
                       <div>
                         <span class="font-semibold">PO Number:</span> <span class="font-semibold text-primary-600 dark:text-primary-400">{{ po.po_number }}</span>
@@ -433,7 +386,6 @@
                     <td class="py-1 px-2 text-default text-xs">{{ formatPoDate(item.poDate) }}</td>
                     <td class="py-1 px-2 text-right text-default text-xs">{{ formatNumber(item.orderedQuantity) }}</td>
                     <td class="py-1 px-2 text-right text-default text-xs">{{ formatNumber(item.receivedQuantity) }}</td>
-                    <td class="py-1 px-2 text-right text-default text-xs">{{ formatNumber(item.returnedQuantity) }}</td>
                     <td class="py-1 px-2 text-default text-xs">
                       {{ item.invoiceNumbers && item.invoiceNumbers.length > 0 ? item.invoiceNumbers.join(', ') : '-' }}
                     </td>
@@ -447,7 +399,7 @@
                   </tr>
                 </template>
                 <tr v-else class="border-b border-gray-200 dark:border-gray-700">
-                  <td class="py-2 px-2 text-muted text-xs italic" colspan="20">No items found for this purchase order</td>
+                  <td class="py-2 px-2 text-muted text-xs italic" colspan="19">No items found for this purchase order</td>
                 </tr>
                 
                 <!-- PO Total Row -->
@@ -457,7 +409,6 @@
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default font-bold">{{ formatNumber(po.totals.orderedQuantity) }}</td>
                   <td class="py-2 px-2 text-right text-xs text-default font-bold">{{ formatNumber(po.totals.receivedQuantity) }}</td>
-                  <td class="py-2 px-2 text-right text-xs text-default font-bold">{{ formatNumber(po.totals.returnedQuantity) }}</td>
                   <td class="py-2 px-2 text-xs text-default" colspan="3"></td>
                   <td class="py-2 px-2 text-right text-xs text-default"></td>
                   <td class="py-2 px-2 text-right text-xs text-default"></td>
@@ -466,7 +417,7 @@
                 
                 <!-- Spacer row between POs -->
                 <tr>
-                  <td class="py-2" colspan="20"></td>
+                  <td class="py-2" colspan="19"></td>
                 </tr>
               </template>
               
@@ -477,7 +428,6 @@
                 </td>
                 <td class="py-2 px-2 text-right text-xs text-default font-bold">{{ formatNumber(filteredTotals.orderedQuantity) }}</td>
                 <td class="py-2 px-2 text-right text-xs text-default font-bold">{{ formatNumber(filteredTotals.receivedQuantity) }}</td>
-                <td class="py-2 px-2 text-right text-xs text-default font-bold">{{ formatNumber(filteredTotals.returnedQuantity) }}</td>
                 <td class="py-2 px-2 text-xs text-default" colspan="3"></td>
                 <td class="py-2 px-2 text-right text-xs text-default"></td>
                 <td class="py-2 px-2 text-right text-xs text-default"></td>
@@ -497,9 +447,6 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
-import { CalendarDate, today, getLocalTimeZone } from '@internationalized/date'
-import dayjs from 'dayjs'
 import { useCorporationStore } from '~/stores/corporations'
 import { useProjectsStore } from '~/stores/projects'
 import { useLocationsStore } from '~/stores/locations'
@@ -509,26 +456,28 @@ import { usePOWiseStockReport } from '~/composables/usePOWiseStockReport'
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
 import { useDateFormat } from '~/composables/useDateFormat'
 import { useUTCDateFormat } from '~/composables/useUTCDateFormat'
+import { isWithinCalendarDateRange } from '~/utils/calendarDateRange'
 import ProjectSelect from '~/components/shared/ProjectSelect.vue'
 import CorporationSelect from '~/components/shared/CorporationSelect.vue'
 import VendorSelect from '~/components/shared/VendorSelect.vue'
 import LocationSelect from '~/components/shared/LocationSelect.vue'
 import ItemCategorySelect from '~/components/shared/ItemCategorySelect.vue'
-import ItemDivisionSelect from '~/components/shared/ItemDivisionSelect.vue'
 import ItemTypeSelect from '~/components/shared/ItemTypeSelect.vue'
+import DatePickerField from '~/components/shared/DatePickerField.vue'
 import type { POWiseStockReportData, POWiseStockReportItem } from '~/composables/usePOWiseStockReport'
 import { stripHtmlToPlainText } from '~/utils/getDescriptionPreviewHtml'
-import { downloadCsvFile } from '~/utils/csvExport'
+import {
+  formatReportDateRangeDisplay,
+  resolveCorporationDisplayName,
+} from '~/utils/csvExport'
+import {
+  buildReportExcelFilename,
+  downloadReportExcelFile,
+} from '~/utils/reportExcelExport.client'
 
 const getDescriptionPlainText = (value: unknown) => {
   const text = stripHtmlToPlainText(String(value || ''))
   return text || '-'
-}
-
-const router = useRouter()
-
-const goBack = () => {
-  router.back()
 }
 
 useHead({
@@ -560,22 +509,27 @@ const selectedTransactionRange = ref<string>('YEAR_TO_DATE')
 const isFilterDrawerOpen = ref(false)
 const drawerLocation = ref<string | undefined>(undefined)
 const drawerCategory = ref<string | undefined>(undefined)
-const drawerDivision = ref<string | undefined>(undefined)
 const drawerItemType = ref<string | undefined>(undefined)
 
 const appliedAdvancedFilters = ref({
   location: undefined as string | undefined,
   category: undefined as string | undefined,
-  division: undefined as string | undefined,
   itemType: undefined as string | undefined,
 })
 
+const { fromUTCString, toUTCString } = useUTCDateFormat()
+
+const toUtcDateString = (date: Date): string => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return toUTCString(`${y}-${m}-${d}`) ?? `${y}-${m}-${d}T00:00:00.000Z`
+}
+
 // Date range state
 const currentYear = new Date().getFullYear()
-const startDateValue = ref<CalendarDate | null>(
-  new CalendarDate(currentYear, 1, 1)
-)
-const endDateValue = ref<CalendarDate | null>(today(getLocalTimeZone()))
+const startDateValue = ref<string | null>(`${currentYear}-01-01T00:00:00.000Z`)
+const endDateValue = ref<string | null>(toUtcDateString(new Date()))
 const transactionRangeOptions = [
   { label: 'Year to date', value: 'YEAR_TO_DATE' },
   { label: 'Month to date', value: 'MONTH_TO_DATE' },
@@ -583,24 +537,16 @@ const transactionRangeOptions = [
   { label: 'Last year', value: 'LAST_YEAR' },
 ]
 
-const { fromUTCString } = useUTCDateFormat()
-
-const toCalendarDate = (date: Date): CalendarDate => {
-  return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate())
-}
-
 const applyTransactionRange = (range: string) => {
   const now = new Date()
-  const today = toCalendarDate(now)
-
   if (range === 'YEAR_TO_DATE') {
-    startDateValue.value = new CalendarDate(now.getFullYear(), 1, 1)
-    endDateValue.value = today
+    startDateValue.value = `${now.getFullYear()}-01-01T00:00:00.000Z`
+    endDateValue.value = toUtcDateString(now)
     return
   }
   if (range === 'MONTH_TO_DATE') {
-    startDateValue.value = new CalendarDate(now.getFullYear(), now.getMonth() + 1, 1)
-    endDateValue.value = today
+    startDateValue.value = toUtcDateString(new Date(now.getFullYear(), now.getMonth(), 1))
+    endDateValue.value = toUtcDateString(now)
     return
   }
   if (range === 'WEEK_TO_DATE') {
@@ -608,29 +554,25 @@ const applyTransactionRange = (range: string) => {
     const dayOfWeek = start.getDay()
     const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
     start.setDate(start.getDate() - daysFromMonday)
-    startDateValue.value = toCalendarDate(start)
-    endDateValue.value = today
+    startDateValue.value = toUtcDateString(start)
+    endDateValue.value = toUtcDateString(now)
     return
   }
   if (range === 'LAST_YEAR') {
     const lastYear = now.getFullYear() - 1
-    startDateValue.value = new CalendarDate(lastYear, 1, 1)
-    endDateValue.value = new CalendarDate(lastYear, 12, 31)
+    startDateValue.value = `${lastYear}-01-01T00:00:00.000Z`
+    endDateValue.value = `${lastYear}-12-31T00:00:00.000Z`
   }
 }
 
 const startDateDisplayText = computed(() => {
-  if (!startDateValue.value) return 'Select start date'
-  return startDateValue.value.toDate(getLocalTimeZone()).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'short', day: 'numeric'
-  })
+  if (!startDateValue.value) return ''
+  return new Date(startDateValue.value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
 
 const endDateDisplayText = computed(() => {
-  if (!endDateValue.value) return 'Select end date'
-  return endDateValue.value.toDate(getLocalTimeZone()).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'short', day: 'numeric'
-  })
+  if (!endDateValue.value) return ''
+  return new Date(endDateValue.value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
 
 const canGenerateReport = computed(() => {
@@ -639,7 +581,7 @@ const canGenerateReport = computed(() => {
     selectedProjectId.value &&
     startDateValue.value &&
     endDateValue.value &&
-    startDateValue.value.compare(endDateValue.value) <= 0
+    startDateValue.value <= endDateValue.value
   )
 })
 
@@ -729,8 +671,8 @@ const resolveLocationName = (item: POWiseStockReportItem): string => {
 const filteredReportData = computed((): POWiseStockReportData | null => {
   if (!reportData.value) return null
 
-  const { location, category, division, itemType } = appliedAdvancedFilters.value
-  const hasFilter = location || category || division || itemType
+  const { location, category, itemType } = appliedAdvancedFilters.value
+  const hasFilter = location || category || itemType
 
   if (!hasFilter) return reportData.value
 
@@ -740,10 +682,6 @@ const filteredReportData = computed((): POWiseStockReportData | null => {
       if (category) {
         const resolved = resolveCategory(item)
         if (resolved === '-' || resolved.toLowerCase() !== category.toLowerCase()) return false
-      }
-      if (division) {
-        const divUuid = item.divisionUuid || (item.itemTypeUuid ? itemTypesStore.getItemTypeById(item.itemTypeUuid)?.item_division_uuid : undefined)
-        if (divUuid !== division) return false
       }
       if (itemType && item.itemTypeUuid !== itemType) return false
       return true
@@ -836,7 +774,6 @@ const handleApplyDrawerFilters = () => {
   appliedAdvancedFilters.value = {
     location: drawerLocation.value,
     category: drawerCategory.value,
-    division: drawerDivision.value,
     itemType: drawerItemType.value,
   }
   isFilterDrawerOpen.value = false
@@ -844,21 +781,28 @@ const handleApplyDrawerFilters = () => {
 }
 
 const handleClearDrawerFilters = () => {
+  // Clear every filter except the corporation selection.
+  selectedProjectId.value = undefined
+  selectedVendorId.value = undefined
+  selectedTransactionRange.value = 'YEAR_TO_DATE'
+  applyTransactionRange('YEAR_TO_DATE')
   drawerLocation.value = undefined
   drawerCategory.value = undefined
-  drawerDivision.value = undefined
   drawerItemType.value = undefined
+  appliedAdvancedFilters.value = {
+    location: undefined,
+    category: undefined,
+    itemType: undefined,
+  }
 }
 
 const resetAdvancedFilters = () => {
   drawerLocation.value = undefined
   drawerCategory.value = undefined
-  drawerDivision.value = undefined
   drawerItemType.value = undefined
   appliedAdvancedFilters.value = {
     location: undefined,
     category: undefined,
-    division: undefined,
     itemType: undefined,
   }
 }
@@ -869,7 +813,6 @@ watch(isFilterDrawerOpen, (open) => {
       locationsStore.fetchLocations()
     }
     if (selectedCorporationId.value) {
-      itemDivisionsStore.fetchItemDivisions(selectedCorporationId.value)
       itemTypesStore.fetchItemTypes(selectedCorporationId.value)
     }
   }
@@ -883,8 +826,13 @@ const loadPOWiseStockReport = async () => {
   }
   
   try {
-    const startDateStr = `${startDateValue.value.year}-${String(startDateValue.value.month).padStart(2, '0')}-${String(startDateValue.value.day).padStart(2, '0')}`
-    const endDateStr = `${endDateValue.value.year}-${String(endDateValue.value.month).padStart(2, '0')}-${String(endDateValue.value.day).padStart(2, '0')}`
+    const isWithinSelectedDateRange = (value?: string | null) =>
+      isWithinCalendarDateRange(
+        value,
+        startDateValue.value,
+        endDateValue.value,
+        fromUTCString
+      )
 
     await Promise.all([
       itemTypesStore.fetchItemTypes(selectedCorporationId.value),
@@ -896,14 +844,8 @@ const loadPOWiseStockReport = async () => {
     
     if (data && data.data && Array.isArray(data.data)) {
       let filteredPOs = data.data.filter((po: any) => {
-        if (po.po_date) {
-          const poDate = dayjs(po.po_date)
-          if (!poDate.isValid()) return false
-          const dateOnly = poDate.format('YYYY-MM-DD')
-          if (dateOnly < startDateStr || dateOnly > endDateStr) return false
-        } else {
-          return false
-        }
+        if (!po.po_date) return false
+        if (!isWithinSelectedDateRange(po.po_date)) return false
         if (selectedVendorId.value && po.vendor_uuid !== selectedVendorId.value) return false
         return true
       })
@@ -952,14 +894,12 @@ const PO_WISE_STOCK_CSV_HEADERS = [
   'PO Date',
   'Ordered Quantity',
   'Received Quantity',
-  'Returned Quantity',
   'Invoice Number',
   'Invoice Date',
   'Status',
   'Unit Cost',
   'UOM',
   'Total Value',
-  'Row Type',
 ] as const
 
 const exportReportToCsv = () => {
@@ -984,7 +924,6 @@ const exportReportToCsv = () => {
         formatPoDate(item.poDate || po.po_date),
         item.orderedQuantity ?? 0,
         item.receivedQuantity ?? 0,
-        item.returnedQuantity ?? 0,
         item.invoiceNumbers?.length ? item.invoiceNumbers.join('; ') : '',
         item.invoiceDates?.length
           ? item.invoiceDates.map((d) => formatInvoiceDate(d)).join('; ')
@@ -993,7 +932,6 @@ const exportReportToCsv = () => {
         item.unitCost ?? 0,
         item.uom || '',
         item.totalValue ?? 0,
-        'Detail',
       ])
     }
 
@@ -1004,10 +942,8 @@ const exportReportToCsv = () => {
         formatPoDate(po.po_date),
         po.totals.orderedQuantity,
         po.totals.receivedQuantity,
-        po.totals.returnedQuantity,
         '', '', '', '', '',
         po.totals.totalValue,
-        'PO Total',
       ])
     }
   }
@@ -1017,18 +953,29 @@ const exportReportToCsv = () => {
     '', '', '', '', '', '', '', '', '', '', '',
     totals.orderedQuantity,
     totals.receivedQuantity,
-    totals.returnedQuantity,
     '', '', '', '', '',
     totals.totalValue,
-    'Grand Total',
   ])
 
   const project = projectsStore.projects.find(
     (p) => p.uuid === selectedProjectId.value
   )
-  const projectSlug = (project?.project_id || 'project').replace(/[^\w-]+/g, '_')
-  const dateSlug = new Date().toISOString().split('T')[0]
-  downloadCsvFile(`po-wise-stock-report_${projectSlug}_${dateSlug}.csv`, rows)
+  void downloadReportExcelFile(
+    buildReportExcelFilename('po-wise-stock-report', project?.project_id),
+    {
+      title: 'PO Wise Stock Report',
+      corporationName: resolveCorporationDisplayName(
+        corporationStore.corporations as any[],
+        selectedCorporationId.value
+      ),
+      projectLabel: getProjectName() !== 'N/A' ? getProjectName() : undefined,
+      dateRange: formatReportDateRangeDisplay(
+        startDateValue.value,
+        endDateValue.value
+      ),
+    },
+    rows
+  )
 }
 
 const syncCorporationFromStoreOrNimble = async () => {
@@ -1116,9 +1063,244 @@ onMounted(async () => {
 })
 </script>
 
-<style scoped>
+<style>
+/* Print optimizations - Hide layout and UI elements, show only report */
 @media print {
-  .no-print {
+  /* Reset page margins and background */
+  @page {
+    margin: 1cm;
+    size: A4 landscape;
+  }
+
+  html,
+  body,
+  #__nuxt {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* App shell scroll regions clip content to one viewport — unblock for multi-page print */
+  .po-wise-stock-report,
+  .po-wise-stock-report * {
+    max-height: none !important;
+  }
+
+  .po-wise-stock-report {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .flex.h-full,
+  .flex.h-screen,
+  main,
+  aside,
+  nav,
+  [class*="overflow-hidden"],
+  [class*="overflow-y-auto"],
+  [class*="overflow-x-auto"],
+  .min-h-0 {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    flex: none !important;
+  }
+
+  /* Hide loading overlay and fixed UI chrome */
+  .fixed,
+  [class*="backdrop-blur"] {
+    display: none !important;
+  }
+
+  /* Hide layout components (SideMenu, TopBar, MobileBottomNav) */
+  nav,
+  aside,
+  header:not(.print-header),
+  [class*="SideMenu"],
+  [class*="TopBar"],
+  [class*="MobileBottomNav"],
+  [class*="side-menu"],
+  [class*="top-bar"],
+  [class*="mobile-bottom-nav"],
+  /* Target layout structure */
+  .flex.h-screen > aside,
+  .flex.h-screen > div:first-child,
+  .flex.h-screen > div:last-child {
+    display: none !important;
+  }
+
+  /* Hide main layout wrapper elements but keep content */
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    border-radius: 0 !important;
+  }
+
+  /* Hide the outer layout flex container's background */
+  .flex.h-screen {
+    background: #ffffff !important;
+  }
+
+  /* Hide non-essential UI elements in the report page */
+  button,
+  [class*="print:hidden"],
+  .mb-2.print\\:hidden {
+    display: none !important;
+  }
+
+  /* Show print-only elements */
+  [class*="print:block"],
+  .hidden.print\\:block {
+    display: block !important;
+  }
+
+  /* Hide empty state messages */
+  .text-center:has(UIcon),
+  [class*="text-center"]:has(svg) {
+    display: none !important;
+  }
+
+  /* Ensure all text is black for printing */
+  * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Keep borders and backgrounds for tables */
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    font-size: 9px !important;
+    page-break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+
+  tbody {
+    display: table-row-group;
+  }
+
+  th, td {
+    border: 1px solid #000000 !important;
+    padding: 3px 4px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Table header styling */
+  thead th {
+    background: #f0f0f0 !important;
+    font-weight: bold !important;
+    border: 1px solid #000000 !important;
+    color: #000000 !important;
+  }
+
+  /* Prevent page breaks inside table rows */
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Optimize spacing for print */
+  [class*="print:p-2"] {
+    padding: 0.5rem !important;
+  }
+
+  [class*="print:mb-4"] {
+    margin-bottom: 1rem !important;
+  }
+
+  [class*="print:pb-4"] {
+    padding-bottom: 1rem !important;
+  }
+
+  [class*="print:border-b"] {
+    border-bottom: 1px solid #000000 !important;
+  }
+
+  /* Ensure text is readable and black */
+  .text-xs,
+  .text-sm,
+  .text-lg,
+  .text-xl,
+  .text-2xl,
+  p,
+  span,
+  div,
+  h1,
+  h2,
+  h3 {
+    color: #000000 !important;
+  }
+
+  /* Hide scrollbars and overflow */
+  [class*="overflow"] {
+    overflow: visible !important;
+  }
+
+  /* Ensure full width */
+  [class*="w-full"] {
+    width: 100% !important;
+  }
+
+  /* Print header styling */
+  [class*="print:text-2xl"] {
+    font-size: 18px !important;
+    color: #000000 !important;
+  }
+
+  [class*="print:text-sm"] {
+    font-size: 11px !important;
+    color: #000000 !important;
+  }
+
+  [class*="print:text-xs"] {
+    font-size: 9px !important;
+    color: #000000 !important;
+  }
+
+  /* Ensure all dark mode styles are overridden */
+  [class*="dark:"] {
+    color: #000000 !important;
+    background: transparent !important;
+  }
+
+  /* Hide icons and SVG elements */
+  svg,
+  [class*="icon"],
+  UIcon,
+  [class*="UIcon"] {
+    display: none !important;
+  }
+
+  /* Hide skeleton loaders */
+  [class*="Skeleton"],
+  [class*="skeleton"] {
+    display: none !important;
+  }
+
+  /* Ensure proper spacing */
+  .space-y-3 > * + *,
+  .space-y-6 > * + * {
+    margin-top: 0.75rem !important;
+  }
+
+  /* Hide loading states */
+  [class*="loading"],
+  [v-if*="loading"] {
     display: none !important;
   }
 }

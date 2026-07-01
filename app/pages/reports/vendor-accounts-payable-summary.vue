@@ -2,18 +2,8 @@
   <div class="h-[88vh] print:h-auto">
     <!-- Header section - hidden in print -->
     <div class="mb-2 print:hidden">
-      <div class="flex items-center justify-between gap-4 flex-wrap">
-        <!-- Left side: Back button -->
-        <div class="flex items-center gap-3">
-          <UButton
-            color="neutral"
-            variant="solid"
-            icon="i-heroicons-arrow-left"
-            @click="goBack"
-          />
-        </div>
-
-        <!-- Right side: Corporation, Project Selection, Date Range, Show and Print buttons -->
+      <div class="flex items-center justify-end gap-4 flex-wrap">
+        <!-- Corporation, Project Selection, Date Range, Show and Print buttons -->
         <div class="flex items-end gap-3 flex-wrap">
           <!-- Corporation Select -->
           <div class="flex flex-col gap-1">
@@ -80,25 +70,14 @@
             <label class="text-sm font-medium text-default whitespace-nowrap">
               Period From <span class="text-red-500">*</span>
             </label>
-            <UPopover :popper="{ placement: 'bottom-start' }">
-              <UButton
-                icon="i-heroicons-calendar"
-                size="sm"
-                variant="outline"
-                class="w-48"
-              >
-                {{ startDateDisplayText }}
-              </UButton>
-              <template #content>
-                <UCalendar
-                  :model-value="startDateValue as any"
-                  :min-value="minDate"
-                  :max-value="(endDateValue ?? maxDate) as any"
-                  class="p-2"
-                  @update:model-value="(value: any) => { startDateValue = value }"
-                />
-              </template>
-            </UPopover>
+            <DatePickerField
+              :model-value="startDateValue"
+              :max-value="endDateValue"
+              size="sm"
+              placeholder="MM/DD/YYYY"
+              class="w-48"
+              @update:model-value="(v) => { startDateValue = v }"
+            />
           </div>
 
           <!-- End Date -->
@@ -106,25 +85,14 @@
             <label class="text-sm font-medium text-default whitespace-nowrap">
               Period To <span class="text-red-500">*</span>
             </label>
-            <UPopover :popper="{ placement: 'bottom-start' }">
-              <UButton
-                icon="i-heroicons-calendar"
-                size="sm"
-                variant="outline"
-                class="w-48"
-              >
-                {{ endDateDisplayText }}
-              </UButton>
-              <template #content>
-                <UCalendar
-                  :model-value="endDateValue as any"
-                  :min-value="(startDateValue ?? minDate) as any"
-                  :max-value="maxDate"
-                  class="p-2"
-                  @update:model-value="(value: any) => { endDateValue = value }"
-                />
-              </template>
-            </UPopover>
+            <DatePickerField
+              :model-value="endDateValue"
+              :min-value="startDateValue"
+              size="sm"
+              placeholder="MM/DD/YYYY"
+              class="w-48"
+              @update:model-value="(v) => { endDateValue = v }"
+            />
           </div>
 
           <!-- Show button -->
@@ -136,6 +104,17 @@
             @click="handleShowReport"
           >
             Show
+          </UButton>
+
+          <!-- Export CSV button -->
+          <UButton
+            v-if="filteredReportData && filteredReportData.vendors && filteredReportData.vendors.length > 0 && selectedProjectId"
+            icon="i-heroicons-arrow-down-tray"
+            variant="soft"
+            size="sm"
+            @click="exportReportToCsv"
+          >
+            Export Excel
           </UButton>
 
           <!-- Print button -->
@@ -269,7 +248,131 @@
                 </td>
                 <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendor.invoicedForVendor) }}</td>
                 <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendor.holdback) }}</td>
-                <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendor.tax) }}</td>
+                <td class="py-2 px-2 text-right text-default text-xs">
+                  <div class="inline-flex items-center justify-end gap-0.5">
+                    <span>{{ formatCurrency(vendor.tax) }}</span>
+                    <UPopover
+                      v-if="vendor.taxRoundingNotes?.length"
+                      class="print:hidden"
+                      :content="{ side: 'left', align: 'end' }"
+                      :ui="{ content: 'w-[min(28rem,calc(100vw-2rem))] p-0 bg-white dark:bg-gray-900 border border-default' }"
+                    >
+                      <UButton
+                        icon="i-heroicons-information-circle"
+                        color="primary"
+                        variant="ghost"
+                        size="xs"
+                        class="shrink-0"
+                        aria-label="Tax rounding explanation"
+                      />
+                      <template #content>
+                        <div class="p-4 space-y-4 max-h-[70vh] overflow-y-auto text-xs text-default">
+                          <div>
+                            <h4 class="text-sm font-semibold text-default">
+                              Tax rounding on split invoices
+                            </h4>
+                            <p class="mt-1 text-muted leading-relaxed">
+                              The Tax column shows the sum of invoice taxes in the selected period
+                              ({{ formatCurrency(vendor.tax) }}). When a
+                              {{ vendor.taxRoundingNotes.length === 1 ? 'PO or CO is' : 'POs or COs are' }}
+                              invoiced across multiple bills, each invoice rounds tax to cents
+                              independently. The total can differ from the contract tax by up to
+                              $0.01 — this is expected and not a data error.
+                            </p>
+                          </div>
+
+                          <div
+                            v-for="note in vendor.taxRoundingNotes"
+                            :key="note.documentUuid"
+                            class="space-y-3 rounded-md border border-default p-3 bg-elevated/40"
+                          >
+                            <div>
+                              <p class="font-medium text-default">
+                                {{ note.documentType === 'PO' ? 'Purchase Order' : 'Change Order' }}
+                                {{ note.documentNumber || note.documentUuid }}
+                              </p>
+                              <p class="mt-1 text-muted leading-relaxed">
+                                Contract tax on this
+                                {{ note.documentType === 'PO' ? 'PO' : 'CO' }} is
+                                <strong class="text-default">{{ formatCurrency(note.contractTax) }}</strong>.
+                                Sum of {{ note.invoices.length }} invoice taxes in this period is
+                                <strong class="text-default">{{ formatCurrency(note.invoicedTaxSum) }}</strong>
+                                (difference:
+                                <strong class="text-default">{{ formatSignedCurrency(note.taxDelta) }}</strong>).
+                              </p>
+                            </div>
+
+                            <table class="w-full border-collapse text-xs">
+                              <thead>
+                                <tr class="border-b border-default">
+                                  <th class="py-1.5 pr-2 text-left font-medium text-muted" />
+                                  <th class="py-1.5 px-2 text-right font-medium text-muted">Contract</th>
+                                  <th class="py-1.5 pl-2 text-right font-medium text-muted">Invoices</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr class="border-b border-default/60">
+                                  <td class="py-1.5 pr-2 text-left">Sales Tax 1</td>
+                                  <td class="py-1.5 px-2 text-right">{{ formatCurrency(note.contractTax1) }}</td>
+                                  <td class="py-1.5 pl-2 text-right">{{ formatCurrency(note.invoicedTax1Sum) }}</td>
+                                </tr>
+                                <tr class="border-b border-default/60">
+                                  <td class="py-1.5 pr-2 text-left">Sales Tax 2</td>
+                                  <td class="py-1.5 px-2 text-right">{{ formatCurrency(note.contractTax2) }}</td>
+                                  <td class="py-1.5 pl-2 text-right">{{ formatCurrency(note.invoicedTax2Sum) }}</td>
+                                </tr>
+                                <tr>
+                                  <td class="py-1.5 pr-2 text-left font-medium">Total tax</td>
+                                  <td class="py-1.5 px-2 text-right font-medium">{{ formatCurrency(note.contractTax) }}</td>
+                                  <td class="py-1.5 pl-2 text-right font-medium">{{ formatCurrency(note.invoicedTaxSum) }}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+
+                            <div>
+                              <p class="mb-1.5 font-medium text-default">Per-invoice breakdown</p>
+                              <table class="w-full border-collapse text-xs">
+                                <thead>
+                                  <tr class="border-b border-default">
+                                    <th class="py-1.5 pr-2 text-left font-medium text-muted">Invoice</th>
+                                    <th class="py-1.5 px-2 text-right font-medium text-muted">Tax 1</th>
+                                    <th class="py-1.5 px-2 text-right font-medium text-muted">Tax 2</th>
+                                    <th class="py-1.5 pl-2 text-right font-medium text-muted">Total</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr
+                                    v-for="inv in note.invoices"
+                                    :key="inv.invoiceUuid"
+                                    class="border-b border-default/60 last:border-0"
+                                  >
+                                    <td class="py-1.5 pr-2 text-left">
+                                      {{ inv.invoiceNumber || inv.invoiceUuid }}
+                                    </td>
+                                    <td class="py-1.5 px-2 text-right">{{ formatCurrency(inv.tax1) }}</td>
+                                    <td class="py-1.5 px-2 text-right">{{ formatCurrency(inv.tax2) }}</td>
+                                    <td class="py-1.5 pl-2 text-right">{{ formatCurrency(inv.tax) }}</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+
+                            <p
+                              v-if="note.invoicedTax2Sum !== note.contractTax2"
+                              class="text-muted leading-relaxed"
+                            >
+                              The difference comes from Sales Tax 2: the
+                              {{ note.documentType === 'PO' ? 'PO' : 'CO' }} calculates tax once on the
+                              full amount ({{ formatCurrency(note.contractTax2) }}), while each
+                              invoice rounds its own share to cents (sum
+                              {{ formatCurrency(note.invoicedTax2Sum) }}).
+                            </p>
+                          </div>
+                        </div>
+                      </template>
+                    </UPopover>
+                  </div>
+                </td>
                 <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendor.balance) }}</td>
                 <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendor.paidToDate) }}</td>
                 <td class="py-2 px-2 text-right text-default text-xs">{{ formatCurrency(vendor.apBalance) }}</td>
@@ -322,18 +425,52 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { CalendarDate, getLocalTimeZone, today } from '@internationalized/date'
 import { useCorporationStore } from '~/stores/corporations'
 import { useProjectsStore } from '~/stores/projects'
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
+import { useUTCDateFormat } from '~/composables/useUTCDateFormat'
+import { extractCalendarYmdFromStoredDate } from '~/utils/calendarDateRange'
 import ProjectSelect from '~/components/shared/ProjectSelect.vue'
 import CorporationSelect from '~/components/shared/CorporationSelect.vue'
 import VendorSelect from '~/components/shared/VendorSelect.vue'
+import DatePickerField from '~/components/shared/DatePickerField.vue'
+import {
+  resolveCorporationDisplayName,
+} from '~/utils/csvExport'
+import {
+  buildReportExcelFilename,
+  downloadReportExcelFile,
+} from '~/utils/reportExcelExport.client'
 import ReportVendorCurrencyAggregateCell from '~/components/Reports/ReportVendorCurrencyAggregateCell.vue'
 import {
-  formatVendorCurrencyAggregateForExport,
+  formatReportVendorCurrencyAggregateForExport,
+  sumVendorCurrencyAggregates,
+  type VendorPoAmountAggregate,
 } from '~/utils/reportPoCurrencyDisplay'
+
+interface TaxRoundingInvoiceLine {
+  invoiceUuid: string
+  invoiceNumber: string | null
+  tax: number
+  tax1: number
+  tax2: number
+  itemTotal: number
+  chargesTotal: number
+}
+
+interface TaxRoundingNote {
+  documentType: 'PO' | 'CO'
+  documentNumber: string | null
+  documentUuid: string
+  contractTax: number
+  invoicedTaxSum: number
+  taxDelta: number
+  contractTax1: number
+  contractTax2: number
+  invoicedTax1Sum: number
+  invoicedTax2Sum: number
+  invoices: TaxRoundingInvoiceLine[]
+}
 
 interface VendorReportData {
   vendorUuid: string
@@ -341,6 +478,9 @@ interface VendorReportData {
   poAmount: number
   changeOrderAmount: number
   totalContractValue: number
+  poAmountDual: VendorPoAmountAggregate
+  changeOrderAmountDual: VendorPoAmountAggregate
+  totalContractValueDual: VendorPoAmountAggregate
   invoicedForVendor: number
   totalInvoiceValue: number // For backward compatibility
   billedByVendor: number
@@ -349,7 +489,14 @@ interface VendorReportData {
   balance: number
   paidToDate: number
   apBalance: number
+  taxRoundingNotes?: TaxRoundingNote[]
 }
+
+const emptyVendorCurrencyAggregate = (): VendorPoAmountAggregate => ({
+  cadTotal: 0,
+  usdFromTotal: 0,
+  showDual: false,
+})
 
 interface ReportData {
   project: {
@@ -361,6 +508,9 @@ interface ReportData {
     poAmount: number
     changeOrderAmount: number
     totalContractValue: number
+    poAmountDual: VendorPoAmountAggregate
+    changeOrderAmountDual: VendorPoAmountAggregate
+    totalContractValueDual: VendorPoAmountAggregate
     invoicedForVendor: number
     totalInvoiceValue: number // For backward compatibility
     billedByVendor: number
@@ -372,12 +522,7 @@ interface ReportData {
   }
 }
 
-const router = useRouter()
-
-// Navigation
-const goBack = () => {
-  router.back()
-}
+const { fromUTCString, toUTCString } = useUTCDateFormat()
 
 // Set page title
 useHead({
@@ -405,11 +550,17 @@ const reportData = ref<ReportData | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
+const toUtcDateString = (date: Date): string => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return toUTCString(`${y}-${m}-${d}`) ?? `${y}-${m}-${d}T00:00:00.000Z`
+}
+
 // Date range state
 const currentYear = new Date().getFullYear()
-const todayDate = today(getLocalTimeZone())
-const startDateValue = ref<CalendarDate | null>(new CalendarDate(currentYear, 1, 1))
-const endDateValue = ref<CalendarDate | null>(todayDate)
+const startDateValue = ref<string | null>(`${currentYear}-01-01T00:00:00.000Z`)
+const endDateValue = ref<string | null>(toUtcDateString(new Date()))
 const transactionRangeOptions = [
   { label: 'Year to date', value: 'YEAR_TO_DATE' },
   { label: 'Month to date', value: 'MONTH_TO_DATE' },
@@ -417,22 +568,16 @@ const transactionRangeOptions = [
   { label: 'Last year', value: 'LAST_YEAR' },
 ]
 
-const toCalendarDate = (date: Date): CalendarDate => {
-  return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate())
-}
-
 const applyTransactionRange = (range: string) => {
   const now = new Date()
-  const today = toCalendarDate(now)
-
   if (range === 'YEAR_TO_DATE') {
-    startDateValue.value = new CalendarDate(now.getFullYear(), 1, 1)
-    endDateValue.value = today
+    startDateValue.value = `${now.getFullYear()}-01-01T00:00:00.000Z`
+    endDateValue.value = toUtcDateString(now)
     return
   }
   if (range === 'MONTH_TO_DATE') {
-    startDateValue.value = new CalendarDate(now.getFullYear(), now.getMonth() + 1, 1)
-    endDateValue.value = today
+    startDateValue.value = toUtcDateString(new Date(now.getFullYear(), now.getMonth(), 1))
+    endDateValue.value = toUtcDateString(now)
     return
   }
   if (range === 'WEEK_TO_DATE') {
@@ -440,34 +585,26 @@ const applyTransactionRange = (range: string) => {
     const dayOfWeek = start.getDay()
     const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
     start.setDate(start.getDate() - daysFromMonday)
-    startDateValue.value = toCalendarDate(start)
-    endDateValue.value = today
+    startDateValue.value = toUtcDateString(start)
+    endDateValue.value = toUtcDateString(now)
     return
   }
   if (range === 'LAST_YEAR') {
     const lastYear = now.getFullYear() - 1
-    startDateValue.value = new CalendarDate(lastYear, 1, 1)
-    endDateValue.value = new CalendarDate(lastYear, 12, 31)
+    startDateValue.value = `${lastYear}-01-01T00:00:00.000Z`
+    endDateValue.value = `${lastYear}-12-31T00:00:00.000Z`
   }
 }
 
-// Date formatting
-const df = new Intl.DateTimeFormat('en-US', {
-  dateStyle: 'medium'
-})
-
 const startDateDisplayText = computed(() => {
-  if (!startDateValue.value) return 'Select start date'
-  return df.format(startDateValue.value.toDate(getLocalTimeZone()))
+  if (!startDateValue.value) return ''
+  return new Date(startDateValue.value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
 
 const endDateDisplayText = computed(() => {
-  if (!endDateValue.value) return 'Select end date'
-  return df.format(endDateValue.value.toDate(getLocalTimeZone()))
+  if (!endDateValue.value) return ''
+  return new Date(endDateValue.value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
-
-const minDate = new CalendarDate(1900, 1, 1)
-const maxDate = todayDate
 
 // Check if report can be generated
 const canGenerateReport = computed(() => {
@@ -476,12 +613,20 @@ const canGenerateReport = computed(() => {
     selectedProjectId.value &&
     startDateValue.value &&
     endDateValue.value &&
-    startDateValue.value.compare(endDateValue.value) <= 0
+    startDateValue.value <= endDateValue.value
   )
 })
 
 // Currency formatting
 const { formatCurrency } = useCurrencyFormat()
+
+const formatSignedCurrency = (value: number) => {
+  const abs = Math.abs(value)
+  const formatted = formatCurrency(abs)
+  if (value > 0) return `+${formatted}`
+  if (value < 0) return `-${formatted}`
+  return formatted
+}
 
 // Filtered report data based on vendor selection
 const filteredReportData = computed((): ReportData | null => {
@@ -501,6 +646,9 @@ const filteredReportData = computed((): ReportData | null => {
         poAmount: 0,
         changeOrderAmount: 0,
         totalContractValue: 0,
+        poAmountDual: emptyVendorCurrencyAggregate(),
+        changeOrderAmountDual: emptyVendorCurrencyAggregate(),
+        totalContractValueDual: emptyVendorCurrencyAggregate(),
         invoicedForVendor: 0,
         totalInvoiceValue: 0,
         billedByVendor: 0,
@@ -513,11 +661,8 @@ const filteredReportData = computed((): ReportData | null => {
     }
   }
 
-  const totals = filteredVendors.reduce(
+  const scalarTotals = filteredVendors.reduce(
     (acc, v) => ({
-      poAmount: acc.poAmount + v.poAmount,
-      changeOrderAmount: acc.changeOrderAmount + v.changeOrderAmount,
-      totalContractValue: acc.totalContractValue + v.totalContractValue,
       invoicedForVendor: acc.invoicedForVendor + v.invoicedForVendor,
       totalInvoiceValue: acc.totalInvoiceValue + (v.totalInvoiceValue || 0),
       billedByVendor: acc.billedByVendor + (v.billedByVendor || 0),
@@ -528,9 +673,6 @@ const filteredReportData = computed((): ReportData | null => {
       apBalance: acc.apBalance + v.apBalance,
     }),
     {
-      poAmount: 0,
-      changeOrderAmount: 0,
-      totalContractValue: 0,
       invoicedForVendor: 0,
       totalInvoiceValue: 0,
       billedByVendor: 0,
@@ -541,6 +683,26 @@ const filteredReportData = computed((): ReportData | null => {
       apBalance: 0,
     }
   )
+
+  const poAmountDual = sumVendorCurrencyAggregates(
+    filteredVendors.map((vendor) => vendor.poAmountDual)
+  )
+  const changeOrderAmountDual = sumVendorCurrencyAggregates(
+    filteredVendors.map((vendor) => vendor.changeOrderAmountDual)
+  )
+  const totalContractValueDual = sumVendorCurrencyAggregates(
+    filteredVendors.map((vendor) => vendor.totalContractValueDual)
+  )
+
+  const totals = {
+    ...scalarTotals,
+    poAmount: poAmountDual.cadTotal,
+    changeOrderAmount: changeOrderAmountDual.cadTotal,
+    totalContractValue: totalContractValueDual.cadTotal,
+    poAmountDual,
+    changeOrderAmountDual,
+    totalContractValueDual,
+  }
 
   return {
     ...reportData.value,
@@ -588,8 +750,10 @@ const loadReport = async () => {
   loading.value = true
   error.value = null
   
-  const startDate = `${startDateValue.value.year}-${String(startDateValue.value.month).padStart(2, '0')}-${String(startDateValue.value.day).padStart(2, '0')}`
-  const endDate = `${endDateValue.value.year}-${String(endDateValue.value.month).padStart(2, '0')}-${String(endDateValue.value.day).padStart(2, '0')}`
+  const startDate =
+    extractCalendarYmdFromStoredDate(startDateValue.value, fromUTCString) ?? ''
+  const endDate =
+    extractCalendarYmdFromStoredDate(endDateValue.value, fromUTCString) ?? ''
   
   try {
     const response = await $fetch<ReportData>('/api/reports/vendor-accounts-payable-summary', {
@@ -613,6 +777,72 @@ const loadReport = async () => {
 
 const printReport = () => {
   window.print()
+}
+
+const exportReportToCsv = () => {
+  const data = filteredReportData.value
+  if (!data?.vendors?.length) return
+
+  const rows: unknown[][] = [[
+    'Vendor',
+    'PO Amount',
+    'Change Orders',
+    'Total Contract Value',
+    'Invoiced for Vendor',
+    'Holdback',
+    'Tax',
+    'Balance',
+    'Paid to Date',
+    'AP Balance',
+  ]]
+
+  for (const vendor of data.vendors) {
+    rows.push([
+      vendor.vendorName || '',
+      formatReportVendorCurrencyAggregateForExport(vendor.poAmountDual),
+      formatReportVendorCurrencyAggregateForExport(vendor.changeOrderAmountDual),
+      formatReportVendorCurrencyAggregateForExport(vendor.totalContractValueDual),
+      vendor.invoicedForVendor ?? 0,
+      vendor.holdback ?? 0,
+      vendor.tax ?? 0,
+      vendor.balance ?? 0,
+      vendor.paidToDate ?? 0,
+      vendor.apBalance ?? 0,
+    ])
+  }
+
+  const totals = data.totals
+  rows.push([
+    'Total',
+    formatReportVendorCurrencyAggregateForExport(totals.poAmountDual),
+    formatReportVendorCurrencyAggregateForExport(totals.changeOrderAmountDual),
+    formatReportVendorCurrencyAggregateForExport(totals.totalContractValueDual),
+    totals.invoicedForVendor ?? 0,
+    totals.holdback ?? 0,
+    totals.tax ?? 0,
+    totals.balance ?? 0,
+    totals.paidToDate ?? 0,
+    totals.apBalance ?? 0,
+  ])
+
+  const projectId = data.project?.projectId || getProjectDetails.value?.projectId
+  void downloadReportExcelFile(
+    buildReportExcelFilename('vendor-accounts-payable-summary', projectId),
+    {
+      title: 'Vendor Accounts Payable Summary',
+      corporationName: resolveCorporationDisplayName(
+        corporationStore.corporations as any[],
+        selectedCorporationId.value
+      ),
+      projectLabel: data.project
+        ? `${data.project.projectName} (${data.project.projectId})`
+        : getProjectDetails.value
+          ? `${getProjectDetails.value.projectName} (${getProjectDetails.value.projectId})`
+          : '',
+      dateRange: `${startDateDisplayText.value} To ${endDateDisplayText.value}`,
+    },
+    rows
+  )
 }
 
 const syncCorporationFromStoreOrNimble = async () => {

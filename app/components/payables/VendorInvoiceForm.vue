@@ -1475,12 +1475,13 @@
     </div>
 
     <!-- File Preview Modal -->
-    <UModal 
+    <UModal
       v-model:open="showFilePreviewModal"
-      :ui="{ 
-        body: 'p-0 overflow-hidden',
-        width: 'w-[95vw] max-w-[95vw]',
-        height: 'h-[100vh] max-h-[100vh]'
+      title="File Preview"
+      :ui="{
+        content: 'fixed inset-0 z-[110] flex h-[100dvh] max-h-[100dvh] w-[95vw] max-w-[95vw] flex-col rounded-lg shadow-lg ring ring-default overflow-hidden',
+        body: 'flex-1 min-h-0 overflow-hidden p-0',
+        header: 'flex-shrink-0 px-4 sm:px-6 py-4 border-b border-default',
       }"
     >
       <template #header>
@@ -1490,7 +1491,7 @@
         </div>
       </template>
       <template #body>
-        <div class="h-[calc(100vh-8rem)] overflow-hidden">
+        <div class="h-full min-h-[50vh] overflow-hidden">
           <FilePreview :attachment="selectedFileForPreview" />
         </div>
       </template>

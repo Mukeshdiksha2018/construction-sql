@@ -1,19 +1,9 @@
 <template>
-  <div class="h-[88vh] print:h-auto">
+  <div class="po-invoice-summary-report h-[88vh] print:h-auto">
     <!-- Header section - hidden in print -->
     <div class="mb-2 print:hidden">
-      <div class="flex items-center justify-between gap-4 flex-wrap">
-        <!-- Left side: Back button -->
-        <div class="flex items-center gap-3">
-          <UButton
-            color="neutral"
-            variant="solid"
-            icon="i-heroicons-arrow-left"
-            @click="goBack"
-          />
-        </div>
-
-        <!-- Right side: Corporation, Project Selection, Date Range, Show and Print buttons -->
+      <div class="flex items-center justify-end gap-4 flex-wrap">
+        <!-- Corporation, Project Selection, Date Range, Show and Print buttons -->
         <div class="flex items-end gap-2 flex-wrap">
           <!-- Corporation Select -->
           <div class="flex flex-col gap-1">
@@ -95,24 +85,14 @@
             <label class="text-sm font-medium text-default whitespace-nowrap">
               Start Date <span class="text-red-500">*</span>
             </label>
-            <UPopover :popper="{ placement: 'bottom-start' }">
-              <UButton
-                icon="i-heroicons-calendar"
-                size="sm"
-                variant="outline"
-                class="w-36"
-              >
-                {{ startDateDisplayText }}
-              </UButton>
-              <template #content>
-                <UCalendar
-                  v-model="startDateValue"
-                  :min-value="minDate"
-                  :max-value="endDateValue || maxDate"
-                  class="p-2"
-                />
-              </template>
-            </UPopover>
+            <DatePickerField
+              :model-value="startDateValue"
+              :max-value="endDateValue"
+              size="sm"
+              placeholder="MM/DD/YYYY"
+              class="w-36"
+              @update:model-value="(v) => { startDateValue = v }"
+            />
           </div>
 
           <!-- End Date -->
@@ -120,24 +100,14 @@
             <label class="text-sm font-medium text-default whitespace-nowrap">
               End Date <span class="text-red-500">*</span>
             </label>
-            <UPopover :popper="{ placement: 'bottom-start' }">
-              <UButton
-                icon="i-heroicons-calendar"
-                size="sm"
-                variant="outline"
-                class="w-36"
-              >
-                {{ endDateDisplayText }}
-              </UButton>
-              <template #content>
-                <UCalendar
-                  v-model="endDateValue"
-                  :min-value="startDateValue || minDate"
-                  :max-value="maxDate"
-                  class="p-2"
-                />
-              </template>
-            </UPopover>
+            <DatePickerField
+              :model-value="endDateValue"
+              :min-value="startDateValue"
+              size="sm"
+              placeholder="MM/DD/YYYY"
+              class="w-36"
+              @update:model-value="(v) => { endDateValue = v }"
+            />
           </div>
 
           <!-- Show button -->
@@ -149,6 +119,17 @@
             @click="handleShowReport"
           >
             Show
+          </UButton>
+
+          <!-- Export CSV button -->
+          <UButton
+            v-if="reportData && selectedProjectId && reportData.length > 0"
+            icon="i-heroicons-arrow-down-tray"
+            variant="soft"
+            size="sm"
+            @click="exportReportToCsv"
+          >
+            Export Excel
           </UButton>
 
           <!-- Print button -->
@@ -416,26 +397,36 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { CalendarDate, getLocalTimeZone, today } from '@internationalized/date'
 import { useCorporationStore } from '~/stores/corporations'
 import { useProjectsStore } from '~/stores/projects'
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
+import { useUTCDateFormat } from '~/composables/useUTCDateFormat'
+import { useDateFormat } from '~/composables/useDateFormat'
+import { extractCalendarYmdFromStoredDate } from '~/utils/calendarDateRange'
+import {
+  isPoEntryDateWithinLocalYmdRange,
+  poEntryDateFilterToApiBounds,
+} from '~/utils/purchaseOrderEntryDateFilter'
 import ProjectSelect from '~/components/shared/ProjectSelect.vue'
 import CorporationSelect from '~/components/shared/CorporationSelect.vue'
 import VendorSelect from '~/components/shared/VendorSelect.vue'
+import DatePickerField from '~/components/shared/DatePickerField.vue'
 import ReportOrderPoAmountCell from '~/components/Reports/ReportOrderPoAmountCell.vue'
 import ReportVendorPoAmountCell from '~/components/Reports/ReportVendorPoAmountCell.vue'
-import { normalizePoCurrencyConversionFields } from '~/utils/poCurrencyConversion'
-import { formatReportPoAmountForExport } from '~/utils/reportPoCurrencyDisplay'
-import dayjs from 'dayjs'
+import {
+  formatReportPoAmountForExport,
+  formatReportVendorPoAmountForExport,
+} from '~/utils/reportPoCurrencyDisplay'
+import {
+  resolveCorporationDisplayName,
+  resolveProjectDisplayLabel,
+} from '~/utils/csvExport'
+import {
+  buildReportExcelFilename,
+  downloadReportExcelFile,
+} from '~/utils/reportExcelExport.client'
 
-const router = useRouter()
-
-// Navigation
-const goBack = () => {
-  router.back()
-}
+const { fromUTCString, toUTCString } = useUTCDateFormat()
 
 // Set page title
 useHead({
@@ -464,11 +455,17 @@ const reportData = ref<any[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 
+const toUtcDateString = (date: Date): string => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return toUTCString(`${y}-${m}-${d}`) ?? `${y}-${m}-${d}T00:00:00.000Z`
+}
+
 // Date range state
 const currentYear = new Date().getFullYear()
-const todayDate = today(getLocalTimeZone())
-const startDateValue = ref<CalendarDate | null>(new CalendarDate(currentYear, 1, 1))
-const endDateValue = ref<CalendarDate | null>(todayDate)
+const startDateValue = ref<string | null>(`${currentYear}-01-01T00:00:00.000Z`)
+const endDateValue = ref<string | null>(toUtcDateString(new Date()))
 
 const transactionRangeOptions = [
   { label: 'Year to date', value: 'YEAR_TO_DATE' },
@@ -479,14 +476,9 @@ const transactionRangeOptions = [
 
 const poStatusOptions = [
   { label: 'All Statuses', value: '__ALL__' },
-  { label: 'Pending', value: 'PENDING' },
-  { label: 'Ready', value: 'READY' },
   { label: 'Approved', value: 'APPROVED' },
-  { label: 'Rejected', value: 'REJECTED' },
   { label: 'Partially Received', value: 'PARTIALLY_RECEIVED' },
-  { label: 'Received', value: 'RECEIVED' },
   { label: 'Completed', value: 'COMPLETED' },
-  { label: 'On Hold', value: 'ON_HOLD' },
 ]
 
 const normalizeVendorFilter = (value?: string | null) => {
@@ -495,72 +487,49 @@ const normalizeVendorFilter = (value?: string | null) => {
   return raw
 }
 
-const normalizeStatusForFilter = (status?: string | null) => {
-  const raw = String(status ?? '').trim().toUpperCase()
-  if (!raw) return ''
-  return raw === 'DRAFT' ? 'PENDING' : raw
-}
-
 const normalizeStatusFilter = (value?: string | null) => {
   const raw = String(value ?? '').trim().toUpperCase()
   if (!raw || raw === '__ALL__') return undefined
   return raw
 }
 
-const toCalendarDate = (date: Date): CalendarDate => {
-  return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate())
-}
-
 const applyTransactionRange = (range: string) => {
   const now = new Date()
-  const today = toCalendarDate(now)
-
   if (range === 'YEAR_TO_DATE') {
-    startDateValue.value = new CalendarDate(now.getFullYear(), 1, 1)
-    endDateValue.value = today
+    startDateValue.value = `${now.getFullYear()}-01-01T00:00:00.000Z`
+    endDateValue.value = toUtcDateString(now)
     return
   }
-
   if (range === 'MONTH_TO_DATE') {
-    startDateValue.value = new CalendarDate(now.getFullYear(), now.getMonth() + 1, 1)
-    endDateValue.value = today
+    startDateValue.value = toUtcDateString(new Date(now.getFullYear(), now.getMonth(), 1))
+    endDateValue.value = toUtcDateString(now)
     return
   }
-
   if (range === 'WEEK_TO_DATE') {
     const start = new Date(now)
-    const dayOfWeek = start.getDay() // 0=Sun, 1=Mon ... 6=Sat
+    const dayOfWeek = start.getDay()
     const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
     start.setDate(start.getDate() - daysFromMonday)
-    startDateValue.value = toCalendarDate(start)
-    endDateValue.value = today
+    startDateValue.value = toUtcDateString(start)
+    endDateValue.value = toUtcDateString(now)
     return
   }
-
   if (range === 'LAST_YEAR') {
     const lastYear = now.getFullYear() - 1
-    startDateValue.value = new CalendarDate(lastYear, 1, 1)
-    endDateValue.value = new CalendarDate(lastYear, 12, 31)
+    startDateValue.value = `${lastYear}-01-01T00:00:00.000Z`
+    endDateValue.value = `${lastYear}-12-31T00:00:00.000Z`
   }
 }
 
-// Date formatting
-const df = new Intl.DateTimeFormat('en-US', {
-  dateStyle: 'medium'
-})
-
 const startDateDisplayText = computed(() => {
-  if (!startDateValue.value) return 'Select start date'
-  return df.format(startDateValue.value.toDate(getLocalTimeZone()))
+  if (!startDateValue.value) return ''
+  return new Date(startDateValue.value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
 
 const endDateDisplayText = computed(() => {
-  if (!endDateValue.value) return 'Select end date'
-  return df.format(endDateValue.value.toDate(getLocalTimeZone()))
+  if (!endDateValue.value) return ''
+  return new Date(endDateValue.value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
-
-const minDate = new CalendarDate(1900, 1, 1)
-const maxDate = todayDate
 
 // Check if report can be generated
 const canGenerateReport = computed(() => {
@@ -569,25 +538,17 @@ const canGenerateReport = computed(() => {
     selectedProjectId.value &&
     startDateValue.value &&
     endDateValue.value &&
-    startDateValue.value.compare(endDateValue.value) <= 0
+    startDateValue.value <= endDateValue.value
   )
 })
 
 // Currency formatting
 const { formatCurrency } = useCurrencyFormat()
+const { formatDate: formatReportDate } = useDateFormat()
 
-// Date formatting
 const formatDate = (date: string | null | undefined): string => {
-  if (!date) return '-'
-  try {
-    return new Date(date).toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: '2-digit', 
-      day: '2-digit' 
-    })
-  } catch {
-    return '-'
-  }
+  const formatted = formatReportDate(date)
+  return formatted || '-'
 }
 
 // Status formatting
@@ -643,288 +604,73 @@ const handleShowReport = async () => {
   await loadReport()
 }
 
-// Load report data
+// Load report data (single batched API — avoids N+1 PO/CO invoice and item fetches)
 const loadReport = async () => {
   if (!selectedCorporationId.value || !selectedProjectId.value || !startDateValue.value || !endDateValue.value) {
     reportData.value = []
     return
   }
-  
-  const startDate = `${startDateValue.value.year}-${String(startDateValue.value.month).padStart(2, '0')}-${String(startDateValue.value.day).padStart(2, '0')}`
-  const endDate = `${endDateValue.value.year}-${String(endDateValue.value.month).padStart(2, '0')}-${String(endDateValue.value.day).padStart(2, '0')}`
 
-  const isWithinSelectedDateRange = (value?: string | null): boolean => {
-    const recordDate = dayjs(value)
-    if (!recordDate.isValid()) return false
-    return recordDate.format('YYYY-MM-DD') >= startDate && recordDate.format('YYYY-MM-DD') <= endDate
-  }
-  
+  const startDate =
+    extractCalendarYmdFromStoredDate(startDateValue.value, fromUTCString) ?? ''
+  const endDate =
+    extractCalendarYmdFromStoredDate(endDateValue.value, fromUTCString) ?? ''
+
   loading.value = true
   error.value = null
-  
+
   try {
-    // Fetch purchase orders
-    const poParams: any = {
-      corporation_uuid: selectedCorporationId.value
+    const params: Record<string, string> = {
+      corporation_uuid: selectedCorporationId.value,
+      project_uuid: selectedProjectId.value,
+      start_date: startDate,
+      end_date: endDate,
     }
-    
-    const poResponse: any = await $fetch('/api/purchase-order-forms', {
-      method: 'GET',
-      params: poParams
-    })
-    
-    const purchaseOrders = poResponse?.data || []
-    
-    // Filter by project, exclude labor POs, and date range (using entry_date in UTC)
-    let filteredPOs = purchaseOrders.filter((po: any) => {
-      return po.project_uuid === selectedProjectId.value
-    })
-    
-    // Exclude labor type purchase orders
-    filteredPOs = filteredPOs.filter((po: any) => {
-      const poType = String(po.po_type || '').toUpperCase()
-      return poType !== 'LABOR'
-    })
-    
-    // Filter by selected date range (calendar-date comparison)
-    filteredPOs = filteredPOs.filter((po: any) => {
-      return isWithinSelectedDateRange(po.entry_date)
-    })
 
     const vendorFilter = normalizeVendorFilter(selectedVendorUuid.value)
     if (vendorFilter) {
-      filteredPOs = filteredPOs.filter((po: any) => String(po.vendor_uuid || '') === vendorFilter)
+      params.vendor_uuid = vendorFilter
     }
 
     const statusFilter = normalizeStatusFilter(selectedPoStatus.value)
     if (statusFilter) {
-      filteredPOs = filteredPOs.filter((po: any) => normalizeStatusForFilter(po.status) === statusFilter)
-    }
-    
-    // Fetch change orders
-    const coParams: any = {
-      corporation_uuid: selectedCorporationId.value
-    }
-    
-    let changeOrders: any[] = []
-    try {
-      const coResponse: any = await $fetch('/api/change-orders', {
-        method: 'GET',
-        params: coParams
-      })
-      changeOrders = coResponse?.data || []
-    } catch (coError) {
-      console.error('Error fetching change orders:', coError)
-    }
-    
-    // Filter change orders by project and date range (using created_date in UTC)
-    let filteredCOs = changeOrders.filter((co: any) => {
-      return co.project_uuid === selectedProjectId.value
-    })
-    
-    // Filter by selected date range (calendar-date comparison)
-    filteredCOs = filteredCOs.filter((co: any) => {
-      return isWithinSelectedDateRange(co.created_date)
-    })
-
-    // Exclude labor type change orders (report should only show non-labor sources)
-    filteredCOs = filteredCOs.filter((co: any) => {
-      const coType = String(co.co_type || '').toUpperCase()
-      return coType !== 'LABOR'
-    })
-
-    if (vendorFilter) {
-      filteredCOs = filteredCOs.filter((co: any) => String(co.vendor_uuid || '') === vendorFilter)
+      params.po_status = statusFilter
     }
 
-    if (statusFilter) {
-      filteredCOs = filteredCOs.filter((co: any) => normalizeStatusForFilter(co.status) === statusFilter)
+    const entryDateBounds = poEntryDateFilterToApiBounds(startDate, endDate)
+    if (entryDateBounds) {
+      params.entry_date_from = entryDateBounds.entry_date_from
+      params.entry_date_to = entryDateBounds.entry_date_to
     }
-    
-    // Fetch vendors once for all purchase orders and change orders
-    let vendors: any[] = []
-    try {
-      const vendorResponse: any = await $fetch('/api/purchase-orders/vendors', {
-        method: 'GET',
-        params: {
-          corporation_uuid: selectedCorporationId.value
-        }
-      })
-      vendors = vendorResponse?.data || []
-    } catch (vendorError) {
-      console.error('Error fetching vendors:', vendorError)
-    }
-    
-    // Create vendor map for quick lookup
-    const vendorMap = new Map(vendors.map((v: any) => [v.uuid, v.vendor_name]))
-    
-    // Process purchase orders
-    const poReportData = await Promise.all(
-      filteredPOs.map(async (po: any) => {
-        try {
-          // Get vendor name
-          const vendorName = po.vendor_uuid ? (vendorMap.get(po.vendor_uuid) || 'N/A') : 'N/A'
-          
-          // Fetch invoices for this PO
-          let invoices: any[] = []
-          try {
-            const invoiceResponse: any = await $fetch('/api/vendor-invoices', {
-              method: 'GET',
-              params: {
-                corporation_uuid: selectedCorporationId.value,
-                purchase_order_uuid: po.uuid
-              }
-            })
-            // Filter invoices to ensure they are specifically linked to this PO
-            // The API should already filter by purchase_order_uuid, but we double-check here
-            invoices = (invoiceResponse?.data || []).filter((inv: any) => {
-              // Only include invoices that are explicitly linked to this PO
-              return inv.purchase_order_uuid === po.uuid
-            })
-          } catch (invoiceError) {
-            console.error('Error fetching invoices for PO:', po.uuid, invoiceError)
-          }
-          
-          // Calculate invoice summary
-          const totalInvoiced = invoices.reduce((sum, inv) => {
-            // Use total_invoice_amount (saved value) or amount as fallback
-            let invAmount = inv.total_invoice_amount ?? inv.amount ?? 0
-            
-            // If total_invoice_amount is not available, try to get from financial_breakdown
-            if (!invAmount || invAmount === 0) {
-              let fb = inv.financial_breakdown
-              if (typeof fb === 'string') {
-                try {
-                  fb = JSON.parse(fb)
-                } catch (e) {
-                  // Failed to parse
-                }
-              }
-              if (fb && typeof fb === 'object' && fb.totals) {
-                invAmount = fb.totals.total_invoice_amount ?? fb.totals.amount ?? 0
-              }
-            }
-            
-            return sum + (typeof invAmount === 'number' ? invAmount : parseFloat(String(invAmount)) || 0)
-          }, 0)
-          
-          const holdback = invoices.reduce((sum, inv) => {
-            // Priority: Get holdback_amount from financial_breakdown (saved value)
-            let holdbackAmount = 0
-            
-            let fb = inv.financial_breakdown
-            if (typeof fb === 'string') {
-              try {
-                fb = JSON.parse(fb)
-              } catch (e) {
-                // Failed to parse
-              }
-            }
-            if (fb && typeof fb === 'object' && fb.totals) {
-              holdbackAmount = fb.totals.holdback_amount ?? 0
-            }
-            
-            // Fallback to direct holdback_amount field
-            if (!holdbackAmount || holdbackAmount === 0) {
-              holdbackAmount = inv.holdback_amount ?? 0
-            }
-            
-            return sum + (typeof holdbackAmount === 'number' ? holdbackAmount : parseFloat(String(holdbackAmount)) || 0)
-          }, 0)
-          
-          const totalPaid = invoices.reduce((sum, inv) => {
-            // Only count invoices with "Paid" status
-            const status = String(inv.status || '').toLowerCase()
-            if (status === 'paid') {
-              // Use total_invoice_amount (saved value) or amount as fallback
-              let paidAmount = inv.total_invoice_amount ?? inv.amount ?? 0
-              
-              // If total_invoice_amount is not available, try to get from financial_breakdown
-              if (!paidAmount || paidAmount === 0) {
-                let fb = inv.financial_breakdown
-                if (typeof fb === 'string') {
-                  try {
-                    fb = JSON.parse(fb)
-                  } catch (e) {
-                    // Failed to parse
-                  }
-                }
-                if (fb && typeof fb === 'object' && fb.totals) {
-                  paidAmount = fb.totals.total_invoice_amount ?? fb.totals.amount ?? 0
-                }
-              }
-              
-              return sum + (typeof paidAmount === 'number' ? paidAmount : parseFloat(String(paidAmount)) || 0)
-            }
-            return sum
-          }, 0)
-          
-          // Calculate item_total from items if not available (labor POs are excluded)
-          let itemTotal = po.item_total
-          if (!itemTotal || itemTotal === 0) {
-            // Fetch items to calculate item_total
-            try {
-              const itemsResponse: any = await $fetch('/api/purchase-order-items', {
-                method: 'GET',
-                params: {
-                  purchase_order_uuid: po.uuid
-                }
-              })
-              const items = itemsResponse?.data || []
-              
-              // Calculate item_total from items
-              if (items.length > 0) {
-                itemTotal = items.reduce((sum: number, item: any) => {
-                  const itemAmount = item.po_total || item.total || ((item.po_quantity || item.quantity || 0) * (item.po_unit_price || item.unit_price || 0))
-                  return sum + (itemAmount || 0)
-                }, 0)
-              }
-            } catch (itemError) {
-              console.error('Error fetching items for PO:', po.uuid, itemError)
-            }
-          }
-          
-          // Use item_total as goods_amount (this is the total of all items without charges/taxes)
-          const goodsAmount = itemTotal || 0
-          const freightAmount = po.freight_charges_amount ?? 0
-          const additionalCharges = (po.packing_charges_amount ?? 0) + 
-                                   (po.custom_duties_charges_amount ?? 0) + 
-                                   (po.other_charges_amount ?? 0)
-          const hst = (po.sales_tax_1_amount ?? 0) + (po.sales_tax_2_amount || 0)
-          const poTotal = goodsAmount + freightAmount + additionalCharges + hst
-          
-          // Calculate balance to be invoiced
-          const balanceToInvoice = poTotal - totalInvoiced
-          
-          return {
-            uuid: po.uuid,
-            type: 'PO',
-            submit_date: po.submit_date || po.created_at,
-            po_number: po.po_number,
-            co_number: null,
-            vendor_name: vendorName,
-            goods_amount: goodsAmount,
-            freight_amount: freightAmount,
-            additional_charges: additionalCharges,
-            hst: hst,
-            po_total: poTotal,
-            total_invoiced: totalInvoiced,
-            holdback: holdback,
-            total_paid: totalPaid,
-            balance_to_invoice: balanceToInvoice,
-            status: po.status,
-            ...normalizePoCurrencyConversionFields(po),
-          }
-        } catch (error) {
-          console.error('Error processing PO:', po.uuid, error)
-          return {
-            uuid: po.uuid,
-            type: 'PO',
-            submit_date: po.submit_date || po.created_at,
-            po_number: po.po_number,
-            co_number: null,
-            vendor_uuid: po.vendor_uuid || null,
-            vendor_name: 'N/A',
+
+    const response = await $fetch<{ data?: any[] }>(
+      '/api/reports/purchase-order-details-invoice-summary',
+      { method: 'GET', params }
+    )
+
+    const isWithinSelectedDateRange = (value?: string | null) =>
+      isPoEntryDateWithinLocalYmdRange(value, startDate, endDate)
+
+    reportData.value = (Array.isArray(response?.data) ? response.data : [])
+      .map((vendorGroup) => {
+        const orders = (vendorGroup.orders || []).filter((order: { submit_date?: string | null }) =>
+          isWithinSelectedDateRange(order.submit_date)
+        )
+        if (!orders.length) return null
+
+        const vendor_totals = orders.reduce(
+          (totals: Record<string, number>, order: Record<string, number>) => ({
+            goods_amount: totals.goods_amount + (order.goods_amount || 0),
+            freight_amount: totals.freight_amount + (order.freight_amount || 0),
+            additional_charges: totals.additional_charges + (order.additional_charges || 0),
+            hst: totals.hst + (order.hst || 0),
+            po_total: totals.po_total + (order.po_total || 0),
+            total_invoiced: totals.total_invoiced + (order.total_invoiced || 0),
+            holdback: totals.holdback + (order.holdback || 0),
+            total_paid: totals.total_paid + (order.total_paid || 0),
+            balance_to_invoice: totals.balance_to_invoice + (order.balance_to_invoice || 0),
+          }),
+          {
             goods_amount: 0,
             freight_amount: 0,
             additional_charges: 0,
@@ -934,288 +680,16 @@ const loadReport = async () => {
             holdback: 0,
             total_paid: 0,
             balance_to_invoice: 0,
-            status: po.status
           }
+        )
+
+        return {
+          ...vendorGroup,
+          orders,
+          vendor_totals,
         }
       })
-    )
-    
-    // Process change orders
-    const coReportData = await Promise.all(
-      filteredCOs.map(async (co: any) => {
-        try {
-          // Get vendor name
-          const vendorName = co.vendor_uuid ? (vendorMap.get(co.vendor_uuid) || 'N/A') : 'N/A'
-          
-          // Fetch invoices for this CO
-          let invoices: any[] = []
-          try {
-            const invoiceResponse: any = await $fetch('/api/vendor-invoices', {
-              method: 'GET',
-              params: {
-                corporation_uuid: selectedCorporationId.value,
-                change_order_uuid: co.uuid
-              }
-            })
-            // Filter invoices to ensure they are specifically linked to this CO
-            // The API should already filter by change_order_uuid, but we double-check here
-            invoices = (invoiceResponse?.data || []).filter((inv: any) => {
-              // Only include invoices that are explicitly linked to this CO
-              return inv.change_order_uuid === co.uuid
-            })
-          } catch (invoiceError) {
-            console.error('Error fetching invoices for CO:', co.uuid, invoiceError)
-          }
-          
-          // Calculate invoice summary
-          const totalInvoiced = invoices.reduce((sum, inv) => {
-            // Use total_invoice_amount (saved value) or amount as fallback
-            let invAmount = inv.total_invoice_amount ?? inv.amount ?? 0
-            
-            // If total_invoice_amount is not available, try to get from financial_breakdown
-            if (!invAmount || invAmount === 0) {
-              let fb = inv.financial_breakdown
-              if (typeof fb === 'string') {
-                try {
-                  fb = JSON.parse(fb)
-                } catch (e) {
-                  // Failed to parse
-                }
-              }
-              if (fb && typeof fb === 'object' && fb.totals) {
-                invAmount = fb.totals.total_invoice_amount ?? fb.totals.amount ?? 0
-              }
-            }
-            
-            return sum + (typeof invAmount === 'number' ? invAmount : parseFloat(String(invAmount)) || 0)
-          }, 0)
-          
-          const holdback = invoices.reduce((sum, inv) => {
-            // Priority: Get holdback_amount from financial_breakdown (saved value)
-            let holdbackAmount = 0
-            
-            let fb = inv.financial_breakdown
-            if (typeof fb === 'string') {
-              try {
-                fb = JSON.parse(fb)
-              } catch (e) {
-                // Failed to parse
-              }
-            }
-            if (fb && typeof fb === 'object' && fb.totals) {
-              holdbackAmount = fb.totals.holdback_amount ?? 0
-            }
-            
-            // Fallback to direct holdback_amount field
-            if (!holdbackAmount || holdbackAmount === 0) {
-              holdbackAmount = inv.holdback_amount ?? 0
-            }
-            
-            return sum + (typeof holdbackAmount === 'number' ? holdbackAmount : parseFloat(String(holdbackAmount)) || 0)
-          }, 0)
-          
-          const totalPaid = invoices.reduce((sum, inv) => {
-            // Only count invoices with "Paid" status
-            const status = String(inv.status || '').toLowerCase()
-            if (status === 'paid') {
-              // Use total_invoice_amount (saved value) or amount as fallback
-              let paidAmount = inv.total_invoice_amount ?? inv.amount ?? 0
-              
-              // If total_invoice_amount is not available, try to get from financial_breakdown
-              if (!paidAmount || paidAmount === 0) {
-                let fb = inv.financial_breakdown
-                if (typeof fb === 'string') {
-                  try {
-                    fb = JSON.parse(fb)
-                  } catch (e) {
-                    // Failed to parse
-                  }
-                }
-                if (fb && typeof fb === 'object' && fb.totals) {
-                  paidAmount = fb.totals.total_invoice_amount ?? fb.totals.amount ?? 0
-                }
-              }
-              
-              return sum + (typeof paidAmount === 'number' ? paidAmount : parseFloat(String(paidAmount)) || 0)
-            }
-            return sum
-          }, 0)
-          
-          // Calculate item_total from items if not available
-          let itemTotal = co.item_total
-          if (!itemTotal || itemTotal === 0) {
-            // Fetch items to calculate item_total
-            try {
-              const coType = (co.co_type || '').toUpperCase()
-              const isLaborCO = coType === 'LABOR'
-              
-              let items: any[] = []
-              if (isLaborCO) {
-                const laborItemsResponse: any = await $fetch('/api/labor-change-order-items', {
-                  method: 'GET',
-                  params: {
-                    change_order_uuid: co.uuid
-                  }
-                })
-                items = laborItemsResponse?.data || []
-              } else {
-                const itemsResponse: any = await $fetch('/api/change-order-items', {
-                  method: 'GET',
-                  params: {
-                    change_order_uuid: co.uuid
-                  }
-                })
-                items = itemsResponse?.data || []
-              }
-              
-              // Calculate item_total from items
-              if (items.length > 0) {
-                itemTotal = items.reduce((sum: number, item: any) => {
-                  const itemAmount = item.co_total || item.total || ((item.co_quantity || item.quantity || 0) * (item.co_unit_price || item.unit_price || 0))
-                  return sum + (itemAmount || 0)
-                }, 0)
-              }
-            } catch (itemError) {
-              console.error('Error fetching items for CO:', co.uuid, itemError)
-            }
-          }
-          
-          // Use item_total as goods_amount (this is the total of all items without charges/taxes)
-          const goodsAmount = itemTotal || 0
-          const freightAmount = co.freight_charges_amount ?? 0
-          const additionalCharges = (co.packing_charges_amount ?? 0) + 
-                                   (co.custom_duties_charges_amount ?? 0) + 
-                                   (co.other_charges_amount ?? 0)
-          const hst = (co.sales_tax_1_amount ?? 0) + (co.sales_tax_2_amount || 0)
-          const coTotal = goodsAmount + freightAmount + additionalCharges + hst
-          
-          // Calculate balance to be invoiced
-          const balanceToInvoice = coTotal - totalInvoiced
-          
-          return {
-            uuid: co.uuid,
-            type: 'CO',
-            submit_date: co.created_date || co.created_at,
-            po_number: null,
-            co_number: co.co_number,
-            vendor_uuid: co.vendor_uuid || null,
-            vendor_name: vendorName,
-            goods_amount: goodsAmount,
-            freight_amount: freightAmount,
-            additional_charges: additionalCharges,
-            hst: hst,
-            po_total: coTotal,
-            total_invoiced: totalInvoiced,
-            holdback: holdback,
-            total_paid: totalPaid,
-            balance_to_invoice: balanceToInvoice,
-            status: co.status,
-            ...normalizePoCurrencyConversionFields(co),
-          }
-        } catch (error) {
-          console.error('Error processing CO:', co.uuid, error)
-          return {
-            uuid: co.uuid,
-            type: 'CO',
-            submit_date: co.created_date || co.created_at,
-            po_number: null,
-            co_number: co.co_number,
-            vendor_uuid: co.vendor_uuid || null,
-            vendor_name: 'N/A',
-            goods_amount: 0,
-            freight_amount: 0,
-            additional_charges: 0,
-            hst: 0,
-            po_total: 0,
-            total_invoiced: 0,
-            holdback: 0,
-            total_paid: 0,
-            balance_to_invoice: 0,
-            status: co.status
-          }
-        }
-      })
-    )
-    
-    // Combine PO and CO data
-    const allReportData = [...poReportData, ...coReportData]
-    
-    // Group by vendor
-    const vendorGroups = new Map<string, {
-      vendor_uuid: string | null
-      vendor_name: string
-      orders: any[]
-      vendor_totals: {
-        goods_amount: number
-        freight_amount: number
-        additional_charges: number
-        hst: number
-        po_total: number
-        total_invoiced: number
-        holdback: number
-        total_paid: number
-        balance_to_invoice: number
-      }
-    }>()
-    
-    // Process each order and group by vendor
-    allReportData.forEach((order: any) => {
-      const vendorKey = order.vendor_name || 'N/A'
-      const vendorUuid = order.vendor_uuid || null
-      
-      if (!vendorGroups.has(vendorKey)) {
-        vendorGroups.set(vendorKey, {
-          vendor_uuid: vendorUuid,
-          vendor_name: order.vendor_name || 'N/A',
-          orders: [],
-          vendor_totals: {
-            goods_amount: 0,
-            freight_amount: 0,
-            additional_charges: 0,
-            hst: 0,
-            po_total: 0,
-            total_invoiced: 0,
-            holdback: 0,
-            total_paid: 0,
-            balance_to_invoice: 0
-          }
-        })
-      }
-      
-      const vendorGroup = vendorGroups.get(vendorKey)!
-      vendorGroup.orders.push(order)
-      
-      // Add to vendor totals
-      vendorGroup.vendor_totals.goods_amount += order.goods_amount || 0
-      vendorGroup.vendor_totals.freight_amount += order.freight_amount || 0
-      vendorGroup.vendor_totals.additional_charges += order.additional_charges || 0
-      vendorGroup.vendor_totals.hst += order.hst || 0
-      vendorGroup.vendor_totals.po_total += order.po_total || 0
-      vendorGroup.vendor_totals.total_invoiced += order.total_invoiced || 0
-      vendorGroup.vendor_totals.holdback += order.holdback || 0
-      vendorGroup.vendor_totals.total_paid += order.total_paid || 0
-      vendorGroup.vendor_totals.balance_to_invoice += order.balance_to_invoice || 0
-    })
-    
-    // Convert map to array and sort orders within each vendor group by submit date (newest first)
-    const groupedData = Array.from(vendorGroups.values()).map(vendorGroup => {
-      // Sort orders within vendor group by submit date (newest first)
-      vendorGroup.orders.sort((a, b) => {
-        const dateA = new Date(a.submit_date || 0).getTime()
-        const dateB = new Date(b.submit_date || 0).getTime()
-        return dateB - dateA
-      })
-      return vendorGroup
-    })
-    
-    // Sort vendor groups alphabetically by vendor name
-    groupedData.sort((a, b) => {
-      const nameA = (a.vendor_name || '').toLowerCase()
-      const nameB = (b.vendor_name || '').toLowerCase()
-      return nameA.localeCompare(nameB)
-    })
-    
-    reportData.value = groupedData
+      .filter((group): group is NonNullable<typeof group> => group !== null)
   } catch (err: any) {
     console.error('Error loading report:', err)
     error.value = err.message || 'Failed to load purchase order details with invoice summary'
@@ -1227,6 +701,86 @@ const loadReport = async () => {
 
 const printReport = () => {
   window.print()
+}
+
+const exportReportToCsv = () => {
+  if (!reportData.value?.length) return
+
+  const rows: unknown[][] = [[
+    'Vendor',
+    'Submit Date',
+    'PO/CO Number',
+    'Vendor / Source',
+    'Goods Amount',
+    'Freight Amount',
+    'Additional Charges',
+    'HST',
+    'PO Total',
+    'Total Invoiced',
+    'Holdback',
+    'Total Paid on Invoices',
+    'Balance to be Invoiced',
+    'PO Status',
+  ]]
+
+  for (const vendorGroup of reportData.value) {
+    for (const order of vendorGroup.orders || []) {
+      rows.push([
+        vendorGroup.vendor_name || '',
+        formatDate(order.submit_date),
+        order.po_number || order.co_number || '',
+        order.vendor_name || '',
+        formatReportPoAmountForExport(order.goods_amount, order),
+        formatReportPoAmountForExport(order.freight_amount, order),
+        formatReportPoAmountForExport(order.additional_charges, order),
+        formatReportPoAmountForExport(order.hst, order),
+        formatReportPoAmountForExport(order.po_total, order),
+        order.total_invoiced ?? 0,
+        order.holdback ?? 0,
+        order.total_paid ?? 0,
+        order.balance_to_invoice ?? 0,
+        formatStatus(order.status),
+      ])
+    }
+
+    const totals = vendorGroup.vendor_totals
+    if (totals) {
+      rows.push([
+        vendorGroup.vendor_name || '',
+        '',
+        '',
+        `Total for ${vendorGroup.vendor_name || 'N/A'}`,
+        formatReportVendorPoAmountForExport(vendorGroup.orders || [], 'goods_amount'),
+        formatReportVendorPoAmountForExport(vendorGroup.orders || [], 'freight_amount'),
+        formatReportVendorPoAmountForExport(vendorGroup.orders || [], 'additional_charges'),
+        formatReportVendorPoAmountForExport(vendorGroup.orders || [], 'hst'),
+        formatReportVendorPoAmountForExport(vendorGroup.orders || [], 'po_total'),
+        totals.total_invoiced ?? 0,
+        totals.holdback ?? 0,
+        totals.total_paid ?? 0,
+        totals.balance_to_invoice ?? 0,
+        '',
+      ])
+    }
+  }
+
+  const project = projectsStore.projects.find((p) => p.uuid === selectedProjectId.value)
+  void downloadReportExcelFile(
+    buildReportExcelFilename('purchase-order-details-invoice-summary', project?.project_id),
+    {
+      title: 'Purchase Order Details with Invoice Summary',
+      corporationName: resolveCorporationDisplayName(
+        corporationStore.corporations as any[],
+        selectedCorporationId.value
+      ),
+      projectLabel: resolveProjectDisplayLabel(
+        projectsStore.projects as any[],
+        selectedProjectId.value
+      ),
+      dateRange: `${startDateDisplayText.value} to ${endDateDisplayText.value}`,
+    },
+    rows
+  )
 }
 
 const syncCorporationFromStoreOrNimble = async () => {
@@ -1310,14 +864,53 @@ onMounted(async () => {
   /* Reset page margins and background */
   @page {
     margin: 1cm;
-    size: A4 portrait;
+    size: A4 landscape;
   }
 
-  html, body {
+  html,
+  body,
+  #__nuxt {
     background: #ffffff !important;
     color: #000000 !important;
     margin: 0 !important;
     padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* App shell scroll regions clip content to one viewport — unblock for multi-page print */
+  .po-invoice-summary-report,
+  .po-invoice-summary-report * {
+    max-height: none !important;
+  }
+
+  .po-invoice-summary-report {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .flex.h-full,
+  .flex.h-screen,
+  main,
+  aside,
+  nav,
+  [class*="overflow-hidden"],
+  [class*="overflow-y-auto"],
+  [class*="overflow-x-auto"],
+  .min-h-0 {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    flex: none !important;
+  }
+
+  /* Hide loading overlay and fixed UI chrome */
+  .fixed,
+  [class*="backdrop-blur"] {
+    display: none !important;
   }
 
   /* Hide layout components (SideMenu, TopBar, MobileBottomNav) */
@@ -1383,6 +976,18 @@ onMounted(async () => {
     page-break-inside: auto;
   }
 
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+
+  tbody {
+    display: table-row-group;
+  }
+
   th, td {
     border: 1px solid #000000 !important;
     padding: 3px 4px !important;
@@ -1402,6 +1007,11 @@ onMounted(async () => {
   tr {
     page-break-inside: avoid;
     break-inside: avoid;
+  }
+
+  /* Allow page breaks between vendor groups */
+  tbody tr[class*="bg-gray-200"] {
+    page-break-after: auto;
   }
 
   /* Optimize spacing for print */

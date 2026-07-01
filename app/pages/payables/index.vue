@@ -1,32 +1,22 @@
 <template>
   <div class="space-y-6">
-    <!-- When Nimble is on and only one tab: hide tab bar, show content only -->
-    <ClientOnly v-if="nimbleIntegrations && visibleTabs.length === 1">
-      <section>
+    <ClientOnly>
+      <section v-if="nimbleIntegrations && visibleTabs.length === 1">
         <VendorInvoicesList v-if="activeTab === 'vendor-invoices'" />
         <PayablesBillEntry v-else-if="activeTab === 'bill-entry-payment'" />
         <PayablesPrintChecks v-else-if="activeTab === 'print-checks'" />
       </section>
-      <template #fallback>
-        <div class="flex items-center justify-center h-64">
-          <div class="text-center">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-            <p class="text-gray-600">Loading Payables...</p>
-          </div>
-        </div>
-      </template>
-    </ClientOnly>
-    <ClientOnly v-else>
       <UTabs
+        v-else
         :items="tabItems"
         :model-value="activeTab"
-        @update:model-value="handleTabChange"
         class="w-full"
         color="primary"
         size="sm"
         :ui="{
           leadingIcon: 'xl',
         }"
+        @update:model-value="handleTabChange"
       >
         <template #content="{ item }">
           <section v-if="item.label === 'Vendor Invoices'">
@@ -44,8 +34,10 @@
       <template #fallback>
         <div class="flex items-center justify-center h-64">
           <div class="text-center">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-            <p class="text-gray-600">Loading Payables...</p>
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
+            <p class="text-gray-600">
+              Loading Payables...
+            </p>
           </div>
         </div>
       </template>

@@ -22,6 +22,7 @@ import LayoutTopBar from '~/components/layout/TopBar.vue'
 import LayoutMobileBottomNav from '~/components/layout/MobileBottomNav.vue'
 
 const runtimeConfig = useRuntimeConfig()
-const hideMainNavigationForNimble =
-  String(runtimeConfig.public.nimbleIntegrations || '').toLowerCase() === 'true'
+const hideMainNavigationForNimble = computed(
+  () => String(runtimeConfig.public.nimbleIntegrations || '').toLowerCase() === 'true',
+)
 </script>

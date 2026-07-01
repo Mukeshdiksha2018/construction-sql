@@ -2,18 +2,8 @@
   <div class="h-[88vh] print:h-auto">
     <!-- Header section - hidden in print -->
     <div class="mb-2 print:hidden">
-      <div class="flex items-center justify-between gap-4 flex-wrap">
-        <!-- Left side: Back button -->
-        <div class="flex items-center gap-3">
-          <UButton
-            color="neutral"
-            variant="solid"
-            icon="i-heroicons-arrow-left"
-            @click="goBack"
-          />
-        </div>
-
-        <!-- Right side: Corporation, Project Selection, Date Range, Show and Print buttons -->
+      <div class="flex items-center justify-end gap-4 flex-wrap">
+        <!-- Corporation, Project Selection, Date Range, Show and Print buttons -->
         <div class="flex items-end gap-3 flex-wrap">
           <!-- Corporation Select -->
           <div class="flex flex-col gap-1">
@@ -63,24 +53,14 @@
             <label class="text-sm font-medium text-default whitespace-nowrap">
               Start Date <span class="text-red-500">*</span>
             </label>
-            <UPopover :popper="{ placement: 'bottom-start' }">
-              <UButton
-                icon="i-heroicons-calendar"
-                size="sm"
-                variant="outline"
-                class="w-48"
-              >
-                {{ startDateDisplayText }}
-              </UButton>
-              <template #content>
-                <UCalendar
-                  v-model="startDateValue"
-                  :min-value="undefined"
-                  :max-value="endDateValue || undefined"
-                  class="p-2"
-                />
-              </template>
-            </UPopover>
+            <DatePickerField
+              :model-value="startDateValue"
+              :max-value="endDateValue"
+              size="sm"
+              placeholder="MM/DD/YYYY"
+              class="w-48"
+              @update:model-value="(v) => { startDateValue = v }"
+            />
           </div>
 
           <!-- End Date -->
@@ -88,24 +68,14 @@
             <label class="text-sm font-medium text-default whitespace-nowrap">
               End Date <span class="text-red-500">*</span>
             </label>
-            <UPopover :popper="{ placement: 'bottom-start' }">
-              <UButton
-                icon="i-heroicons-calendar"
-                size="sm"
-                variant="outline"
-                class="w-48"
-              >
-                {{ endDateDisplayText }}
-              </UButton>
-              <template #content>
-                <UCalendar
-                  v-model="endDateValue"
-                  :min-value="startDateValue || undefined"
-                  :max-value="undefined"
-                  class="p-2"
-                />
-              </template>
-            </UPopover>
+            <DatePickerField
+              :model-value="endDateValue"
+              :min-value="startDateValue"
+              size="sm"
+              placeholder="MM/DD/YYYY"
+              class="w-48"
+              @update:model-value="(v) => { endDateValue = v }"
+            />
           </div>
 
           <!-- Advanced filter drawer -->
@@ -149,47 +119,27 @@
                 <!-- Start Date -->
                 <div class="flex flex-col gap-1.5">
                   <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Start Date <span class="text-red-500">*</span></label>
-                  <UPopover :popper="{ placement: 'bottom-start' }">
-                    <UButton
-                      icon="i-heroicons-calendar"
-                      size="sm"
-                      variant="outline"
-                      class="w-full justify-start"
-                    >
-                      {{ startDateDisplayText }}
-                    </UButton>
-                    <template #content>
-                      <UCalendar
-                        v-model="startDateValue"
-                        :min-value="undefined"
-                        :max-value="endDateValue || undefined"
-                        class="p-2"
-                      />
-                    </template>
-                  </UPopover>
+                  <DatePickerField
+                    :model-value="startDateValue"
+                    :max-value="endDateValue"
+                    size="sm"
+                    placeholder="MM/DD/YYYY"
+                    class="w-full"
+                    @update:model-value="(v) => { startDateValue = v }"
+                  />
                 </div>
 
                 <!-- End Date -->
                 <div class="flex flex-col gap-1.5">
                   <label class="text-xs font-medium text-gray-700 dark:text-gray-300">End Date <span class="text-red-500">*</span></label>
-                  <UPopover :popper="{ placement: 'bottom-start' }">
-                    <UButton
-                      icon="i-heroicons-calendar"
-                      size="sm"
-                      variant="outline"
-                      class="w-full justify-start"
-                    >
-                      {{ endDateDisplayText }}
-                    </UButton>
-                    <template #content>
-                      <UCalendar
-                        v-model="endDateValue"
-                        :min-value="startDateValue || undefined"
-                        :max-value="undefined"
-                        class="p-2"
-                      />
-                    </template>
-                  </UPopover>
+                  <DatePickerField
+                    :model-value="endDateValue"
+                    :min-value="startDateValue"
+                    size="sm"
+                    placeholder="MM/DD/YYYY"
+                    class="w-full"
+                    @update:model-value="(v) => { endDateValue = v }"
+                  />
                 </div>
 
                 <!-- Vendor -->
@@ -250,6 +200,17 @@
             @click="handleShowReport"
           >
             Show
+          </UButton>
+
+          <!-- Export CSV button -->
+          <UButton
+            v-if="selectedCorporationId && selectedProjectId && filteredReportData && filteredReportData.length > 0"
+            icon="i-heroicons-arrow-down-tray"
+            variant="soft"
+            size="sm"
+            @click="exportReportToCsv"
+          >
+            Export Excel
           </UButton>
 
           <!-- Print button -->
@@ -401,6 +362,7 @@
                 <th v-if="isLocationWiseEnabled" class="text-left py-2 px-2 font-semibold text-xs text-default">Location</th>
                 <th v-if="isLocationWiseEnabled" class="text-left py-2 px-2 font-semibold text-xs text-default">Description</th>
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">Labor Amount</th>
+                <th class="text-right py-2 px-2 font-semibold text-xs text-default">Taxes</th>
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">Expected Costs</th>
               </tr>
             </thead>
@@ -452,28 +414,28 @@
                     <td class="py-1 px-2 text-right text-default text-xs">
                       <ReportOrderPoAmountCell :row="po" :amount="item.po_amount || 0" />
                     </td>
+                    <td class="py-1 px-2 text-right text-default text-xs">
+                      <ReportOrderPoAmountCell :row="po" :amount="getItemHSTAmount(item, po)" />
+                    </td>
                     <td class="py-1 px-2 text-right text-default text-xs font-semibold">
-                      <ReportOrderPoAmountCell :row="po" :amount="item.po_amount || 0" />
+                      <ReportOrderPoAmountCell :row="po" :amount="getItemExpectedCost(item, po)" />
                     </td>
                   </tr>
                 </template>
 
                 <!-- PO Items subtotal -->
                 <tr v-if="po.items && po.items.length > 0" class="bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700 font-semibold">
-                  <td class="py-1 px-2 text-xs text-default" :colspan="reportColspan - 2">
+                  <td class="py-1 px-2 text-xs text-default" :colspan="reportColspan - 3">
                     PO Items Subtotal
                   </td>
                   <td class="py-1 px-2 text-right text-xs text-default">
-                    <ReportOrderPoAmountCell
-                      :row="po"
-                      :amount="po.items.reduce((sum: number, it: any) => sum + (it.po_amount || 0), 0)"
-                    />
+                    <ReportOrderPoAmountCell :row="po" :amount="getPoLaborSubtotal(po)" />
                   </td>
                   <td class="py-1 px-2 text-right text-xs text-default">
-                    <ReportOrderPoAmountCell
-                      :row="po"
-                      :amount="po.items.reduce((sum: number, it: any) => sum + (it.po_amount || 0), 0)"
-                    />
+                    <ReportOrderPoAmountCell :row="po" :amount="getPoItemsTaxSubtotal(po)" />
+                  </td>
+                  <td class="py-1 px-2 text-right text-xs text-default">
+                    <ReportOrderPoAmountCell :row="po" :amount="getPoItemsExpectedSubtotal(po)" />
                   </td>
                 </tr>
 
@@ -513,30 +475,30 @@
                         <td v-if="isLocationWiseEnabled" class="py-1 px-2 text-default text-xs">{{ getItemLocationName(item) }}</td>
                         <td v-if="isLocationWiseEnabled" class="py-1 px-2 text-default text-xs">{{ getItemDescription(item) }}</td>
                         <td class="py-1 px-2 text-right text-default text-xs">
-                          <ReportOrderPoAmountCell :row="co" :amount="item.co_amount || item.po_amount || 0" />
+                          <ReportOrderPoAmountCell :row="co" :amount="getCoLaborAmount(item)" />
+                        </td>
+                        <td class="py-1 px-2 text-right text-default text-xs">
+                          <ReportOrderPoAmountCell :row="co" :amount="getCoItemHSTAmount(item, co)" />
                         </td>
                         <td class="py-1 px-2 text-right text-default text-xs font-semibold">
-                          <ReportOrderPoAmountCell :row="co" :amount="item.co_amount || item.po_amount || 0" />
+                          <ReportOrderPoAmountCell :row="co" :amount="getCoItemExpectedCost(item, co)" />
                         </td>
                       </tr>
                     </template>
 
                     <!-- CO Items subtotal -->
                     <tr v-if="co.labor_items && co.labor_items.length > 0" class="bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700 font-semibold">
-                      <td class="py-1 px-2 text-xs text-default" :colspan="reportColspan - 2">
+                      <td class="py-1 px-2 text-xs text-default" :colspan="reportColspan - 3">
                         CO Items Subtotal — {{ co.co_number || 'N/A' }}
                       </td>
                       <td class="py-1 px-2 text-right text-xs text-default">
-                        <ReportOrderPoAmountCell
-                          :row="co"
-                          :amount="(co.labor_items || []).reduce((sum: number, it: any) => sum + (it.co_amount || it.po_amount || 0), 0)"
-                        />
+                        <ReportOrderPoAmountCell :row="co" :amount="getCoLaborSubtotal(co)" />
                       </td>
                       <td class="py-1 px-2 text-right text-xs text-default">
-                        <ReportOrderPoAmountCell
-                          :row="co"
-                          :amount="(co.labor_items || []).reduce((sum: number, it: any) => sum + (it.co_amount || it.po_amount || 0), 0)"
-                        />
+                        <ReportOrderPoAmountCell :row="co" :amount="getCoItemsTaxSubtotal(co)" />
+                      </td>
+                      <td class="py-1 px-2 text-right text-xs text-default">
+                        <ReportOrderPoAmountCell :row="co" :amount="getCoItemsExpectedSubtotal(co)" />
                       </td>
                     </tr>
                   </template>
@@ -549,14 +511,17 @@
                 
                 <!-- PO Total Row -->
                 <tr class="bg-gray-100 dark:bg-gray-800 border-b-2 border-gray-400 dark:border-gray-600 font-semibold">
-                  <td class="py-2 px-2 text-xs text-default" :colspan="reportColspan - 2">
+                  <td class="py-2 px-2 text-xs text-default" :colspan="reportColspan - 3">
                     Total
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default">
-                    <ReportOrderPoAmountCell :row="po" :amount="po.item_total || 0" />
+                    <ReportVendorCurrencyAggregateCell :aggregate="aggregateGrandLabor(po)" />
+                  </td>
+                  <td class="py-2 px-2 text-right text-xs text-default">
+                    <ReportVendorCurrencyAggregateCell :aggregate="aggregateGrandTax(po)" />
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default font-bold">
-                    <ReportOrderPoAmountCell :row="po" :amount="po.item_total || 0" />
+                    <ReportVendorCurrencyAggregateCell :aggregate="aggregateGrandExpected(po)" />
                   </td>
                 </tr>
                 
@@ -579,26 +544,35 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
-import { CalendarDate, today, getLocalTimeZone, parseDate } from '@internationalized/date'
-import dayjs from 'dayjs'
 import { useCorporationStore } from '~/stores/corporations'
 import { useProjectsStore } from '~/stores/projects'
 import { useLocationsStore } from '~/stores/locations'
-import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
+import { useUTCDateFormat } from '~/composables/useUTCDateFormat'
+import { isWithinCalendarDateRange } from '~/utils/calendarDateRange'
 import ProjectSelect from '~/components/shared/ProjectSelect.vue'
 import CorporationSelect from '~/components/shared/CorporationSelect.vue'
 import VendorSelect from '~/components/shared/VendorSelect.vue'
 import LocationSelect from '~/components/shared/LocationSelect.vue'
+import DatePickerField from '~/components/shared/DatePickerField.vue'
+import {
+  formatReportDateRangeDisplay,
+  resolveCorporationDisplayName,
+  resolveProjectDisplayLabel,
+} from '~/utils/csvExport'
+import {
+  buildReportExcelFilename,
+  downloadReportExcelFile,
+} from '~/utils/reportExcelExport.client'
 import ReportOrderPoAmountCell from '~/components/Reports/ReportOrderPoAmountCell.vue'
-import { formatReportPoAmountForExport } from '~/utils/reportPoCurrencyDisplay'
+import ReportVendorCurrencyAggregateCell from '~/components/Reports/ReportVendorCurrencyAggregateCell.vue'
+import {
+  aggregateBreakoutCurrencyAmounts,
+  formatReportBreakoutAggregateForExport,
+  formatReportPoAmountForExport,
+  type BreakoutCurrencyAmountEntry,
+} from '~/utils/reportPoCurrencyDisplay'
 
-const router = useRouter()
-
-// Navigation
-const goBack = () => {
-  router.back()
-}
+const { fromUTCString, toUTCString } = useUTCDateFormat()
 
 // Set page title
 useHead({
@@ -641,12 +615,17 @@ const appliedAdvancedFilters = ref<{
   location: undefined,
 })
 
+const toUtcDateString = (date: Date): string => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return toUTCString(`${y}-${m}-${d}`) ?? `${y}-${m}-${d}T00:00:00.000Z`
+}
+
 // Date range state - default to Jan 1 of current year to today
 const currentYear = new Date().getFullYear()
-const startDateValue = ref<CalendarDate | null>(
-  new CalendarDate(currentYear, 1, 1)
-)
-const endDateValue = ref<CalendarDate | null>(today(getLocalTimeZone()))
+const startDateValue = ref<string | null>(`${currentYear}-01-01T00:00:00.000Z`)
+const endDateValue = ref<string | null>(toUtcDateString(new Date()))
 const transactionRangeOptions = [
   { label: 'Year to date', value: 'YEAR_TO_DATE' },
   { label: 'Month to date', value: 'MONTH_TO_DATE' },
@@ -654,60 +633,43 @@ const transactionRangeOptions = [
   { label: 'Last year', value: 'LAST_YEAR' },
 ]
 
-const toCalendarDate = (date: Date): CalendarDate => {
-  return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate())
-}
-
 const applyTransactionRange = (range: string) => {
   const now = new Date()
-  const today = toCalendarDate(now)
-
   if (range === 'YEAR_TO_DATE') {
-    startDateValue.value = new CalendarDate(now.getFullYear(), 1, 1)
-    endDateValue.value = today
+    startDateValue.value = `${now.getFullYear()}-01-01T00:00:00.000Z`
+    endDateValue.value = toUtcDateString(now)
     return
   }
-
   if (range === 'MONTH_TO_DATE') {
-    startDateValue.value = new CalendarDate(now.getFullYear(), now.getMonth() + 1, 1)
-    endDateValue.value = today
+    startDateValue.value = toUtcDateString(new Date(now.getFullYear(), now.getMonth(), 1))
+    endDateValue.value = toUtcDateString(now)
     return
   }
-
   if (range === 'WEEK_TO_DATE') {
     const start = new Date(now)
     const dayOfWeek = start.getDay()
     const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
     start.setDate(start.getDate() - daysFromMonday)
-    startDateValue.value = toCalendarDate(start)
-    endDateValue.value = today
+    startDateValue.value = toUtcDateString(start)
+    endDateValue.value = toUtcDateString(now)
     return
   }
-
   if (range === 'LAST_YEAR') {
     const lastYear = now.getFullYear() - 1
-    startDateValue.value = new CalendarDate(lastYear, 1, 1)
-    endDateValue.value = new CalendarDate(lastYear, 12, 31)
+    startDateValue.value = `${lastYear}-01-01T00:00:00.000Z`
+    endDateValue.value = `${lastYear}-12-31T00:00:00.000Z`
   }
 }
 
 // Date display text
 const startDateDisplayText = computed(() => {
-  if (!startDateValue.value) return 'Select start date'
-  return startDateValue.value.toDate(getLocalTimeZone()).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
+  if (!startDateValue.value) return ''
+  return new Date(startDateValue.value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
 
 const endDateDisplayText = computed(() => {
-  if (!endDateValue.value) return 'Select end date'
-  return endDateValue.value.toDate(getLocalTimeZone()).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
+  if (!endDateValue.value) return ''
+  return new Date(endDateValue.value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
 
 // Can generate report
@@ -717,12 +679,47 @@ const canGenerateReport = computed(() => {
     selectedProjectId.value &&
     startDateValue.value &&
     endDateValue.value &&
-    startDateValue.value.compare(endDateValue.value) <= 0
+    startDateValue.value <= endDateValue.value
   )
 })
 
 // Currency formatting
-const { formatCurrency } = useCurrencyFormat()
+// Currency export helper
+const exportPoAmount = (record: any, amount: number) =>
+  formatReportPoAmountForExport(amount, record)
+
+const getPoGrandLaborEntries = (po: any): BreakoutCurrencyAmountEntry[] => [
+  { row: po, amount: getPoLaborSubtotal(po) },
+  ...(po.change_orders || []).map((co: any) => ({
+    row: co,
+    amount: getCoLaborSubtotal(co),
+  })),
+]
+
+const getPoGrandTaxEntries = (po: any): BreakoutCurrencyAmountEntry[] => [
+  { row: po, amount: getPoItemsTaxSubtotal(po) },
+  ...(po.change_orders || []).map((co: any) => ({
+    row: co,
+    amount: getCoItemsTaxSubtotal(co),
+  })),
+]
+
+const getPoGrandExpectedEntries = (po: any): BreakoutCurrencyAmountEntry[] => [
+  { row: po, amount: getPoItemsExpectedSubtotal(po) },
+  ...(po.change_orders || []).map((co: any) => ({
+    row: co,
+    amount: getCoItemsExpectedSubtotal(co),
+  })),
+]
+
+const aggregateGrandLabor = (po: any) =>
+  aggregateBreakoutCurrencyAmounts(getPoGrandLaborEntries(po))
+
+const aggregateGrandTax = (po: any) =>
+  aggregateBreakoutCurrencyAmounts(getPoGrandTaxEntries(po))
+
+const aggregateGrandExpected = (po: any) =>
+  aggregateBreakoutCurrencyAmounts(getPoGrandExpectedEntries(po))
 
 // Get project name for print header
 const getProjectName = (): string => {
@@ -737,6 +734,32 @@ const getProjectName = (): string => {
 // Calculate item-level amounts (distributed proportionally)
 const getItemLaborAmount = (item: any): number => {
   return item.po_amount || 0
+}
+
+const getCoLaborAmount = (item: any): number => {
+  return item.co_amount || item.po_amount || 0
+}
+
+const getPoLaborSubtotal = (po: any): number => {
+  return (po.items || []).reduce(
+    (sum: number, item: any) => sum + getItemLaborAmount(item),
+    0
+  )
+}
+
+const getCoLaborSubtotal = (co: any): number => {
+  return (co.labor_items || []).reduce(
+    (sum: number, item: any) => sum + getCoLaborAmount(item),
+    0
+  )
+}
+
+const getGrandLaborSubtotal = (po: any): number => {
+  const coLabor = (po.change_orders || []).reduce(
+    (sum: number, co: any) => sum + getCoLaborSubtotal(co),
+    0
+  )
+  return getPoLaborSubtotal(po) + coLabor
 }
 
 const getItemFreightAmount = (item: any, po: any): number => {
@@ -768,30 +791,78 @@ const getItemOtherAmount = (item: any, po: any): number => {
 }
 
 const getItemHSTAmount = (item: any, po: any): number => {
-  // Calculate total taxes as sum of all sales taxes
   const totalTaxes = (po.sales_tax_1_amount || 0) + (po.sales_tax_2_amount || 0)
   if (!totalTaxes || totalTaxes === 0) return 0
-  if (!po.item_total || po.item_total === 0) return 0
+  const poSubtotal = getPoLaborSubtotal(po)
+  if (!poSubtotal || poSubtotal === 0) return 0
   const itemAmount = getItemLaborAmount(item)
-  return (itemAmount / po.item_total) * totalTaxes
+  return (itemAmount / poSubtotal) * totalTaxes
+}
+
+const getCoItemHSTAmount = (item: any, co: any): number => {
+  const totalTaxes = (co.sales_tax_1_amount || 0) + (co.sales_tax_2_amount || 0)
+  if (!totalTaxes || totalTaxes === 0) return 0
+  const coSubtotal = getCoLaborSubtotal(co)
+  if (!coSubtotal || coSubtotal === 0) return 0
+  const itemAmount = getCoLaborAmount(item)
+  return (itemAmount / coSubtotal) * totalTaxes
 }
 
 const getItemExpectedCost = (item: any, po: any): number => {
-  const laborAmount = getItemLaborAmount(item)
-  const hstAmount = getItemHSTAmount(item, po)
-  return laborAmount + hstAmount
+  return getItemLaborAmount(item) + getItemHSTAmount(item, po)
+}
+
+const getCoItemExpectedCost = (item: any, co: any): number => {
+  return getCoLaborAmount(item) + getCoItemHSTAmount(item, co)
+}
+
+const getPoItemsTaxSubtotal = (po: any): number => {
+  return (po.items || []).reduce(
+    (sum: number, item: any) => sum + getItemHSTAmount(item, po),
+    0
+  )
+}
+
+const getCoItemsTaxSubtotal = (co: any): number => {
+  return (co.labor_items || []).reduce(
+    (sum: number, item: any) => sum + getCoItemHSTAmount(item, co),
+    0
+  )
+}
+
+const getPoItemsExpectedSubtotal = (po: any): number => {
+  return (po.items || []).reduce(
+    (sum: number, item: any) => sum + getItemExpectedCost(item, po),
+    0
+  )
+}
+
+const getCoItemsExpectedSubtotal = (co: any): number => {
+  return (co.labor_items || []).reduce(
+    (sum: number, item: any) => sum + getCoItemExpectedCost(item, co),
+    0
+  )
+}
+
+const getGrandTaxSubtotal = (po: any): number => {
+  const coTax = (po.change_orders || []).reduce(
+    (sum: number, co: any) => sum + getCoItemsTaxSubtotal(co),
+    0
+  )
+  return getPoItemsTaxSubtotal(po) + coTax
 }
 
 const getTotalExpectedCosts = (po: any): number => {
-  // Total expected costs = labor amount (item_total) + HST
-  const laborTotal = po.item_total || 0
-  const hstTotal = (po.sales_tax_1_amount || 0) + (po.sales_tax_2_amount || 0)
-  return laborTotal + hstTotal
+  const coExpected = (po.change_orders || []).reduce(
+    (sum: number, co: any) => sum + getCoItemsExpectedSubtotal(co),
+    0
+  )
+  return getPoItemsExpectedSubtotal(po) + coExpected
 }
 
-// Dynamic colspan: 4 base columns (Cost Code, Cost Code Description, Labor Amount, Expected Costs)
+// Dynamic colspan: 5 base columns (Cost Code, Cost Code Description, Labor Amount, Taxes, Expected Costs)
 // + 2 when location-wise (Location, Description)
-const reportColspan = computed(() => isLocationWiseEnabled.value ? 6 : 4)
+const reportColspan = computed(() => isLocationWiseEnabled.value ? 7 : 5)
 
 // Location-wise helpers
 const getItemDescription = (item: any): string => {
@@ -846,14 +917,13 @@ const loadReport = async () => {
   error.value = null
   
   try {
-    const startDateStr = `${startDateValue.value.year}-${String(startDateValue.value.month).padStart(2, '0')}-${String(startDateValue.value.day).padStart(2, '0')}`
-    const endDateStr = `${endDateValue.value.year}-${String(endDateValue.value.month).padStart(2, '0')}-${String(endDateValue.value.day).padStart(2, '0')}`
-    const isWithinSelectedDateRange = (value?: string | null) => {
-      const date = dayjs(value)
-      if (!date.isValid()) return false
-      const recordDate = date.format('YYYY-MM-DD')
-      return recordDate >= startDateStr && recordDate <= endDateStr
-    }
+    const isWithinSelectedDateRange = (value?: string | null) =>
+      isWithinCalendarDateRange(
+        value,
+        startDateValue.value,
+        endDateValue.value,
+        fromUTCString
+      )
     
     // Fetch purchase orders
     const params: any = {
@@ -889,7 +959,8 @@ const loadReport = async () => {
       const vendorResponse: any = await $fetch('/api/purchase-orders/vendors', {
         method: 'GET',
         params: {
-          corporation_uuid: selectedCorporationId.value
+          corporation_uuid: selectedCorporationId.value,
+          include_inactive: 'true',
         }
       })
       vendors = vendorResponse?.data || []
@@ -1018,6 +1089,151 @@ const loadReport = async () => {
 
 const printReport = () => {
   window.print()
+}
+
+const exportReportToCsv = () => {
+  const data = filteredReportData.value
+  if (!data?.length) return
+
+  const headers = [
+    'PO Number',
+    'CO Number',
+    'Vendor',
+    'Status',
+    'Cost Code',
+    'Cost Code Description',
+  ]
+  if (isLocationWiseEnabled.value) {
+    headers.push('Location', 'Description')
+  }
+  headers.push('Labor Amount', 'Taxes', 'Expected Costs')
+
+  const rows: unknown[][] = [headers]
+
+  for (const po of data) {
+    rows.push([
+      po.po_number || '',
+      '',
+      po.vendor_name || '',
+      po.status || '',
+      'PO Header',
+      '',
+      ...(isLocationWiseEnabled.value ? ['', ''] : []),
+      '',
+      '',
+      '',
+    ])
+
+    for (const item of po.items || []) {
+      rows.push([
+        po.po_number || '',
+        '',
+        po.vendor_name || '',
+        po.status || '',
+        item.cost_code_number || '',
+        item.cost_code_name || item.cost_code_label || '',
+        ...(isLocationWiseEnabled.value
+          ? [getItemLocationName(item), getItemDescription(item)]
+          : []),
+        exportPoAmount(po, item.po_amount || 0),
+        exportPoAmount(po, getItemHSTAmount(item, po)),
+        exportPoAmount(po, getItemExpectedCost(item, po)),
+      ])
+    }
+
+    if (po.items?.length) {
+      rows.push([
+        po.po_number || '',
+        '',
+        po.vendor_name || '',
+        po.status || '',
+        'PO Items Subtotal',
+        '',
+        ...(isLocationWiseEnabled.value ? ['', ''] : []),
+        exportPoAmount(po, getPoLaborSubtotal(po)),
+        exportPoAmount(po, getPoItemsTaxSubtotal(po)),
+        exportPoAmount(po, getPoItemsExpectedSubtotal(po)),
+      ])
+    }
+
+    for (const co of po.change_orders || []) {
+      rows.push([
+        po.po_number || '',
+        co.co_number || '',
+        po.vendor_name || '',
+        co.status || '',
+        '', '',
+        ...(isLocationWiseEnabled.value ? ['', ''] : []),
+        '', '', '',
+      ])
+
+      for (const item of co.labor_items || []) {
+        rows.push([
+          po.po_number || '',
+          co.co_number || '',
+          po.vendor_name || '',
+          co.status || '',
+          item.cost_code_number || '',
+          item.cost_code_name || item.cost_code_label || '',
+          ...(isLocationWiseEnabled.value
+            ? [getItemLocationName(item), getItemDescription(item)]
+            : []),
+          exportPoAmount(co, getCoLaborAmount(item)),
+          exportPoAmount(co, getCoItemHSTAmount(item, co)),
+          exportPoAmount(co, getCoItemExpectedCost(item, co)),
+        ])
+      }
+
+      if (co.labor_items?.length) {
+        rows.push([
+          po.po_number || '',
+          co.co_number || '',
+          po.vendor_name || '',
+          co.status || '',
+          `CO Items Subtotal — ${co.co_number || 'N/A'}`,
+          '',
+          ...(isLocationWiseEnabled.value ? ['', ''] : []),
+          exportPoAmount(co, getCoLaborSubtotal(co)),
+          exportPoAmount(co, getCoItemsTaxSubtotal(co)),
+          exportPoAmount(co, getCoItemsExpectedSubtotal(co)),
+        ])
+      }
+    }
+
+    rows.push([
+      po.po_number || '',
+      '',
+      po.vendor_name || '',
+      po.status || '',
+      'Total',
+      '',
+      ...(isLocationWiseEnabled.value ? ['', ''] : []),
+      formatReportBreakoutAggregateForExport(getPoGrandLaborEntries(po)),
+      formatReportBreakoutAggregateForExport(getPoGrandTaxEntries(po)),
+      formatReportBreakoutAggregateForExport(getPoGrandExpectedEntries(po)),
+    ])
+  }
+
+  const project = projectsStore.projects.find((p) => p.uuid === selectedProjectId.value)
+  void downloadReportExcelFile(
+    buildReportExcelFilename('labor-purchase-order-breakout', project?.project_id),
+    {
+      title: 'Labor Purchase Order Breakout',
+      corporationName: resolveCorporationDisplayName(
+        corporationStore.corporations as any[],
+        selectedCorporationId.value
+      ),
+      projectLabel: resolveProjectDisplayLabel(
+        projectsStore.projects as any[],
+        selectedProjectId.value
+      ),
+      dateRange: formatReportDateRangeDisplay(
+        startDateValue.value,
+        endDateValue.value
+      ),
+    },
+    rows
+  )
 }
 
 const syncCorporationFromStoreOrNimble = async () => {
