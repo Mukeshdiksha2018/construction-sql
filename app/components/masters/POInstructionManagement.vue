@@ -335,27 +335,27 @@ const columns: TableColumn<POInstruction>[] = [
     accessorKey: 'po_instruction_name',
     header: 'PO Instruction Name',
     enableSorting: false,
-    meta: { style: { th: 'width: 25%; min-width: 200px;', td: 'width: 25%; min-width: 200px;' } },
-    cell: ({ row }) => h('div', { class: 'font-medium text-default' }, row.original.po_instruction_name),
+    meta: { class: { th: 'text-left min-w-[200px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'font-medium text-default truncate max-w-[240px]' }, row.original.po_instruction_name),
   },
   {
     accessorKey: 'instruction',
     header: 'Instruction',
     enableSorting: false,
-    meta: { style: { th: 'width: 45%; max-width: 400px;', td: 'width: 45%; max-width: 400px;' } },
+    meta: { class: { th: 'text-left min-w-[280px]', td: 'text-left' } },
     cell: ({ row }) => {
       const text = row.original.instruction || ''
       if (text.length > 80) {
-        return h(UTooltip, { text }, () => h('div', { class: 'text-default text-sm truncate cursor-help', style: 'max-width: 380px;' }, text))
+        return h(UTooltip, { text }, () => h('div', { class: 'text-default text-sm truncate max-w-[380px] cursor-help' }, text))
       }
-      return h('div', { class: 'text-default text-sm truncate', style: 'max-width: 380px;' }, text)
+      return h('div', { class: 'text-default text-sm truncate max-w-[380px]' }, text)
     },
   },
   {
     accessorKey: 'status',
     header: 'Status',
     enableSorting: false,
-    meta: { style: { th: 'width: 15%;', td: 'width: 15%;' } },
+    meta: { class: { th: 'text-left min-w-[90px]', td: 'text-left' } },
     cell: ({ row }) => {
       const status = row.original.status
       return h(UBadge, { color: status === 'ACTIVE' ? 'success' : 'neutral', variant: 'soft', size: 'sm' }, () =>

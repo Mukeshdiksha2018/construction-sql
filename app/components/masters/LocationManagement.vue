@@ -249,24 +249,28 @@ const columns: TableColumn<Location>[] = [
     accessorKey: 'location_name',
     header: 'Name',
     enableSorting: false,
-    cell: ({ row }) => h('div', { class: 'font-medium text-default' }, row.original.location_name),
+    meta: { class: { th: 'text-left min-w-[140px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'font-medium text-default truncate max-w-[180px]' }, row.original.location_name),
   },
   {
     accessorKey: 'location_code',
     header: 'Code',
     enableSorting: false,
-    cell: ({ row }) => h('div', { class: 'text-default text-sm' }, row.original.location_code || '-'),
+    meta: { class: { th: 'text-left min-w-[100px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'text-default text-sm font-mono' }, row.original.location_code || '-'),
   },
   {
     accessorKey: 'description',
     header: 'Description',
     enableSorting: false,
-    cell: ({ row }) => h('div', { class: 'text-default text-sm truncate', style: 'max-width: 380px;' }, row.original.description || '-'),
+    meta: { class: { th: 'text-left min-w-[240px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'text-default text-sm truncate max-w-[380px]' }, row.original.description || '-'),
   },
   {
     accessorKey: 'active',
     header: 'Status',
     enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[90px]', td: 'text-left' } },
     cell: ({ row }) =>
       h(UBadge, { color: row.original.active ? 'success' : 'neutral', variant: 'soft', size: 'sm' }, () =>
         row.original.active ? 'Active' : 'Inactive'),

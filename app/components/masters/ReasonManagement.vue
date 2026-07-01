@@ -217,19 +217,21 @@ const columns: TableColumn<Reason>[] = [
     accessorKey: 'reason',
     header: 'Reason',
     enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[300px]', td: 'text-left' } },
     cell: ({ row }) => {
       const value = row.original.reason || '-'
       if (value.length > 100) {
         return h(UTooltip, { text: value }, () =>
-          h('div', { class: 'text-default text-sm truncate cursor-help', style: 'max-width: 500px;' }, value))
+          h('div', { class: 'font-medium text-default truncate max-w-[500px] cursor-help' }, value))
       }
-      return h('div', { class: 'text-default text-sm whitespace-pre-wrap break-words', style: 'max-width: 500px;' }, value)
+      return h('div', { class: 'font-medium text-default whitespace-pre-wrap break-words max-w-[500px]' }, value)
     },
   },
   {
     accessorKey: 'active',
     header: 'Status',
     enableSorting: false,
+    meta: { class: { th: 'text-left min-w-[90px]', td: 'text-left' } },
     cell: ({ row }) =>
       h(UBadge, { color: row.original.active ? 'success' : 'neutral', variant: 'soft', size: 'sm' }, () =>
         row.original.active ? 'Active' : 'Inactive'),

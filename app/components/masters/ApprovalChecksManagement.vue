@@ -237,24 +237,24 @@ const columns: TableColumn<ApprovalCheck>[] = [
     accessorKey: 'approval_check',
     header: 'Approval Check',
     enableSorting: false,
-    meta: { style: { th: 'width: 25%; min-width: 200px;', td: 'width: 25%; min-width: 200px;' } },
-    cell: ({ row }) => h('div', { class: 'font-medium text-default' }, row.original.approval_check),
+    meta: { class: { th: 'text-left min-w-[180px]', td: 'text-left' } },
+    cell: ({ row }) => h('div', { class: 'font-medium text-default truncate max-w-[220px]' }, row.original.approval_check),
   },
   {
     accessorKey: 'description',
     header: 'Description',
     enableSorting: false,
-    meta: { style: { th: 'width: 45%; max-width: 400px;', td: 'width: 45%; max-width: 400px;' } },
+    meta: { class: { th: 'text-left min-w-[280px]', td: 'text-left' } },
     cell: ({ row }) => {
       const d = row.original.description || ''
-      return h('div', { class: 'text-default text-sm truncate', style: 'max-width: 380px;' }, d || '-')
+      return h('div', { class: 'text-default text-sm truncate max-w-[380px]' }, d || '-')
     },
   },
   {
     accessorKey: 'active',
     header: 'Active',
     enableSorting: false,
-    meta: { style: { th: 'width: 15%;', td: 'width: 15%;' } },
+    meta: { class: { th: 'text-left min-w-[90px]', td: 'text-left' } },
     cell: ({ row }) => {
       const active = row.original.active
       return h(UBadge, { color: active ? 'success' : 'neutral', variant: 'soft', size: 'sm' }, () =>
