@@ -12,7 +12,20 @@ export default defineNuxtConfig({
   vite: {
     plugins: [tailwindcss()],
     optimizeDeps: {
-      include: ['dexie'],
+      include: [
+        'dexie',
+        'pinia-plugin-persistedstate',
+        '@vue/devtools-core',
+        '@vue/devtools-kit',
+        '@internationalized/date',
+        'dayjs',
+        'dayjs/plugin/utc',
+        'dayjs/plugin/timezone',
+        'dayjs/plugin/customParseFormat',
+        '@tanstack/vue-table',
+        'html-to-image',
+        'jspdf',
+      ],
     },
   },
   css: ['~/assets/css/main.css'],
