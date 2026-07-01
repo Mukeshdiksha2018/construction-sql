@@ -527,13 +527,6 @@
       <p class="text-gray-500 text-lg">Loading...</p>
     </div>
 
-    <div v-else-if="!isReady" class="text-center py-12">
-      <div class="text-gray-400 mb-4">
-        <UIcon name="i-heroicons-lock-closed" class="w-12 h-12 mx-auto" />
-      </div>
-      <p class="text-gray-500 text-lg">Loading...</p>
-    </div>
-
     <div v-else class="text-center py-12">
       <div class="text-gray-400 mb-4">
         <UIcon name="i-heroicons-document-text" class="w-12 h-12 mx-auto" />
@@ -552,57 +545,14 @@
       </UButton>
     </div>
 
-    <!-- Delete Confirmation Modal -->
-    <UModal v-model:open="showDeleteModal" :title="'Delete Vendor Invoice'">
-      <template #body>
-        <div class="p-6">
-          <div class="flex items-center mb-4">
-            <UIcon name="i-heroicons-exclamation-triangle" class="w-8 h-8 text-red-500 mr-3" />
-            <div>
-              <h3 class="text-lg font-medium text-gray-900">Delete Vendor Invoice</h3>
-              <p class="text-sm text-gray-500">This action cannot be undone.</p>
-            </div>
-          </div>
-          
-          <div v-if="invoiceToDelete" class="bg-gray-50 p-4 rounded-lg mb-4">
-            <p class="text-sm text-gray-700">
-              <strong>Invoice Number:</strong> {{ invoiceToDelete.number || 'N/A' }}<br>
-              <strong>Bill Date:</strong> {{ formatBillDate(invoiceToDelete.bill_date) }}<br>
-              <strong>Vendor:</strong> {{ invoiceToDelete.vendor_name || 'N/A' }}<br>
-              <strong>Amount:</strong> {{ formatCurrency(invoiceToDelete.amount || 0) }}<br>
-            </p>
-          </div>
-          
-          <p class="text-gray-600">
-            Are you sure you want to delete this vendor invoice? This will permanently remove the invoice and all associated data.
-          </p>
-        </div>
-      </template>
-
-      <template #footer>
-        <div class="flex justify-end gap-3">
-          <UButton
-            color="neutral"
-            variant="soft"
-            :disabled="deletingInvoice"
-            @click="cancelDelete"
-          >
-            Cancel
-          </UButton>
-          <UButton
-            color="error"
-            :loading="deletingInvoice"
-            :disabled="deletingInvoice"
-            @click="confirmDelete"
-          >
-            Delete Vendor Invoice
-          </UButton>
-        </div>
-      </template>
-    </UModal>
-
     <!-- Create/Edit/View Vendor Invoice Modal -->
-    <UModal v-model:open="showFormModal" :title="formModalTitle" fullscreen scrollable>
+    <UModal
+      v-model:open="showFormModal"
+      :title="formModalTitle"
+      fullscreen
+      scrollable
+      :ui="fullscreenFormModalUi"
+    >
       <template #header>
         <div class="flex items-center justify-between w-full gap-4">
           <div class="flex items-center gap-4 flex-shrink-0">
@@ -776,6 +726,55 @@
           :readonly="isViewMode || isReadOnlyStatus"
           :total-invoice-amount-error="totalInvoiceAmountError"
         />
+      </template>
+    </UModal>
+
+    <!-- Delete confirmation must render after the fullscreen form modal so it stacks on top. -->
+    <UModal v-model:open="showDeleteModal" :title="'Delete Vendor Invoice'">
+      <template #body>
+        <div class="p-6">
+          <div class="flex items-center mb-4">
+            <UIcon name="i-heroicons-exclamation-triangle" class="w-8 h-8 text-red-500 mr-3" />
+            <div>
+              <h3 class="text-lg font-medium text-gray-900">Delete Vendor Invoice</h3>
+              <p class="text-sm text-gray-500">This action cannot be undone.</p>
+            </div>
+          </div>
+          
+          <div v-if="invoiceToDelete" class="bg-gray-50 p-4 rounded-lg mb-4">
+            <p class="text-sm text-gray-700">
+              <strong>Invoice Number:</strong> {{ invoiceToDelete.number || 'N/A' }}<br>
+              <strong>Bill Date:</strong> {{ formatBillDate(invoiceToDelete.bill_date) }}<br>
+              <strong>Vendor:</strong> {{ invoiceToDelete.vendor_name || 'N/A' }}<br>
+              <strong>Amount:</strong> {{ formatCurrency(invoiceToDelete.amount || 0) }}<br>
+            </p>
+          </div>
+          
+          <p class="text-gray-600">
+            Are you sure you want to delete this vendor invoice? This will permanently remove the invoice and all associated data.
+          </p>
+        </div>
+      </template>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <UButton
+            color="neutral"
+            variant="soft"
+            :disabled="deletingInvoice"
+            @click="cancelDelete"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            color="error"
+            :loading="deletingInvoice"
+            :disabled="deletingInvoice"
+            @click="confirmDelete"
+          >
+            Delete Vendor Invoice
+          </UButton>
+        </div>
       </template>
     </UModal>
   </div>
@@ -1000,6 +999,13 @@ const sorting = ref([])
 const showDeleteModal = ref(false)
 const invoiceToDelete = ref<any>(null)
 const showFormModal = ref(false)
+const fullscreenFormModalUi = {
+  content:
+    'fixed inset-0 z-[100] flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col rounded-none shadow-lg ring ring-default',
+  body: 'flex-1 min-h-0 overflow-y-auto p-4 sm:p-6',
+  header: 'flex-shrink-0 px-4 sm:px-6 py-4 border-b border-default',
+  footer: 'flex-shrink-0',
+}
 const isViewMode = ref(false)
 const isEditingExistingInvoice = ref(false)
 const formKey = ref(0) // Key to force VendorInvoiceForm remount

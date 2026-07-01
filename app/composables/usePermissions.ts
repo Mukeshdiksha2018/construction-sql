@@ -22,8 +22,8 @@ export function usePermissions() {
     String(runtimeConfig.public.nimbleIntegrations || '').toLowerCase() === 'true',
   )
 
-  /** True once both auth is resolved. */
-  const isReady = computed(() => authStore.isAuthenticated)
+  /** True once auth is resolved on the client; always true during SSR to avoid hydration mismatches. */
+  const isReady = computed(() => import.meta.server || authStore.isAuthenticated)
 
   /**
    * Check whether the current user has a named permission.
