@@ -76,13 +76,11 @@
               </div>
 
               <div>
-                <label class="block text-xs font-medium text-default mb-1">Credit Days</label>
-                <USelect
-                  v-model="form.credit_days_id"
-                  :items="creditDaySelectOptions"
+                <CreditDaysSelect
+                  v-model="creditDaysModel"
                   placeholder="Select credit days"
                   size="sm"
-                  class="w-full"
+                  :show-add-button="false"
                 />
               </div>
 
@@ -214,6 +212,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import CorporationSelect from '~/components/shared/CorporationSelect.vue'
+import CreditDaysSelect from '~/components/shared/CreditDaysSelect.vue'
 import CustomAccordion from '~/components/shared/CustomAccordion.vue'
 import { useCreditDaysOptions } from '~/composables/useCreditDaysOptions'
 import { useVendorStore, type NimbleDbVendor } from '~/stores/vendors'
@@ -232,7 +231,7 @@ const emit = defineEmits<{
 const vendorStore = useVendorStore()
 const corpStore = useCorporationStore()
 const toast = useToast()
-const { creditDaysOptions, refreshCreditDaysOptions } = useCreditDaysOptions()
+const { refreshCreditDaysOptions } = useCreditDaysOptions()
 
 const submitting = ref(false)
 const savedVendor = ref<NimbleDbVendor | null>(null)
@@ -302,12 +301,19 @@ function resolveCorporationId(corporationId: string): string {
   return match?.id ?? corporationId
 }
 
-const creditDaySelectOptions = computed(() =>
-  creditDaysOptions.value.map(o => ({
-    label: o.label,
-    value: o.id || o.value,
-  })),
-)
+function normalizeCreditDaysId(creditDaysId: string | null | undefined): string {
+  return creditDaysId ? String(creditDaysId).trim().toLowerCase() : ''
+}
+
+const creditDaysModel = computed({
+  get: () => ({
+    credit_days: null,
+    credit_days_id: form.value.credit_days_id || null,
+  }),
+  set: (value: { credit_days: string | null, credit_days_id: string | null }) => {
+    form.value.credit_days_id = value.credit_days_id || ''
+  },
+})
 
 const isValid = computed(() =>
   form.value.corporation_id.trim() !== ''
@@ -321,7 +327,7 @@ function vendorToForm(vendor: NimbleDbVendor) {
     name: vendor.name,
     federal_id: vendor.federal_id ?? vendor.tax_id ?? '',
     ssn: vendor.ssn ?? '',
-    credit_days_id: vendor.credit_days_id ?? '',
+    credit_days_id: normalizeCreditDaysId(vendor.credit_days_id),
     print_check_as: vendor.print_check_as ?? '',
     is_1099: vendor.is_1099 ?? false,
     status: vendor.status === 3 ? 1 : (vendor.status as 0 | 1),
@@ -346,12 +352,11 @@ watch(() => corpStore.selectedCorporation?.id, (id) => {
   }
 })
 
-function onOpenChange(value: boolean) {
+async function onOpenChange(value: boolean) {
   if (value) {
-    corpStore.ensureReady().then(() => {
-      refreshCreditDaysOptions()
-      resetForm()
-    })
+    await corpStore.ensureReady()
+    await refreshCreditDaysOptions()
+    resetForm()
   }
   else {
     savedVendor.value = null

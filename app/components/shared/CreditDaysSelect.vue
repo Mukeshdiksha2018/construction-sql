@@ -169,8 +169,9 @@ const selectedOption = computed<CreditDaysOption | undefined>(() => {
   const id = props.modelValue?.credit_days_id;
   if (!v && !id) return undefined;
   if (id) {
-    const byId = creditDaysOptions.value.find((opt) => String(opt.id || '') === String(id));
-    if (byId) return byId;
+    const idLower = String(id).toLowerCase()
+    const byId = creditDaysOptions.value.find((opt) => String(opt.id || '').toLowerCase() === idLower)
+    if (byId) return byId
   }
   const target = String(v || '').toLowerCase();
   let found = creditDaysOptions.value.find((opt) => String(opt.value).toLowerCase() === target);
