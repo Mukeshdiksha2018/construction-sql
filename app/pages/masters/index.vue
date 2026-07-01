@@ -16,6 +16,9 @@
       <section v-else-if="activeTab === 'reason'">
         <MastersReason />
       </section>
+      <section v-else-if="activeTab === 'credit-days'">
+        <MastersCreditDays />
+      </section>
       <p v-else class="text-muted text-sm">
         No master screen available for this menu.
       </p>
@@ -41,6 +44,7 @@ import MastersApprovalChecks from '~/components/masters/ApprovalChecks.vue'
 import MastersPOInstruction from '~/components/masters/POInstruction.vue'
 import MastersLocation from '~/components/masters/Location.vue'
 import MastersReason from '~/components/masters/Reason.vue'
+import MastersCreditDays from '~/components/masters/CreditDays.vue'
 import { MASTERS_TABS, useTabRouting } from '~/composables/useTabRouting'
 import { getVisibleTabsForNimble, NIMBLE_MENU_IDS_BY_MASTERS_TAB } from '~/utils/nimbleMenuIds'
 

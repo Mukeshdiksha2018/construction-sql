@@ -15,7 +15,9 @@ export function useCreditDaysOptions() {
 
     _fetchPromise = (async () => {
       try {
-        const response = await $fetch<{ data: CreditDaysOption[] }>('/api/credit-days')
+        const response = await $fetch<{ data: CreditDaysOption[] }>('/api/credit-days', {
+          credentials: 'include',
+        })
         const items = Array.isArray(response?.data) ? response.data : []
         if (items.length > 0) {
           creditDaysOptions.value = items

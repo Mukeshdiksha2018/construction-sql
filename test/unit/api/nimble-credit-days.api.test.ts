@@ -3,154 +3,115 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.stubGlobal('defineEventHandler', (handler: (event: unknown) => unknown) => handler)
 vi.stubGlobal('createError', createError)
+vi.stubGlobal('getQuery', vi.fn())
+vi.stubGlobal('readBody', vi.fn())
+vi.stubGlobal('getRouterParam', vi.fn())
 
+const mockUseAuth = vi.fn()
+const mockListNimbleCreditDays = vi.fn()
+const mockListCreditDaysOptions = vi.fn()
+const mockCreateNimbleCreditDays = vi.fn()
+const mockUpdateNimbleCreditDays = vi.fn()
+const mockSoftDeleteNimbleCreditDays = vi.fn()
+const mockParseNimbleCreditDaysBody = vi.fn()
 const mockRequireAuthSession = vi.fn()
-const mockUseRuntimeConfig = vi.fn()
-const mockFetch = vi.fn()
 
-vi.stubGlobal('useRuntimeConfig', mockUseRuntimeConfig)
-vi.stubGlobal('$fetch', mockFetch)
+vi.mock('../../../server/utils/use-auth', () => ({
+  useAuth: (event: unknown) => mockUseAuth(event),
+}))
 
 vi.mock('../../../server/utils/auth-session', () => ({
   requireAuthSession: (event: unknown) => mockRequireAuthSession(event),
 }))
 
-function makeCreditDaysDto(overrides: Record<string, unknown> = {}) {
-  return { id: 'cd-uuid-001', name: 'Net 30', creditDays: 30, status: 0, ...overrides }
+vi.mock('../../../server/utils/nimbleCreditDays', () => ({
+  listNimbleCreditDays: (...args: unknown[]) => mockListNimbleCreditDays(...args),
+  listCreditDaysOptions: (...args: unknown[]) => mockListCreditDaysOptions(...args),
+  createNimbleCreditDays: (...args: unknown[]) => mockCreateNimbleCreditDays(...args),
+  updateNimbleCreditDays: (...args: unknown[]) => mockUpdateNimbleCreditDays(...args),
+  softDeleteNimbleCreditDays: (...args: unknown[]) => mockSoftDeleteNimbleCreditDays(...args),
+  parseNimbleCreditDaysBody: (...args: unknown[]) => mockParseNimbleCreditDaysBody(...args),
+}))
+
+const sampleRow = {
+  credit_days_id: 'cd-1',
+  name: 'Net 30',
+  interval_days: 30,
+  status: 1,
+  status_label: 'active',
+  client_id: null,
+  is_default: false,
 }
 
-function makeNimbleResponse(items = [makeCreditDaysDto()]) {
-  return { listInfo: items }
-}
-
-describe('GET /api/credit-days', () => {
-  const mockEvent = { path: '/api/credit-days' }
-
+describe('nimble credit days API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockRequireAuthSession.mockReturnValue({ token: 'test-bearer-token' })
-    mockUseRuntimeConfig.mockReturnValue({ nimbleApi3Url: 'https://qa-api3.nimbleproperty.net' })
-    mockFetch.mockResolvedValue(makeNimbleResponse())
-  })
-
-  async function loadHandler() {
-    const mod = await import('../../../server/api/credit-days/index.get')
-    return (mod as any).default ?? mod
-  }
-
-  it('calls Nimble /v1/GetCreditDaysList with Bearer token', async () => {
-    const handler = await loadHandler()
-    await handler(mockEvent)
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://qa-api3.nimbleproperty.net/v1/GetCreditDaysList',
-      { headers: { Authorization: 'Bearer test-bearer-token' } },
-    )
-  })
-
-  it('maps listInfo to { id, label, value, days }', async () => {
-    mockFetch.mockResolvedValue(makeNimbleResponse([
-      makeCreditDaysDto({ id: 'ID-ABC', name: 'Net 30', creditDays: 30 }),
-    ]))
-
-    const handler = await loadHandler()
-    const result = await handler(mockEvent) as { data: any[] }
-
-    expect(result.data).toHaveLength(1)
-    expect(result.data[0]).toMatchObject({
-      id: 'id-abc',
-      label: 'Net 30',
-      value: 'NET_30',
-      days: 30,
+    mockUseAuth.mockReturnValue({ session: { userID: 'user-1' } })
+    mockRequireAuthSession.mockReturnValue({ token: 'token' })
+    mockListNimbleCreditDays.mockResolvedValue([sampleRow])
+    mockListCreditDaysOptions.mockResolvedValue([
+      { id: 'cd-1', label: 'Net 30', value: 'NET_30', days: 30 },
+    ])
+    mockCreateNimbleCreditDays.mockResolvedValue(sampleRow)
+    mockUpdateNimbleCreditDays.mockResolvedValue(sampleRow)
+    mockSoftDeleteNimbleCreditDays.mockResolvedValue({ ...sampleRow, status: 3, status_label: 'deleted' })
+    mockParseNimbleCreditDaysBody.mockReturnValue({
+      name: 'Net 30',
+      interval_days: 30,
+      status: 1,
     })
   })
 
-  it('lowercases the id', async () => {
-    mockFetch.mockResolvedValue(makeNimbleResponse([
-      makeCreditDaysDto({ id: 'UPPER-ID-001' }),
-    ]))
-    const handler = await loadHandler()
-    const result = await handler(mockEvent) as { data: any[] }
-    expect(result.data[0].id).toBe('upper-id-001')
+  it('GET /api/nimble-credit-days returns credit_days list', async () => {
+    vi.mocked(getQuery).mockReturnValue({})
+    const { default: handler } = await import('../../../server/api/nimble-credit-days/index.get')
+    const result = await handler({}) as { credit_days: unknown[] }
+
+    expect(mockListNimbleCreditDays).toHaveBeenCalledWith({ status: undefined, includeDeleted: false })
+    expect(result.credit_days).toHaveLength(1)
   })
 
-  it('converts name to uppercase_underscore value', async () => {
-    mockFetch.mockResolvedValue(makeNimbleResponse([
-      makeCreditDaysDto({ name: 'Net 15', creditDays: 15 }),
-      makeCreditDaysDto({ id: 'id2', name: '50% DEPOSIT BAL', creditDays: 80 }),
-    ]))
-    const handler = await loadHandler()
-    const result = await handler(mockEvent) as { data: any[] }
-    expect(result.data[0].value).toBe('NET_15')
-    expect(result.data[1].value).toBe('50%_DEPOSIT_BAL')
+  it('GET /api/credit-days returns dropdown options from MSSQL service', async () => {
+    const { default: handler } = await import('../../../server/api/credit-days/index.get')
+    const result = await handler({}) as { data: unknown[] }
+
+    expect(mockRequireAuthSession).toHaveBeenCalled()
+    expect(mockListCreditDaysOptions).toHaveBeenCalled()
+    expect(result.data[0]).toMatchObject({ id: 'cd-1', label: 'Net 30' })
   })
 
-  it('sets days to null when creditDays is null', async () => {
-    mockFetch.mockResolvedValue(makeNimbleResponse([
-      makeCreditDaysDto({ creditDays: null }),
-    ]))
-    const handler = await loadHandler()
-    const result = await handler(mockEvent) as { data: any[] }
-    expect(result.data[0].days).toBeNull()
+  it('POST /api/nimble-credit-days creates credit days', async () => {
+    vi.mocked(readBody).mockResolvedValue({ name: 'Net 30', interval: 30 })
+    const { default: handler } = await import('../../../server/api/nimble-credit-days/index.post')
+    const result = await handler({}) as { credit_days: { name: string } }
+
+    expect(mockParseNimbleCreditDaysBody).toHaveBeenCalled()
+    expect(mockCreateNimbleCreditDays).toHaveBeenCalled()
+    expect(result.credit_days.name).toBe('Net 30')
   })
 
-  it('returns empty data array when listInfo is empty', async () => {
-    mockFetch.mockResolvedValue({ listInfo: [] })
-    const handler = await loadHandler()
-    const result = await handler(mockEvent) as { data: any[] }
-    expect(result.data).toEqual([])
+  it('POST /api/nimble/credit-days returns legacy ID/Name shape', async () => {
+    vi.mocked(readBody).mockResolvedValue({ name: 'Net 30', interval: 30 })
+    const { default: handler } = await import('../../../server/api/nimble/credit-days.post')
+    const result = await handler({}) as { ID: string, Name: string }
+
+    expect(result).toEqual({ ID: 'cd-1', Name: 'Net 30' })
   })
 
-  it('handles missing listInfo key gracefully', async () => {
-    mockFetch.mockResolvedValue({})
-    const handler = await loadHandler()
-    const result = await handler(mockEvent) as { data: any[] }
-    expect(result.data).toEqual([])
+  it('PUT /api/nimble-credit-days/:id updates credit days', async () => {
+    vi.mocked(getRouterParam).mockReturnValue('cd-1')
+    vi.mocked(readBody).mockResolvedValue({ name: 'Net 45', interval: 45, active: true })
+    const { default: handler } = await import('../../../server/api/nimble-credit-days/[id].put')
+    await handler({})
+
+    expect(mockUpdateNimbleCreditDays).toHaveBeenCalledWith('cd-1', expect.any(Object))
   })
 
-  it('returns multiple credit-days options', async () => {
-    mockFetch.mockResolvedValue(makeNimbleResponse([
-      makeCreditDaysDto({ id: 'id1', name: 'Net 15', creditDays: 15 }),
-      makeCreditDaysDto({ id: 'id2', name: 'Net 30', creditDays: 30 }),
-      makeCreditDaysDto({ id: 'id3', name: 'Net 45', creditDays: 45 }),
-    ]))
-    const handler = await loadHandler()
-    const result = await handler(mockEvent) as { data: any[] }
-    expect(result.data).toHaveLength(3)
-    expect(result.data.map((d: any) => d.days)).toEqual([15, 30, 45])
-  })
+  it('DELETE /api/nimble-credit-days/:id soft deletes credit days', async () => {
+    vi.mocked(getRouterParam).mockReturnValue('cd-1')
+    const { default: handler } = await import('../../../server/api/nimble-credit-days/[id].delete')
+    await handler({})
 
-  it('throws 500 when NIMBLE_API3_URL is not configured', async () => {
-    mockUseRuntimeConfig.mockReturnValue({ nimbleApi3Url: '' })
-    const handler = await loadHandler()
-    await expect(handler(mockEvent)).rejects.toMatchObject({
-      statusCode: 500,
-      statusMessage: 'NIMBLE_API3_URL is not configured',
-    })
-  })
-
-  it('uses the session token for auth', async () => {
-    mockRequireAuthSession.mockReturnValue({ token: 'api3-token-xyz' })
-    const handler = await loadHandler()
-    await handler(mockEvent)
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.any(String),
-      { headers: { Authorization: 'Bearer api3-token-xyz' } },
-    )
-  })
-
-  it('throws 502 when Nimble API call fails without statusCode', async () => {
-    mockFetch.mockRejectedValue(new Error('Network error'))
-    const handler = await loadHandler()
-    await expect(handler(mockEvent)).rejects.toMatchObject({
-      statusCode: 502,
-      statusMessage: 'Failed to fetch Credit Days list from Nimble',
-    })
-  })
-
-  it('preserves upstream statusCode on Nimble error', async () => {
-    mockFetch.mockRejectedValue({ statusCode: 403, message: 'Forbidden' })
-    const handler = await loadHandler()
-    await expect(handler(mockEvent)).rejects.toMatchObject({ statusCode: 403 })
+    expect(mockSoftDeleteNimbleCreditDays).toHaveBeenCalledWith('cd-1')
   })
 })

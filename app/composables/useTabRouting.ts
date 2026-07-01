@@ -22,6 +22,7 @@ export type MastersTabName =
   | 'po-instruction'
   | 'location'
   | 'reason'
+  | 'credit-days'
 
 export interface TabConfig {
   name: string
@@ -63,6 +64,7 @@ export const MASTERS_TABS: TabConfig[] = [
   { name: 'po-instruction', label: 'PO Instruction', icon: 'i-heroicons-document-text', value: 'po-instruction' },
   { name: 'location', label: 'Location', icon: 'i-heroicons-map-pin', value: 'location' },
   { name: 'reason', label: 'Reason', icon: 'i-heroicons-document-text', value: 'reason' },
+  { name: 'credit-days', label: 'Credit Days', icon: 'i-heroicons-calendar-days', value: 'credit-days' },
 ]
 
 export const PURCHASE_ORDERS_TABS: TabConfig[] = [

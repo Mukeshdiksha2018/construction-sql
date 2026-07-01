@@ -20,6 +20,7 @@ vi.mock('~/composables/useTabRouting', () => ({
     { name: 'po-instruction', label: 'PO Instruction', icon: '', value: 'po-instruction' },
     { name: 'location', label: 'Location', icon: '', value: 'location' },
     { name: 'reason', label: 'Reason', icon: '', value: 'reason' },
+    { name: 'credit-days', label: 'Credit Days', icon: '', value: 'credit-days' },
   ],
   useTabRouting: () => ({
     currentTab,
@@ -33,6 +34,7 @@ vi.mock('~/composables/useTabRouting', () => ({
       { name: 'po-instruction', label: 'PO Instruction', icon: '', value: 'po-instruction' },
       { name: 'location', label: 'Location', icon: '', value: 'location' },
       { name: 'reason', label: 'Reason', icon: '', value: 'reason' },
+      { name: 'credit-days', label: 'Credit Days', icon: '', value: 'credit-days' },
     ],
   }),
 }))
@@ -44,6 +46,7 @@ const stubs = {
   MastersPOInstruction: { template: '<div data-testid="masters-po-instruction" />' },
   MastersLocation: { template: '<div data-testid="masters-location" />' },
   MastersReason: { template: '<div data-testid="masters-reason" />' },
+  MastersCreditDays: { template: '<div data-testid="masters-credit-days" />' },
 }
 
 describe('masters index page', () => {
@@ -75,5 +78,15 @@ describe('masters index page', () => {
 
     expect(wrapper.find('[data-testid="masters-location"]').exists()).toBe(true)
     expect(wrapper.find('u-tabs-stub').exists()).toBe(false)
+  })
+
+  it('renders credit days tab when selected', async () => {
+    runtimeConfig.public.nimbleIntegrations = 'false'
+    currentTab.value = 'credit-days'
+    const component = (await import('../../../app/pages/masters/index.vue')).default
+    const wrapper = mount(component, { global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="masters-credit-days"]').exists()).toBe(true)
   })
 })

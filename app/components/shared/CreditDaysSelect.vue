@@ -209,7 +209,6 @@ function openAddModal() {
 async function saveAndSelect() {
   if (!isAddFormValid.value) return;
   const token = String(nimbleSession.token || '').trim();
-  if (!token) return;
 
   isCreating.value = true;
   const toast = useToast();
@@ -220,9 +219,8 @@ async function saveAndSelect() {
       error?: string;
     }>('/api/nimble/credit-days', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       body: {
         name: String(addForm.value.name).trim(),
         interval: Number(addForm.value.interval),
