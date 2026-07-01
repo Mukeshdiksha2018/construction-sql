@@ -1,19 +1,9 @@
 <template>
-  <div class="h-[88vh] print:h-auto">
+  <div class="po-breakout-report h-[88vh] print:h-auto">
     <!-- Header section - hidden in print -->
     <div class="mb-2 print:hidden">
-      <div class="flex items-center justify-between gap-4 flex-wrap">
-        <!-- Left side: Back button -->
-        <div class="flex items-center gap-3">
-          <UButton
-            color="neutral"
-            variant="solid"
-            icon="i-heroicons-arrow-left"
-            @click="goBack"
-          />
-        </div>
-
-        <!-- Right side: Corporation, Project, Date Range, Advanced, Show, Print -->
+      <div class="flex items-center justify-end gap-4 flex-wrap">
+        <!-- Corporation, Project, Date Range, Advanced, Show, Print -->
         <div class="flex items-end gap-3 flex-wrap">
           <!-- Corporation Select -->
           <div class="flex flex-col gap-1">
@@ -63,24 +53,14 @@
             <label class="text-sm font-medium text-default whitespace-nowrap">
               Start Date <span class="text-red-500">*</span>
             </label>
-            <UPopover :popper="{ placement: 'bottom-start' }">
-              <UButton
-                icon="i-heroicons-calendar"
-                size="sm"
-                variant="outline"
-                class="w-48"
-              >
-                {{ startDateDisplayText }}
-              </UButton>
-              <template #content>
-                <UCalendar
-                  v-model="startDateValue"
-                  :min-value="undefined"
-                  :max-value="endDateValue || undefined"
-                  class="p-2"
-                />
-              </template>
-            </UPopover>
+            <DatePickerField
+              :model-value="startDateValue"
+              :max-value="endDateValue"
+              size="sm"
+              placeholder="MM/DD/YYYY"
+              class="w-48"
+              @update:model-value="(v) => { startDateValue = v }"
+            />
           </div>
 
           <!-- End Date -->
@@ -88,24 +68,14 @@
             <label class="text-sm font-medium text-default whitespace-nowrap">
               End Date <span class="text-red-500">*</span>
             </label>
-            <UPopover :popper="{ placement: 'bottom-start' }">
-              <UButton
-                icon="i-heroicons-calendar"
-                size="sm"
-                variant="outline"
-                class="w-48"
-              >
-                {{ endDateDisplayText }}
-              </UButton>
-              <template #content>
-                <UCalendar
-                  v-model="endDateValue"
-                  :min-value="startDateValue || undefined"
-                  :max-value="undefined"
-                  class="p-2"
-                />
-              </template>
-            </UPopover>
+            <DatePickerField
+              :model-value="endDateValue"
+              :min-value="startDateValue"
+              size="sm"
+              placeholder="MM/DD/YYYY"
+              class="w-48"
+              @update:model-value="(v) => { endDateValue = v }"
+            />
           </div>
 
           <!-- Advanced filter drawer -->
@@ -149,47 +119,27 @@
                 <!-- Start Date -->
                 <div class="flex flex-col gap-1.5">
                   <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Start Date <span class="text-red-500">*</span></label>
-                  <UPopover :popper="{ placement: 'bottom-start' }">
-                    <UButton
-                      icon="i-heroicons-calendar"
-                      size="sm"
-                      variant="outline"
-                      class="w-full justify-start"
-                    >
-                      {{ startDateDisplayText }}
-                    </UButton>
-                    <template #content>
-                      <UCalendar
-                        v-model="startDateValue"
-                        :min-value="undefined"
-                        :max-value="endDateValue || undefined"
-                        class="p-2"
-                      />
-                    </template>
-                  </UPopover>
+                  <DatePickerField
+                    :model-value="startDateValue"
+                    :max-value="endDateValue"
+                    size="sm"
+                    placeholder="MM/DD/YYYY"
+                    class="w-full"
+                    @update:model-value="(v) => { startDateValue = v }"
+                  />
                 </div>
 
                 <!-- End Date -->
                 <div class="flex flex-col gap-1.5">
                   <label class="text-xs font-medium text-gray-700 dark:text-gray-300">End Date <span class="text-red-500">*</span></label>
-                  <UPopover :popper="{ placement: 'bottom-start' }">
-                    <UButton
-                      icon="i-heroicons-calendar"
-                      size="sm"
-                      variant="outline"
-                      class="w-full justify-start"
-                    >
-                      {{ endDateDisplayText }}
-                    </UButton>
-                    <template #content>
-                      <UCalendar
-                        v-model="endDateValue"
-                        :min-value="startDateValue || undefined"
-                        :max-value="undefined"
-                        class="p-2"
-                      />
-                    </template>
-                  </UPopover>
+                  <DatePickerField
+                    :model-value="endDateValue"
+                    :min-value="startDateValue"
+                    size="sm"
+                    placeholder="MM/DD/YYYY"
+                    class="w-full"
+                    @update:model-value="(v) => { endDateValue = v }"
+                  />
                 </div>
 
                 <!-- Vendor -->
@@ -280,6 +230,17 @@
             Show
           </UButton>
 
+          <!-- Export CSV button -->
+          <UButton
+            v-if="selectedCorporationId && selectedProjectId && filteredReportData && filteredReportData.length > 0"
+            icon="i-heroicons-arrow-down-tray"
+            variant="soft"
+            size="sm"
+            @click="exportReportToCsv"
+          >
+            Export Excel
+          </UButton>
+
           <!-- Print button -->
           <UButton
             v-if="selectedCorporationId && selectedProjectId && filteredReportData && filteredReportData.length > 0"
@@ -297,7 +258,7 @@
     <!-- Print Header - only visible in print -->
     <div class="hidden print:block print:mb-4 print:pb-4 print:border-b print:border-gray-300">
       <div class="text-center">
-        <h1 class="text-2xl font-bold text-gray-900 mb-2">Purchase Order Breakout Report</h1>
+        <h1 class="text-2xl font-bold text-gray-900 mb-2">Material Purchase Order Breakout Report</h1>
         <div v-if="selectedCorporationId && selectedProjectId" class="text-sm text-gray-700">
           <p class="font-semibold">Project: {{ getProjectName() }}</p>
           <p v-if="startDateValue && endDateValue" class="text-xs text-gray-600 mt-1">
@@ -374,9 +335,6 @@
                   <USkeleton class="h-3 w-24 ml-auto" />
                 </th>
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">
-                  <USkeleton class="h-3 w-20 ml-auto" />
-                </th>
-                <th class="text-right py-2 px-2 font-semibold text-xs text-default">
                   <USkeleton class="h-3 w-28 ml-auto" />
                 </th>
               </tr>
@@ -385,7 +343,7 @@
               <template v-for="i in 2" :key="i">
                 <!-- PO Header Skeleton -->
                 <tr class="bg-gray-50 dark:bg-gray-900 border-b-2 border-gray-400 dark:border-gray-600">
-                  <td class="py-2 px-2" colspan="16">
+                  <td class="py-2 px-2" colspan="15">
                     <USkeleton class="h-4 w-96" />
                   </td>
                 </tr>
@@ -410,9 +368,6 @@
                     </td>
                     <td class="py-1 px-2 text-default text-xs">
                       <USkeleton class="h-3 w-40" />
-                    </td>
-                    <td class="py-1 px-2 text-right text-default text-xs">
-                      <USkeleton class="h-3 w-20 ml-auto" />
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs">
                       <USkeleton class="h-3 w-20 ml-auto" />
@@ -470,14 +425,11 @@
                   <td class="py-2 px-2 text-right text-xs text-default">
                     <USkeleton class="h-3 w-20 ml-auto" />
                   </td>
-                  <td class="py-2 px-2 text-right text-xs text-default">
-                    <USkeleton class="h-3 w-20 ml-auto" />
-                  </td>
                 </tr>
                 
                 <!-- Spacer row between POs -->
                 <tr>
-                  <td class="py-2" colspan="16"></td>
+                  <td class="py-2" colspan="15"></td>
                 </tr>
               </template>
             </tbody>
@@ -491,7 +443,7 @@
       <div v-else-if="filteredReportData && filteredReportData.length > 0" class="space-y-6">
         <!-- Report Title -->
         <h1 class="text-2xl font-bold text-center text-gray-900 dark:text-gray-100 print:text-2xl print:text-gray-900">
-          Purchase Order Breakout
+          Material Purchase Order Breakout
         </h1>
 
         <!-- Report Table -->
@@ -504,7 +456,7 @@
                 <th class="text-left py-2 px-2 font-semibold text-xs text-default">Spec Number</th>
                 <th class="text-left py-2 px-2 font-semibold text-xs text-default">Item Name</th>
                 <th class="text-left py-2 px-2 font-semibold text-xs text-default">Location</th>
-                <th class="text-left py-2 px-2 font-semibold text-xs text-default">Item Description</th>
+                <th class="text-left py-2 px-2 font-semibold text-xs text-default w-[25ch] max-w-[25ch]">Item Description</th>
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">Item Quantity</th>
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">Item Unit Cost</th>
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">Goods Amount</th>
@@ -512,7 +464,6 @@
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">Packing Amount</th>
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">Customs & Duties</th>
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">Other Amount</th>
-                <th class="text-right py-2 px-2 font-semibold text-xs text-default">Other/Overage</th>
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">HST</th>
                 <th class="text-right py-2 px-2 font-semibold text-xs text-default">Expected Costs</th>
               </tr>
@@ -521,7 +472,7 @@
               <template v-for="po in filteredReportData" :key="po.uuid">
                 <!-- PO/CO Header -->
                 <tr class="bg-gray-50 dark:bg-gray-900 border-b-2 border-gray-400 dark:border-gray-600">
-                  <td class="py-2 px-2 font-bold text-xs text-default" colspan="16">
+                  <td class="py-2 px-2 font-bold text-xs text-default" colspan="15">
                     <div class="flex items-center justify-between">
                       <div>
                         <span class="font-semibold">{{ po._record_type === 'CO' ? 'CO Number' : 'PO Number' }}:</span> <span class="font-semibold text-primary-600 dark:text-primary-400">{{ po.po_number }}</span>
@@ -545,12 +496,15 @@
                     <td class="py-1 px-2 text-default text-xs">{{ item._spec_number }}</td>
                     <td class="py-1 px-2 text-default text-xs">{{ item.item_name || '-' }}</td>
                     <td class="py-1 px-2 text-default text-xs">{{ item._location_name || '-' }}</td>
-                    <td class="py-1 px-2 text-default text-xs whitespace-pre-line">{{ getDescriptionPlainText(item.description) }}</td>
+                    <td class="py-1 px-2 text-default text-xs w-[25ch] max-w-[25ch] min-w-0 break-words whitespace-pre-line align-top">{{ getDescriptionDisplayText(item.description) }}</td>
                     <td class="py-1 px-2 text-right text-default text-xs">
                       {{ formatNumber(item.po_quantity || item.co_quantity || item.quantity) }} {{ item.uom || '' }}
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs">
-                      {{ formatCurrency(item.po_unit_price || item.co_unit_price || item.unit_price) }}
+                      <ReportOrderPoAmountCell
+                        :row="po"
+                        :amount="item.po_unit_price || item.co_unit_price || item.unit_price"
+                      />
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs">
                       <ReportOrderPoAmountCell
@@ -571,9 +525,6 @@
                       <ReportOrderPoAmountCell :row="po" :amount="getItemOtherAmount(item, po)" />
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs">
-                      <ReportOrderPoAmountCell :row="po" :amount="0" />
-                    </td>
-                    <td class="py-1 px-2 text-right text-default text-xs">
                       <ReportOrderPoAmountCell :row="po" :amount="getItemHSTAmount(item, po)" />
                     </td>
                     <td class="py-1 px-2 text-right text-default text-xs font-semibold">
@@ -582,7 +533,7 @@
                   </tr>
                 </template>
                 <tr v-else class="border-b border-gray-200 dark:border-gray-700">
-                  <td class="py-2 px-2 text-muted text-xs italic" colspan="16">No items found for this {{ po._record_type === 'CO' ? 'change order' : 'purchase order' }}</td>
+                  <td class="py-2 px-2 text-muted text-xs italic" colspan="15">No items found for this {{ po._record_type === 'CO' ? 'change order' : 'purchase order' }}</td>
                 </tr>
                 
                 <!-- PO Total Row -->
@@ -606,9 +557,6 @@
                     <ReportOrderPoAmountCell :row="po" :amount="po.other_charges_amount || 0" />
                   </td>
                   <td class="py-2 px-2 text-right text-xs text-default">
-                    <ReportOrderPoAmountCell :row="po" :amount="0" />
-                  </td>
-                  <td class="py-2 px-2 text-right text-xs text-default">
                     <ReportOrderPoAmountCell
                       :row="po"
                       :amount="(po.sales_tax_1_amount || 0) + (po.sales_tax_2_amount || 0)"
@@ -621,7 +569,7 @@
                 
                 <!-- Spacer row between POs -->
                 <tr>
-                  <td class="py-2" colspan="16"></td>
+                  <td class="py-2" colspan="15"></td>
                 </tr>
               </template>
             </tbody>
@@ -638,20 +586,17 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
-import { CalendarDate, today, getLocalTimeZone, parseDate } from '@internationalized/date'
-import dayjs from 'dayjs'
 import { useCorporationStore } from '~/stores/corporations'
 import { useProjectsStore } from '~/stores/projects'
-import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
+import { useUTCDateFormat } from '~/composables/useUTCDateFormat'
+import { isWithinCalendarDateRange } from '~/utils/calendarDateRange'
 import ProjectSelect from '~/components/shared/ProjectSelect.vue'
 import CorporationSelect from '~/components/shared/CorporationSelect.vue'
 import VendorSelect from '~/components/shared/VendorSelect.vue'
 import LocationSelect from '~/components/shared/LocationSelect.vue'
-import ReportOrderPoAmountCell from '~/components/Reports/ReportOrderPoAmountCell.vue'
-import { formatReportPoAmountForExport } from '~/utils/reportPoCurrencyDisplay'
 import ItemCategorySelect from '~/components/shared/ItemCategorySelect.vue'
 import ItemTypeSelect from '~/components/shared/ItemTypeSelect.vue'
+import DatePickerField from '~/components/shared/DatePickerField.vue'
 import { useLocationsStore } from '~/stores/locations'
 import {
   pickFirstSequence,
@@ -662,17 +607,23 @@ import {
   resolveItemHierarchyFields,
   type ItemTypeConfigRow,
 } from '~/utils/itemHierarchyResolution'
+import {
+  formatReportDateRangeDisplay,
+  resolveCorporationDisplayName,
+  resolveProjectDisplayLabel,
+} from '~/utils/csvExport'
+import {
+  buildReportExcelFilename,
+  downloadReportExcelFile,
+} from '~/utils/reportExcelExport.client'
+import ReportOrderPoAmountCell from '~/components/Reports/ReportOrderPoAmountCell.vue'
+import { formatReportPoAmountForExport } from '~/utils/reportPoCurrencyDisplay'
 
-const router = useRouter()
-
-// Navigation
-const goBack = () => {
-  router.back()
-}
+const { fromUTCString, toUTCString } = useUTCDateFormat()
 
 // Set page title
 useHead({
-  title: 'Purchase Order Breakout - Property Management'
+  title: 'Material Purchase Order Breakout - Property Management'
 })
 
 definePageMeta({
@@ -710,12 +661,17 @@ const appliedAdvancedFilters = ref({
   itemType: undefined as string | undefined,
 })
 
+const toUtcDateString = (date: Date): string => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return toUTCString(`${y}-${m}-${d}`) ?? `${y}-${m}-${d}T00:00:00.000Z`
+}
+
 // Date range state - default to Jan 1 of current year to today
 const currentYear = new Date().getFullYear()
-const startDateValue = ref<CalendarDate | null>(
-  new CalendarDate(currentYear, 1, 1)
-)
-const endDateValue = ref<CalendarDate | null>(today(getLocalTimeZone()))
+const startDateValue = ref<string | null>(`${currentYear}-01-01T00:00:00.000Z`)
+const endDateValue = ref<string | null>(toUtcDateString(new Date()))
 const transactionRangeOptions = [
   { label: 'Year to date', value: 'YEAR_TO_DATE' },
   { label: 'Month to date', value: 'MONTH_TO_DATE' },
@@ -723,60 +679,43 @@ const transactionRangeOptions = [
   { label: 'Last year', value: 'LAST_YEAR' },
 ]
 
-const toCalendarDate = (date: Date): CalendarDate => {
-  return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate())
-}
-
 const applyTransactionRange = (range: string) => {
   const now = new Date()
-  const today = toCalendarDate(now)
-
   if (range === 'YEAR_TO_DATE') {
-    startDateValue.value = new CalendarDate(now.getFullYear(), 1, 1)
-    endDateValue.value = today
+    startDateValue.value = `${now.getFullYear()}-01-01T00:00:00.000Z`
+    endDateValue.value = toUtcDateString(now)
     return
   }
-
   if (range === 'MONTH_TO_DATE') {
-    startDateValue.value = new CalendarDate(now.getFullYear(), now.getMonth() + 1, 1)
-    endDateValue.value = today
+    startDateValue.value = toUtcDateString(new Date(now.getFullYear(), now.getMonth(), 1))
+    endDateValue.value = toUtcDateString(now)
     return
   }
-
   if (range === 'WEEK_TO_DATE') {
     const start = new Date(now)
     const dayOfWeek = start.getDay()
     const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
     start.setDate(start.getDate() - daysFromMonday)
-    startDateValue.value = toCalendarDate(start)
-    endDateValue.value = today
+    startDateValue.value = toUtcDateString(start)
+    endDateValue.value = toUtcDateString(now)
     return
   }
-
   if (range === 'LAST_YEAR') {
     const lastYear = now.getFullYear() - 1
-    startDateValue.value = new CalendarDate(lastYear, 1, 1)
-    endDateValue.value = new CalendarDate(lastYear, 12, 31)
+    startDateValue.value = `${lastYear}-01-01T00:00:00.000Z`
+    endDateValue.value = `${lastYear}-12-31T00:00:00.000Z`
   }
 }
 
 // Date display text
 const startDateDisplayText = computed(() => {
-  if (!startDateValue.value) return 'Select start date'
-  return startDateValue.value.toDate(getLocalTimeZone()).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
+  if (!startDateValue.value) return ''
+  return new Date(startDateValue.value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
 
 const endDateDisplayText = computed(() => {
-  if (!endDateValue.value) return 'Select end date'
-  return endDateValue.value.toDate(getLocalTimeZone()).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
+  if (!endDateValue.value) return ''
+  return new Date(endDateValue.value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
 
 // Can generate report
@@ -786,12 +725,13 @@ const canGenerateReport = computed(() => {
     selectedProjectId.value &&
     startDateValue.value &&
     endDateValue.value &&
-    startDateValue.value.compare(endDateValue.value) <= 0
+    startDateValue.value <= endDateValue.value
   )
 })
 
-// Currency formatting
-const { formatCurrency } = useCurrencyFormat()
+// Currency export helper
+const exportPoAmount = (record: any, amount: number) =>
+  formatReportPoAmountForExport(amount, record)
 
 // Number formatting
 const formatNumber = (value: number | null | undefined): string => {
@@ -820,9 +760,35 @@ const stripHtml = (value: string) => {
     .trim()
 }
 
+const DESCRIPTION_WRAP_LENGTH = 25
+
+const wrapTextAtLength = (text: string, maxLength = DESCRIPTION_WRAP_LENGTH): string => {
+  if (!text || text.length <= maxLength) return text
+
+  const wrappedLines: string[] = []
+  for (const segment of text.split('\n')) {
+    let remaining = segment
+    while (remaining.length > maxLength) {
+      let breakAt = remaining.lastIndexOf(' ', maxLength)
+      if (breakAt <= 0) breakAt = maxLength
+      wrappedLines.push(remaining.slice(0, breakAt).trimEnd())
+      remaining = remaining.slice(breakAt).trimStart()
+    }
+    if (remaining) wrappedLines.push(remaining)
+  }
+
+  return wrappedLines.join('\n')
+}
+
 const getDescriptionPlainText = (value: unknown) => {
   const text = stripHtml(String(value || ''))
   return text || '-'
+}
+
+const getDescriptionDisplayText = (value: unknown) => {
+  const text = getDescriptionPlainText(value)
+  if (text === '-') return text
+  return wrapTextAtLength(text, DESCRIPTION_WRAP_LENGTH)
 }
 
 /** Build lookup maps from /api/cost-code-preferred-items — Spec Number column uses sequence only, not model number. */
@@ -976,14 +942,13 @@ const loadReport = async () => {
   error.value = null
   
   try {
-    const startDateStr = `${startDateValue.value.year}-${String(startDateValue.value.month).padStart(2, '0')}-${String(startDateValue.value.day).padStart(2, '0')}`
-    const endDateStr = `${endDateValue.value.year}-${String(endDateValue.value.month).padStart(2, '0')}-${String(endDateValue.value.day).padStart(2, '0')}`
-    const isWithinSelectedDateRange = (value?: string | null) => {
-      const date = dayjs(value)
-      if (!date.isValid()) return false
-      const recordDate = date.format('YYYY-MM-DD')
-      return recordDate >= startDateStr && recordDate <= endDateStr
-    }
+    const isWithinSelectedDateRange = (value?: string | null) =>
+      isWithinCalendarDateRange(
+        value,
+        startDateValue.value,
+        endDateValue.value,
+        fromUTCString
+      )
     
     // Fetch purchase orders
     const params: any = {
@@ -1019,7 +984,8 @@ const loadReport = async () => {
       const vendorResponse: any = await $fetch('/api/purchase-orders/vendors', {
         method: 'GET',
         params: {
-          corporation_uuid: selectedCorporationId.value
+          corporation_uuid: selectedCorporationId.value,
+          include_inactive: 'true',
         }
       })
       vendors = vendorResponse?.data || []
@@ -1267,40 +1233,74 @@ watch(isFilterDrawerOpen, (open) => {
   }
 })
 
+const itemMatchesLocation = (item: any, loc: string): boolean =>
+  item.location_uuid === loc || item.metadata?.location_uuid === loc
+
+const normalizeFilterUuid = (value: unknown): string =>
+  value != null ? String(value).trim() : ''
+
+const recordMatchesVendor = (record: any, vendorFilter: string): boolean => {
+  const target = normalizeFilterUuid(vendorFilter)
+  if (!target || target === '__ALL__') return true
+  return (
+    normalizeFilterUuid(record.vendor_uuid) === target ||
+    normalizeFilterUuid(record.vendor?.uuid) === target
+  )
+}
+
+const itemMatchesCategory = (item: any, categoryFilter: string): boolean => {
+  const raw = String(
+    item._category_value || item.category || item.item_category || ''
+  ).toLowerCase()
+  return raw === categoryFilter.toLowerCase()
+}
+
+const getLineGoodsAmount = (item: any): number =>
+  item.po_total ||
+  item.co_total ||
+  item.total ||
+  (item.po_quantity || item.co_quantity || item.quantity || 0) *
+    (item.po_unit_price || item.co_unit_price || item.unit_price || 0)
+
+const filterRecordItems = (record: any, filters: typeof appliedAdvancedFilters.value) => {
+  let items = record.items || []
+
+  if (filters.location) {
+    items = items.filter((item: any) => itemMatchesLocation(item, filters.location!))
+  }
+  if (filters.category) {
+    items = items.filter((item: any) => itemMatchesCategory(item, filters.category!))
+  }
+  if (filters.itemType) {
+    items = items.filter((item: any) => item.item_type_uuid === filters.itemType)
+  }
+
+  if (items.length === 0) return null
+
+  const itemTotal = items.reduce(
+    (sum: number, item: any) => sum + (getLineGoodsAmount(item) || 0),
+    0
+  )
+
+  return {
+    ...record,
+    items,
+    item_total: itemTotal,
+  }
+}
+
 // Filtered report data based on advanced filters
 const filteredReportData = computed(() => {
-  let data = [...reportData.value]
+  const filters = appliedAdvancedFilters.value
 
-  const { vendor, location, category, itemType } = appliedAdvancedFilters.value
+  let data = reportData.value.filter(
+    (record: any) => !filters.vendor || recordMatchesVendor(record, filters.vendor)
+  )
 
-  if (vendor) {
-    data = data.filter((po: any) => po.vendor_uuid === vendor)
-  }
-
-  if (location) {
-    data = data.filter((po: any) => {
-      if (po.location_uuid === location) return true
-      if (po.items?.some((item: any) => item.location_uuid === location)) return true
-      return false
-    })
-  }
-
-  if (category) {
-    const catFilter = category.toLowerCase()
-    data = data.filter((po: any) =>
-      po.items?.some((item: any) => {
-        const raw = String(
-          item._category_value || item.category || item.item_category || ''
-        ).toLowerCase()
-        return raw === catFilter
-      })
-    )
-  }
-
-  if (itemType) {
-    data = data.filter((po: any) =>
-      po.items?.some((item: any) => item.item_type_uuid === itemType)
-    )
+  if (filters.location || filters.category || filters.itemType) {
+    data = data
+      .map((record: any) => filterRecordItems(record, filters))
+      .filter(Boolean)
   }
 
   return data
@@ -1308,6 +1308,103 @@ const filteredReportData = computed(() => {
 
 const printReport = () => {
   window.print()
+}
+
+const exportReportToCsv = () => {
+  const data = filteredReportData.value
+  if (!data?.length) return
+
+  const rows: unknown[][] = [[
+    'PO/CO Number',
+    'Record Type',
+    'Vendor',
+    'Category',
+    'Item Type',
+    'Spec Number',
+    'Item Name',
+    'Location',
+    'Item Description',
+    'Item Quantity',
+    'Item Unit Cost',
+    'Goods Amount',
+    'Freight Amount',
+    'Packing Amount',
+    'Customs & Duties',
+    'Other Amount',
+    'HST',
+    'Expected Costs',
+  ]]
+
+  for (const po of data) {
+    rows.push([
+      po.po_number || '',
+      po._record_type === 'CO' ? 'Change Order' : 'Purchase Order',
+      po.vendor_name || '',
+      '', '', '', '', '', '', '', '', '',
+      '', '', '', '', '', '',
+    ])
+
+    for (const item of po.items || []) {
+      const quantity = item.po_quantity || item.co_quantity || item.quantity || 0
+      const unitPrice = item.po_unit_price || item.co_unit_price || item.unit_price || 0
+      const goodsAmount = item.po_total || item.co_total || item.total || quantity * unitPrice
+      rows.push([
+        po.po_number || '',
+        po._record_type === 'CO' ? 'Change Order' : 'Purchase Order',
+        po.vendor_name || '',
+        item._category_label || '',
+        item._item_type_label || '',
+        item._spec_number || '',
+        item.item_name || '',
+        item._location_name || '',
+        getDescriptionDisplayText(item.description),
+        `${formatNumber(quantity)} ${item.uom || ''}`.trim(),
+        exportPoAmount(po, unitPrice),
+        exportPoAmount(po, goodsAmount),
+        exportPoAmount(po, getItemFreightAmount(item, po)),
+        exportPoAmount(po, getItemPackingAmount(item, po)),
+        exportPoAmount(po, getItemCustomsAmount(item, po)),
+        exportPoAmount(po, getItemOtherAmount(item, po)),
+        exportPoAmount(po, getItemHSTAmount(item, po)),
+        exportPoAmount(po, getItemExpectedCost(item, po)),
+      ])
+    }
+
+    rows.push([
+      po.po_number || '',
+      po._record_type === 'CO' ? 'Change Order' : 'Purchase Order',
+      po.vendor_name || '',
+      '', '', '', '', '', '', '', '',
+      exportPoAmount(po, po.item_total || 0),
+      exportPoAmount(po, po.freight_charges_amount || 0),
+      exportPoAmount(po, po.packing_charges_amount || 0),
+      exportPoAmount(po, po.custom_duties_amount || 0),
+      exportPoAmount(po, po.other_charges_amount || 0),
+      exportPoAmount(po, (po.sales_tax_1_amount || 0) + (po.sales_tax_2_amount || 0)),
+      exportPoAmount(po, getTotalExpectedCosts(po)),
+    ])
+  }
+
+  const project = projectsStore.projects.find((p) => p.uuid === selectedProjectId.value)
+  void downloadReportExcelFile(
+    buildReportExcelFilename('material-purchase-order-breakout', project?.project_id),
+    {
+      title: 'Material Purchase Order Breakout',
+      corporationName: resolveCorporationDisplayName(
+        corporationStore.corporations as any[],
+        selectedCorporationId.value
+      ),
+      projectLabel: resolveProjectDisplayLabel(
+        projectsStore.projects as any[],
+        selectedProjectId.value
+      ),
+      dateRange: formatReportDateRangeDisplay(
+        startDateValue.value,
+        endDateValue.value
+      ),
+    },
+    rows
+  )
 }
 
 const syncCorporationFromStoreOrNimble = async () => {
@@ -1392,6 +1489,13 @@ onMounted(async () => {
     // Silently handle error
   }
 })
+
+defineExpose({
+  getDescriptionPlainText,
+  getDescriptionDisplayText,
+  wrapTextAtLength,
+  DESCRIPTION_WRAP_LENGTH,
+})
 </script>
 
 <style>
@@ -1400,14 +1504,53 @@ onMounted(async () => {
   /* Reset page margins and background */
   @page {
     margin: 1cm;
-    size: A4 portrait;
+    size: A4 landscape;
   }
 
-  html, body {
+  html,
+  body,
+  #__nuxt {
     background: #ffffff !important;
     color: #000000 !important;
     margin: 0 !important;
     padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* App shell scroll regions clip content to one viewport — unblock for multi-page print */
+  .po-breakout-report,
+  .po-breakout-report * {
+    max-height: none !important;
+  }
+
+  .po-breakout-report {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .flex.h-full,
+  .flex.h-screen,
+  main,
+  aside,
+  nav,
+  [class*="overflow-hidden"],
+  [class*="overflow-y-auto"],
+  [class*="overflow-x-auto"],
+  .min-h-0 {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    flex: none !important;
+  }
+
+  /* Hide loading overlay and fixed UI chrome */
+  .fixed,
+  [class*="backdrop-blur"] {
+    display: none !important;
   }
 
   /* Hide layout components (SideMenu, TopBar, MobileBottomNav) */
@@ -1471,6 +1614,18 @@ onMounted(async () => {
     width: 100% !important;
     font-size: 9px !important;
     page-break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+
+  tbody {
+    display: table-row-group;
   }
 
   th, td {

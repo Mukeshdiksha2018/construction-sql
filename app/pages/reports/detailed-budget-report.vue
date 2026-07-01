@@ -2,18 +2,8 @@
   <div class="h-[88vh] print:h-auto">
     <!-- Header section - hidden in print -->
     <div class="mb-2 print:hidden">
-      <div class="flex items-center justify-between gap-4 flex-wrap">
-        <!-- Left side: Back button -->
-        <div class="flex items-center gap-3">
-          <UButton
-            color="neutral"
-            variant="solid"
-            icon="i-heroicons-arrow-left"
-            @click="goBack"
-          />
-        </div>
-
-        <!-- Right side: Corporation, Project Selection, Date Range, Show and Print buttons -->
+      <div class="flex items-center justify-end gap-4 flex-wrap">
+        <!-- Corporation, Project Selection, Date Range, Show and Print buttons -->
         <div class="flex items-end gap-3 flex-wrap">
           <!-- Corporation Select -->
           <div class="flex flex-col gap-1">
@@ -63,24 +53,14 @@
             <label class="text-sm font-medium text-default whitespace-nowrap">
               Start Date <span class="text-red-500">*</span>
             </label>
-            <UPopover :popper="{ placement: 'bottom-start' }">
-              <UButton
-                icon="i-heroicons-calendar"
-                size="sm"
-                variant="outline"
-                class="w-48"
-              >
-                {{ startDateDisplayText }}
-              </UButton>
-              <template #content>
-                <UCalendar
-                  v-model="startDateModel"
-                  :min-value="minDateModel"
-                  :max-value="endDateMaxModel"
-                  class="p-2"
-                />
-              </template>
-            </UPopover>
+            <DatePickerField
+              :model-value="startDateValue"
+              :max-value="endDateValue"
+              size="sm"
+              placeholder="MM/DD/YYYY"
+              class="w-48"
+              @update:model-value="(v) => { startDateValue = v }"
+            />
           </div>
 
           <!-- End Date -->
@@ -88,24 +68,14 @@
             <label class="text-sm font-medium text-default whitespace-nowrap">
               End Date <span class="text-red-500">*</span>
             </label>
-            <UPopover :popper="{ placement: 'bottom-start' }">
-              <UButton
-                icon="i-heroicons-calendar"
-                size="sm"
-                variant="outline"
-                class="w-48"
-              >
-                {{ endDateDisplayText }}
-              </UButton>
-              <template #content>
-                <UCalendar
-                  v-model="endDateModel"
-                  :min-value="endDateMinModel"
-                  :max-value="maxDateModel"
-                  class="p-2"
-                />
-              </template>
-            </UPopover>
+            <DatePickerField
+              :model-value="endDateValue"
+              :min-value="startDateValue"
+              size="sm"
+              placeholder="MM/DD/YYYY"
+              class="w-48"
+              @update:model-value="(v) => { endDateValue = v }"
+            />
           </div>
 
           <!-- Show button -->
@@ -117,6 +87,17 @@
             @click="handleShowReport"
           >
             Show
+          </UButton>
+
+          <!-- Export CSV button -->
+          <UButton
+            v-if="reportData && selectedProjectId && reportData.divisions?.length"
+            icon="i-heroicons-arrow-down-tray"
+            variant="soft"
+            size="sm"
+            @click="exportReportToCsv"
+          >
+            Export Excel
           </UButton>
 
           <!-- Print button -->
@@ -642,22 +623,19 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, toRef, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
-import { CalendarDate, getLocalTimeZone, today } from '@internationalized/date'
 import { useCorporationStore } from '~/stores/corporations'
 import { useProjectsStore } from '~/stores/projects'
 import { useBudgetReport } from '~/composables/useBudgetReport'
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
 import ProjectSelect from '~/components/shared/ProjectSelect.vue'
 import CorporationSelect from '~/components/shared/CorporationSelect.vue'
+import DatePickerField from '~/components/shared/DatePickerField.vue'
 import type { BudgetReportData } from '~/composables/useBudgetReport'
-
-const router = useRouter()
-
-// Navigation
-const goBack = () => {
-  router.back()
-}
+import { resolveCorporationDisplayName } from '~/utils/csvExport'
+import {
+  buildReportExcelFilename,
+  downloadReportExcelFile,
+} from '~/utils/reportExcelExport.client'
 
 // Set page title
 useHead({
@@ -681,11 +659,17 @@ const selectedCorporationId = ref<string | undefined>(undefined)
 const selectedProjectId = ref<string | undefined>(undefined)
 const selectedTransactionRange = ref<string>('YEAR_TO_DATE')
 
+const toUtcDateString = (date: Date): string => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}T00:00:00.000Z`
+}
+
 // Date range state
 const currentYear = new Date().getFullYear()
-const todayDate = today(getLocalTimeZone()) as CalendarDate
-const startDateValue = ref<CalendarDate | null>(new CalendarDate(currentYear, 1, 1))
-const endDateValue = ref<CalendarDate | null>(todayDate)
+const startDateValue = ref<string | null>(`${currentYear}-01-01T00:00:00.000Z`)
+const endDateValue = ref<string | null>(toUtcDateString(new Date()))
 
 const transactionRangeOptions = [
   { label: 'Year to date', value: 'YEAR_TO_DATE' },
@@ -694,84 +678,43 @@ const transactionRangeOptions = [
   { label: 'Last year', value: 'LAST_YEAR' },
 ]
 
-const toCalendarDate = (date: Date): CalendarDate => {
-  return new CalendarDate(
-    date.getFullYear(),
-    date.getMonth() + 1,
-    date.getDate()
-  )
-}
-
 const applyTransactionRange = (range: string) => {
   const now = new Date()
-  const today = toCalendarDate(now)
-
   if (range === 'YEAR_TO_DATE') {
-    startDateValue.value = new CalendarDate(now.getFullYear(), 1, 1)
-    endDateValue.value = today
+    startDateValue.value = `${now.getFullYear()}-01-01T00:00:00.000Z`
+    endDateValue.value = toUtcDateString(now)
     return
   }
-
   if (range === 'MONTH_TO_DATE') {
-    startDateValue.value = new CalendarDate(now.getFullYear(), now.getMonth() + 1, 1)
-    endDateValue.value = today
+    startDateValue.value = toUtcDateString(new Date(now.getFullYear(), now.getMonth(), 1))
+    endDateValue.value = toUtcDateString(now)
     return
   }
-
   if (range === 'WEEK_TO_DATE') {
     const start = new Date(now)
-    const dayOfWeek = start.getDay() // 0=Sun, 1=Mon ... 6=Sat
+    const dayOfWeek = start.getDay()
     const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
     start.setDate(start.getDate() - daysFromMonday)
-    startDateValue.value = toCalendarDate(start)
-    endDateValue.value = today
+    startDateValue.value = toUtcDateString(start)
+    endDateValue.value = toUtcDateString(now)
     return
   }
-
   if (range === 'LAST_YEAR') {
     const lastYear = now.getFullYear() - 1
-    startDateValue.value = new CalendarDate(lastYear, 1, 1)
-    endDateValue.value = new CalendarDate(lastYear, 12, 31)
+    startDateValue.value = `${lastYear}-01-01T00:00:00.000Z`
+    endDateValue.value = `${lastYear}-12-31T00:00:00.000Z`
   }
 }
 
-// Date formatting
-const df = new Intl.DateTimeFormat('en-US', {
-  dateStyle: 'medium'
-})
-
 const startDateDisplayText = computed(() => {
-  if (!startDateValue.value) return 'Select start date'
-  return df.format(startDateValue.value.toDate(getLocalTimeZone()))
+  if (!startDateValue.value) return ''
+  return new Date(startDateValue.value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
 
 const endDateDisplayText = computed(() => {
-  if (!endDateValue.value) return 'Select end date'
-  return df.format(endDateValue.value.toDate(getLocalTimeZone()))
+  if (!endDateValue.value) return ''
+  return new Date(endDateValue.value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 })
-
-const minDate = new CalendarDate(1900, 1, 1)
-const maxDate = todayDate
-
-// Nuxt UI date components expect DateValue-compatible props.
-const startDateModel = computed({
-  get: () => startDateValue.value as any,
-  set: (value) => {
-    startDateValue.value = (value || null) as CalendarDate | null
-  }
-})
-
-const endDateModel = computed({
-  get: () => endDateValue.value as any,
-  set: (value) => {
-    endDateValue.value = (value || null) as CalendarDate | null
-  }
-})
-
-const minDateModel = computed(() => minDate as any)
-const maxDateModel = computed(() => maxDate as any)
-const endDateMinModel = computed(() => (startDateValue.value || minDate) as any)
-const endDateMaxModel = computed(() => (endDateValue.value || maxDate) as any)
 
 // Check if report can be generated
 const canGenerateReport = computed(() => {
@@ -780,7 +723,7 @@ const canGenerateReport = computed(() => {
     selectedProjectId.value &&
     startDateValue.value &&
     endDateValue.value &&
-    startDateValue.value.compare(endDateValue.value) <= 0
+    startDateValue.value <= endDateValue.value
   )
 })
 
@@ -899,8 +842,8 @@ const loadBudgetReport = async () => {
     return
   }
   
-  const startDate = `${startDateValue.value.year}-${String(startDateValue.value.month).padStart(2, '0')}-${String(startDateValue.value.day).padStart(2, '0')}`
-  const endDate = `${endDateValue.value.year}-${String(endDateValue.value.month).padStart(2, '0')}-${String(endDateValue.value.day).padStart(2, '0')}`
+  const startDate = startDateValue.value?.substring(0, 10) ?? ''
+  const endDate = endDateValue.value?.substring(0, 10) ?? ''
   
   try {
     const data = await budgetReport.generateBudgetReport(
@@ -931,6 +874,153 @@ const loadBudgetReport = async () => {
 
 const printReport = () => {
   window.print()
+}
+
+const costPerMeasurement = (amount: number) => {
+  const measurementValue = reportData.value?.project?.measurementValue || 0
+  return measurementValue > 0 ? amount / measurementValue : 0
+}
+
+const appendCostCodeRows = (rows: unknown[][], costCode: any) => {
+  rows.push([
+    costCode.costCodeNumber || '',
+    costCode.costCodeName || '',
+    costCode.budgetedAmount ?? 0,
+    costCode.purchaseOrderAmount ?? 0,
+    costCode.changeOrderAmount ?? 0,
+    costCode.totalAmount ?? 0,
+    costCode.costPerRoom ?? 0,
+    costCode.paidAmount ?? 0,
+    costCode.budgetRemaining ?? 0,
+  ])
+  for (const subCostCode of costCode.subCostCodes || []) {
+    rows.push([
+      subCostCode.costCodeNumber || '',
+      subCostCode.costCodeName || '',
+      subCostCode.budgetedAmount ?? 0,
+      subCostCode.purchaseOrderAmount ?? 0,
+      subCostCode.changeOrderAmount ?? 0,
+      subCostCode.totalAmount ?? 0,
+      subCostCode.costPerRoom ?? 0,
+      subCostCode.paidAmount ?? 0,
+      subCostCode.budgetRemaining ?? 0,
+    ])
+    for (const subSubCostCode of subCostCode.subCostCodes || []) {
+      rows.push([
+        subSubCostCode.costCodeNumber || '',
+        subSubCostCode.costCodeName || '',
+        subSubCostCode.budgetedAmount ?? 0,
+        subSubCostCode.purchaseOrderAmount ?? 0,
+        subSubCostCode.changeOrderAmount ?? 0,
+        subSubCostCode.totalAmount ?? 0,
+        subSubCostCode.costPerRoom ?? 0,
+        subSubCostCode.paidAmount ?? 0,
+        subSubCostCode.budgetRemaining ?? 0,
+      ])
+    }
+  }
+}
+
+const appendDivisionRows = (rows: unknown[][], division: any) => {
+  rows.push([
+    `${division.divisionNumber} - ${division.divisionName}`,
+    '',
+    '', '', '', '', '', '', '',
+  ])
+  for (const costCode of division.costCodes || []) {
+    appendCostCodeRows(rows, costCode)
+  }
+  rows.push([
+    `TOTAL ${division.divisionName}`,
+    '',
+    division.totalBudgeted ?? 0,
+    division.totalPurchaseOrder ?? 0,
+    division.totalChangeOrder ?? 0,
+    division.totalAmount ?? 0,
+    costPerMeasurement(division.totalAmount ?? 0),
+    division.totalPaid ?? 0,
+    division.totalRemaining ?? 0,
+  ])
+}
+
+const exportReportToCsv = () => {
+  const data = reportData.value
+  if (!data?.divisions?.length) return
+
+  const measurementLabel = `Cost per ${data.project.measurementLabel}`
+  const rows: unknown[][] = [[
+    'Cost Codes',
+    'Description',
+    'Budgeted Amount',
+    'Purchase Order Amount',
+    'Change Order Amount',
+    'Total Amount',
+    measurementLabel,
+    'Paid amount',
+    'Budget Remaining',
+  ]]
+
+  for (const division of mainDivisions.value) {
+    appendDivisionRows(rows, division)
+  }
+
+  if (mainDivisions.value.length) {
+    rows.push([
+      'Total (excluding Other Costs)',
+      '',
+      mainTotals.value.totalBudgeted,
+      mainTotals.value.totalPurchaseOrder,
+      mainTotals.value.totalChangeOrder,
+      mainTotals.value.totalAmount,
+      costPerMeasurement(mainTotals.value.totalAmount),
+      mainTotals.value.totalPaid,
+      mainTotals.value.totalRemaining,
+    ])
+  }
+
+  if (otherDivisions.value.length) {
+    rows.push(['Other Costs', '', '', '', '', '', '', '', ''])
+    for (const division of otherDivisions.value) {
+      appendDivisionRows(rows, division)
+    }
+    rows.push([
+      'Total Other Costs',
+      '',
+      otherTotals.value.totalBudgeted,
+      otherTotals.value.totalPurchaseOrder,
+      otherTotals.value.totalChangeOrder,
+      otherTotals.value.totalAmount,
+      costPerMeasurement(otherTotals.value.totalAmount),
+      otherTotals.value.totalPaid,
+      otherTotals.value.totalRemaining,
+    ])
+  }
+
+  rows.push([
+    'Grand Total (including Other Costs)',
+    '',
+    grandTotals.value.totalBudgeted,
+    grandTotals.value.totalPurchaseOrder,
+    grandTotals.value.totalChangeOrder,
+    grandTotals.value.totalAmount,
+    costPerMeasurement(grandTotals.value.totalAmount),
+    grandTotals.value.totalPaid,
+    grandTotals.value.totalRemaining,
+  ])
+
+  void downloadReportExcelFile(
+    buildReportExcelFilename('detailed-budget-report', data.project.projectId),
+    {
+      title: 'Detailed Budget Report',
+      corporationName: resolveCorporationDisplayName(
+        corporationStore.corporations as any[],
+        selectedCorporationId.value
+      ),
+      projectLabel: `${data.project.projectName} (${data.project.projectId})`,
+      dateRange: `${startDateDisplayText.value} to ${endDateDisplayText.value}`,
+    },
+    rows
+  )
 }
 
 const syncCorporationFromStoreOrNimble = async () => {
