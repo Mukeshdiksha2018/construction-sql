@@ -1469,3 +1469,24 @@ model TermsAndCondition {
   @@index([created_at(sort: Desc)])
   @@map("terms_and_conditions")
 }
+
+/// Per-project special instruction templates (corporation + project scoped).
+model SpecialInstruction {
+  id                BigInt   @id @default(autoincrement())
+  uuid              String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid  String   @db.NVarChar(36)
+  project_uuid      String   @db.NVarChar(36)
+  name              String   @db.NVarChar(255)
+  content           String   @db.NVarChar(Max)
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now()) @db.DateTime2
+  updated_at        DateTime @updatedAt @db.DateTime2
+  created_by        String?  @db.NVarChar(128)
+  updated_by        String?  @db.NVarChar(128)
+
+  @@unique([project_uuid, name])
+  @@index([corporation_uuid])
+  @@index([project_uuid])
+  @@index([is_active])
+  @@map("special_instructions")
+}
