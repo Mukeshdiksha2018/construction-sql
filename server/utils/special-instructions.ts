@@ -143,3 +143,154 @@ export async function createSpecialInstruction(payload: {
     throw error
   }
 }
+
+export interface UpdateSpecialInstructionInput {
+  name?: string
+  content?: string
+  isActive?: boolean
+  corporation_uuid?: string
+  project_uuid?: string
+}
+
+export function parseSpecialInstructionUpdateBody(body: unknown): UpdateSpecialInstructionInput {
+  const payload = (body ?? {}) as Record<string, unknown>
+  const result: UpdateSpecialInstructionInput = {}
+
+  if (payload.name !== undefined) {
+    const name = typeof payload.name === 'string' ? payload.name.trim() : ''
+    if (!name) {
+      throw createError({ statusCode: 400, statusMessage: 'Name cannot be empty' })
+    }
+    result.name = name
+  }
+
+  if (payload.content !== undefined) {
+    const content = typeof payload.content === 'string' ? payload.content.trim() : ''
+    if (!content) {
+      throw createError({ statusCode: 400, statusMessage: 'Content cannot be empty' })
+    }
+    result.content = content
+  }
+
+  if (payload.isActive !== undefined) {
+    if (typeof payload.isActive !== 'boolean') {
+      throw createError({ statusCode: 400, statusMessage: 'isActive must be a boolean value' })
+    }
+    result.isActive = payload.isActive
+  }
+
+  if (payload.corporation_uuid !== undefined) {
+    const corporationUuid = typeof payload.corporation_uuid === 'string' ? payload.corporation_uuid.trim() : ''
+    if (!corporationUuid) {
+      throw createError({ statusCode: 400, statusMessage: 'corporation_uuid cannot be empty' })
+    }
+    result.corporation_uuid = corporationUuid
+  }
+
+  if (payload.project_uuid !== undefined) {
+    const projectUuid = typeof payload.project_uuid === 'string' ? payload.project_uuid.trim() : ''
+    if (!projectUuid) {
+      throw createError({ statusCode: 400, statusMessage: 'project_uuid cannot be empty' })
+    }
+    result.project_uuid = projectUuid
+  }
+
+  if (
+    result.name === undefined
+    && result.content === undefined
+    && result.isActive === undefined
+    && result.corporation_uuid === undefined
+    && result.project_uuid === undefined
+  ) {
+    throw createError({ statusCode: 400, statusMessage: 'At least one field is required for update' })
+  }
+
+  return result
+}
+
+async function resolveProjectForInstruction(
+  projectUuid: string,
+  corporationUuid: string,
+): Promise<{ project_name: string; project_id: string }> {
+  const prisma = await getPrisma()
+  const project = await prisma.project.findFirst({
+    where: { uuid: projectUuid },
+    select: { uuid: true, corporation_uuid: true, project_name: true, project_id: true },
+  })
+  if (!project) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid project_uuid' })
+  }
+  if (normalizeUuid(project.corporation_uuid) !== normalizeUuid(corporationUuid)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Project does not belong to the selected corporation',
+    })
+  }
+  return { project_name: project.project_name, project_id: project.project_id }
+}
+
+export async function updateSpecialInstruction(
+  idOrUuid: string,
+  input: UpdateSpecialInstructionInput,
+  userId?: string | null,
+): Promise<SpecialInstructionRow> {
+  const prisma = await getPrisma()
+  const isNumericId = /^\d+$/.test(idOrUuid.trim())
+  const where = isNumericId
+    ? { id: BigInt(idOrUuid) }
+    : { uuid: normalizeUuid(idOrUuid) }
+
+  const existing = await prisma.specialInstruction.findFirst({ where })
+  if (!existing) {
+    throw createError({ statusCode: 404, statusMessage: 'Special instruction not found' })
+  }
+
+  const corporationUuid = input.corporation_uuid ?? existing.corporation_uuid
+  const projectUuid = input.project_uuid ?? existing.project_uuid
+  const project = await resolveProjectForInstruction(projectUuid, corporationUuid)
+
+  try {
+    const row = await prisma.specialInstruction.update({
+      where: { id: existing.id },
+      data: {
+        name: input.name,
+        content: input.content,
+        is_active: input.isActive,
+        corporation_uuid: input.corporation_uuid,
+        project_uuid: input.project_uuid,
+        updated_by: userId ?? null,
+      },
+    })
+    return toApiRow(row, project)
+  }
+  catch (error: unknown) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      throw createError({ statusCode: 404, statusMessage: 'Special instruction not found' })
+    }
+    if (isUniqueConstraintError(error)) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'A special instruction with this name already exists for this project',
+      })
+    }
+    throw error
+  }
+}
+
+export async function deleteSpecialInstruction(idOrUuid: string): Promise<void> {
+  const prisma = await getPrisma()
+  const isNumericId = /^\d+$/.test(idOrUuid.trim())
+  const where = isNumericId
+    ? { id: BigInt(idOrUuid) }
+    : { uuid: normalizeUuid(idOrUuid) }
+
+  try {
+    await prisma.specialInstruction.delete({ where })
+  }
+  catch (error: unknown) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      throw createError({ statusCode: 404, statusMessage: 'Special instruction not found' })
+    }
+    throw error
+  }
+}

@@ -12,31 +12,40 @@ const refreshTabState = vi.fn()
 vi.stubGlobal('definePageMeta', vi.fn())
 vi.stubGlobal('useRuntimeConfig', () => runtimeConfig)
 vi.stubGlobal('useRoute', () => route)
+vi.stubGlobal('useRouter', () => ({ push: vi.fn(), replace: vi.fn() }))
 
 vi.mock('~/composables/useTabRouting', () => ({
   CONFIGURATIONS_TABS: [
     { name: 'project-types', label: 'Project Types', icon: '', value: 'project-types' },
     { name: 'service-types', label: 'Service Types', icon: '', value: 'service-types' },
     { name: 'terms-and-conditions', label: 'Terms and Conditions', icon: '', value: 'terms-and-conditions' },
+    { name: 'special-instructions', label: 'Special Instructions', icon: '', value: 'special-instructions' },
   ],
   useTabRouting: () => ({
     currentTab,
     navigateToTab,
+    isTabActive: vi.fn(),
     initializeUrl,
     refreshTabState,
     tabs: [
       { name: 'project-types', label: 'Project Types', icon: '', value: 'project-types' },
       { name: 'service-types', label: 'Service Types', icon: '', value: 'service-types' },
       { name: 'terms-and-conditions', label: 'Terms and Conditions', icon: '', value: 'terms-and-conditions' },
+      { name: 'special-instructions', label: 'Special Instructions', icon: '', value: 'special-instructions' },
     ],
   }),
 }))
 
 const stubs = {
   ClientOnly: { template: '<div><slot /></div>' },
-  ConfigurationsProjectTypes: { template: '<div data-testid="config-project-types" />' },
-  ConfigurationsServiceTypes: { template: '<div data-testid="config-service-types" />' },
-  ConfigurationsTermsAndConditions: { template: '<div data-testid="config-terms" />' },
+  UTabs: {
+    props: ['modelValue', 'items'],
+    template: '<div data-testid="configurations-tabs"><slot name="content" :item="{ value: modelValue, label: \'\' }" /></div>',
+  },
+  ConfigurationsTabContent: {
+    props: ['tab'],
+    template: '<div :data-testid="`config-tab-${tab}`" />',
+  },
 }
 
 describe('configurations index page', () => {
@@ -55,18 +64,28 @@ describe('configurations index page', () => {
     const wrapper = mount(component, { global: { stubs } })
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="config-service-types"]').exists()).toBe(true)
-    expect(wrapper.find('u-tabs-stub').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="config-tab-service-types"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="configurations-tabs"]').exists()).toBe(false)
   })
 
-  it('renders current tab when Nimble integration is disabled', async () => {
+  it('renders tab bar when Nimble integration is disabled', async () => {
     runtimeConfig.public.nimbleIntegrations = 'false'
     currentTab.value = 'terms-and-conditions'
     const component = (await import('../../../app/pages/configurations/index.vue')).default
     const wrapper = mount(component, { global: { stubs } })
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="config-terms"]').exists()).toBe(true)
-    expect(wrapper.find('u-tabs-stub').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="configurations-tabs"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="config-tab-terms-and-conditions"]').exists()).toBe(true)
+  })
+
+  it('renders special instructions tab when selected', async () => {
+    runtimeConfig.public.nimbleIntegrations = 'false'
+    currentTab.value = 'special-instructions'
+    const component = (await import('../../../app/pages/configurations/index.vue')).default
+    const wrapper = mount(component, { global: { stubs } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="config-tab-special-instructions"]').exists()).toBe(true)
   })
 })

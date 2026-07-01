@@ -161,6 +161,12 @@ export const CONFIGURATIONS_TABS: TabConfig[] = [
     icon: 'i-heroicons-document-text',
     value: 'terms-and-conditions',
   },
+  {
+    name: 'special-instructions',
+    label: 'Special Instructions',
+    icon: 'i-heroicons-clipboard-document-list',
+    value: 'special-instructions',
+  },
 ]
 
 export function useTabRouting(tabs: TabConfig[], defaultTab: string) {
