@@ -497,14 +497,13 @@
               </div>
             </div>
 
-            <!-- Is Revised (only when editing an existing PO) -->
+            <!-- Is Revised: shown for approval-level users or when already revised -->
             <div
               v-if="
                 editingPurchaseOrder && (
+                  props.allowRevise ||
                   Boolean(form.is_revised) ||
-                  Boolean(form.revision_date) ||
-                  (String(form.status || '').toLowerCase() !== 'ready' &&
-                    String(form.status || '').toLowerCase() !== 'approved')
+                  Boolean(form.revision_date)
                 )
               "
             >
@@ -1704,11 +1703,14 @@ interface Props {
   editingPurchaseOrder: boolean;
   loading?: boolean;
   readonly?: boolean;
+  /** When true, the "Is Revised" checkbox is shown for approval-level users editing an existing PO. */
+  allowRevise?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
-  readonly: false
+  readonly: false,
+  allowRevise: false,
 });
 
 // Emits

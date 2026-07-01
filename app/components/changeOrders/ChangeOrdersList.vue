@@ -666,49 +666,36 @@
                 >
                   Approve & Close
                 </UButton>
-                <!-- Reject button (shown when CO status is Ready) -->
-                <UButton
-                  v-if="showReviseForReadyStatus"
-                  data-testid="btn-reject-draft"
-                  color="error"
-                  variant="soft"
-                  icon="i-heroicons-arrow-uturn-left"
-                  size="sm"
-                  :disabled="saving"
-                  :loading="saving"
-                  @click="handleRejectToDraft"
-                >
-                  Revise
-                </UButton>
               </template>
-              
-              <!-- Reject button for Approved status (for users with approve permission) -->
-              <template v-else-if="!isViewMode && showReviseForApprovedStatus">
-                <UButton
-                  data-testid="btn-reject-pending"
-                  color="error"
-                  variant="soft"
-                  icon="i-heroicons-no-symbol"
-                  size="sm"
-                  :disabled="saving || !isCoFormValid"
-                  :loading="saving"
-                  @click="handleRejectToPending"
-                >
-                  Reject
-                </UButton>
-                <UButton
-                  data-testid="btn-save-draft"
-                  :color="saveDraftButtonColor"
-                  :variant="saveDraftButtonVariant"
-                  :icon="saveDraftButtonIcon"
-                  size="sm"
-                  :disabled="isSaveDraftButtonDisabled"
-                  :loading="saving"
-                  @click="handleSaveAsDraft"
-                >
-                  {{ saveDraftButtonLabel }}
-                </UButton>
-              </template>
+
+              <UButton
+                v-if="showApproverUpdateButton"
+                data-testid="btn-update"
+                color="primary"
+                variant="solid"
+                icon="i-heroicons-arrow-path"
+                size="sm"
+                :disabled="saving || !isCoFormValid"
+                :loading="saving"
+                @click="handleApproverUpdate"
+              >
+                Update
+              </UButton>
+
+              <UButton
+                v-if="showApprovedReviseActions"
+                type="button"
+                data-testid="btn-save-draft"
+                :color="saveDraftButtonColor"
+                :variant="saveDraftButtonVariant"
+                :icon="saveDraftButtonIcon"
+                size="sm"
+                :disabled="isReviseButtonDisabled"
+                :loading="saving"
+                @click="handleSaveAsDraft"
+              >
+                {{ saveDraftButtonLabel }}
+              </UButton>
             </div>
 
             <UTooltip text="Close Modal" color="neutral">
@@ -728,6 +715,7 @@
           v-model:form="coForm"
           :loading="loadingDetail"
           :readonly="isViewMode || isReadOnlyStatus"
+          :allow-revise="isApprovalLevelUser && !!coForm.uuid"
           @nimble-vendor-saved="closeFormModal"
         />
       </template>
@@ -1177,10 +1165,34 @@ const canEdit = computed(() => hasPermission('co_edit') || hasPermission('co_cre
 const canVerify = computed(() => hasPermission('co_verify'))
 const canApprove = computed(() => hasPermission('co_approve'))
 
+const isChangeOrderReviseEligibleStatus = (status?: string | null): boolean => {
+  const normalized = String(status || '').trim()
+  return (
+    normalized === 'Draft'
+    || normalized === 'Ready'
+    || normalized === 'Approved'
+    || normalized === 'Rejected'
+  )
+}
+
+/** True for approval-level users (co_approve). */
+const isApprovalLevelUser = computed(() => canApprove.value)
+
 // Check if CO status should make the form read-only
 const isReadOnlyStatus = computed(() => {
+  if (coHasLinkedVendorInvoices.value === true) return true
+  if (isApprovalLevelUser.value && coForm.value?.uuid) {
+    const status = String(coForm.value?.status || '').trim()
+    if (
+      isChangeOrderReviseEligibleStatus(status)
+      && status !== 'Draft'
+      && status !== 'Partially_Received'
+      && status !== 'Completed'
+    ) {
+      return false
+    }
+  }
   const status = String(coForm.value?.status || '').toLowerCase()
-  // Form should be read-only for Approved, Partially_Received, or Completed statuses
   return status === 'approved' || status === 'partially_received' || status === 'completed'
 })
 
@@ -1236,8 +1248,7 @@ const showApproveButtons = computed(() => {
     return false
   }
   
-  // Don't show approve buttons when status is already Approved
-  // (use reject button via showRejectButtonForApproved instead)
+  // Don't show approve buttons when status is already Approved (approvers use Update + revision checkbox)
   if (coForm.value?.status === 'Approved') {
     return false
   }
@@ -1245,49 +1256,31 @@ const showApproveButtons = computed(() => {
   return true
 })
 
-// Show Reject button when user has approve permission and CO status is Ready
-const showRejectButton = computed(() => {
-  if (isViewMode.value) return false
-  if (!canApprove.value) return false
-  
-  // Don't show if status is Partially_Received or Completed
-  const status = String(coForm.value?.status || '').toLowerCase()
-  if (status === 'partially_received' || status === 'completed') {
-    return false
-  }
-  
-  // Only show reject button when status is Ready (case-insensitive check)
-  const currentStatus = String(coForm.value?.status || '').trim()
-  return currentStatus === 'Ready' || currentStatus.toLowerCase() === 'ready'
+// Revise button is replaced by the checkbox in ChangeOrderForm for approval-level users.
+const showApprovedReviseActions = computed(() => false)
+
+const isReviseButtonDisabled = computed(() => {
+  if (saving.value) return true
+  if (coHasLinkedVendorInvoices.value === true) return true
+  if (coForm.value?.uuid && coHasLinkedVendorInvoices.value === null) return true
+  return false
 })
 
-// Show Reject button for Approved status (for users with approve permission)
-const showRejectButtonForApproved = computed(() => {
+/** Update existing Ready/Approved/Rejected CO without changing workflow status. */
+const showApproverUpdateButton = computed(() => {
   if (isViewMode.value) return false
-  if (!canApprove.value) return false
+  if (!isApprovalLevelUser.value) return false
   if (!coForm.value?.uuid) return false
-  
-  // Only show when status is Approved
-  return coForm.value.status === 'Approved'
-})
-
-// Revise (Ready → Draft): hidden while invoice check pending or when invoices lock the CO
-const showReviseForReadyStatus = computed(() => {
   if (coHasLinkedVendorInvoices.value === true) return false
   if (coForm.value?.uuid && coHasLinkedVendorInvoices.value === null) return false
-  return showRejectButton.value
-})
-
-// Revise (Approved → Draft): hidden while invoice check pending or when invoices lock the CO
-const showReviseForApprovedStatus = computed(() => {
-  if (coHasLinkedVendorInvoices.value === true) return false
-  if (coForm.value?.uuid && coHasLinkedVendorInvoices.value === null) return false
-  return showRejectButtonForApproved.value
+  const status = String(coForm.value?.status || '').trim()
+  if (status === 'Partially_Received' || status === 'Completed') return false
+  return isChangeOrderReviseEligibleStatus(status) && status !== 'Draft'
 })
 
 // Legacy computed properties for backward compatibility (if needed elsewhere)
 const showApprovalButtons = computed(() => false) // Deprecated - use showApproveButtons instead
-const showSaveDraftButton = computed(() => showRejectButtonForApproved.value) // For Approved status, show reject button
+const showSaveDraftButton = computed(() => showApprovedReviseActions.value)
 const showMarkReadyButton = computed(() => false) // Deprecated - use showVerifyButtons instead
 const showAnySaveButtons = computed(() => showSaveButtons.value || showVerifyButtons.value || showApproveButtons.value)
 
@@ -1296,7 +1289,10 @@ const saveDraftButtonLabel = computed(() => {
   if (status === 'partially_received' || status === 'completed') {
     return 'Locked'
   }
-  if (coForm.value?.uuid && coForm.value.status === 'Approved') {
+  if (
+    coForm.value?.uuid
+    && isChangeOrderReviseEligibleStatus(coForm.value?.status)
+  ) {
     return 'Revise'
   }
   return 'Save'
@@ -1307,7 +1303,10 @@ const saveDraftButtonIcon = computed(() => {
   if (status === 'partially_received' || status === 'completed') {
     return 'i-heroicons-lock-closed'
   }
-  if (coForm.value?.uuid && coForm.value.status === 'Approved') {
+  if (
+    coForm.value?.uuid
+    && isChangeOrderReviseEligibleStatus(coForm.value?.status)
+  ) {
     return 'i-heroicons-arrow-uturn-left'
   }
   return 'i-heroicons-document'
@@ -1318,7 +1317,10 @@ const saveDraftButtonColor = computed(() => {
   if (status === 'partially_received' || status === 'completed') {
     return 'warning'
   }
-  if (coForm.value?.uuid && coForm.value.status === 'Approved') {
+  if (
+    coForm.value?.uuid
+    && isChangeOrderReviseEligibleStatus(coForm.value?.status)
+  ) {
     return 'error'
   }
   return 'primary'
@@ -1328,14 +1330,7 @@ const saveDraftButtonVariant = computed((): 'solid' => {
   return 'solid'
 })
 
-const isSaveDraftButtonDisabled = computed(() => {
-  if (saving.value) return true
-  const status = String(coForm.value?.status || '').toLowerCase()
-  if (status === 'partially_received' || status === 'completed') {
-    return true
-  }
-  return false
-})
+const isSaveDraftButtonDisabled = computed(() => isReviseButtonDisabled.value)
 
 // Required fields for Save, Verify, and Approve (incl. Approve & New / Approve & Close).
 // requested_by and credit_days are optional — omit from this check.
@@ -2410,10 +2405,24 @@ const handleApproveAndClose = () => submitWithStatus('Approved', false)
 // Legacy handlers for backward compatibility (if needed elsewhere)
 // When rejecting Approved status, just change status (no validation needed)
 const handleSaveAsDraft = () => {
-  // When "Revise" is clicked we set status back to Draft and auto-check revision fields.
-  coForm.value.is_revised = true
-  coForm.value.revision_date = new Date().toISOString()
-  submitWithStatus('Draft', false, true, true)
+  if (saving.value) return
+  if (isViewMode.value) {
+    isViewMode.value = false
+  }
+  const currentStatus = String(coForm.value?.status || '').trim()
+  const isRevising = isChangeOrderReviseEligibleStatus(currentStatus)
+  if (isRevising) {
+    coForm.value.is_revised = true
+    coForm.value.revision_date = new Date().toISOString()
+    void saveChangeOrder(true, { skipRevisionNumberValidation: true })
+    return
+  }
+  submitWithStatus('Draft', false)
+}
+
+const handleApproverUpdate = () => {
+  if (saving.value) return
+  void saveChangeOrder(false)
 }
 const handleMarkReady = () => submitWithStatus('Ready', false)
 const handleApprove = async () => {
@@ -2424,19 +2433,6 @@ const handleApproveAndRaise = async () => {
   // Approve and potentially trigger additional workflow
   await submitWithStatus('Approved', false)
   // TODO: Add additional logic for "raise" action if needed
-}
-
-const handleRejectToDraft = () => {
-  // When "Revise" is clicked we set status back to Draft and auto-check revision fields.
-  coForm.value.is_revised = true
-  coForm.value.revision_date = new Date().toISOString()
-  submitWithStatus('Draft', false, true, true)
-}
-
-const handleRejectToPending = () => {
-  // Pending in this module is represented by Draft status.
-  // Use the normal save/update path (same as save/verify/approve actions).
-  submitWithStatus('Draft', false)
 }
 
 const saveChangeOrder = async (skipModalClose = false, options: { skipRevisionNumberValidation?: boolean } = {}) => {

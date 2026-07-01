@@ -890,49 +890,36 @@
                 >
                   Approve & Close
                 </UButton>
-                <!-- Reject button (shown when PO status is Ready) -->
-                <UButton
-                  v-if="showReviseForReadyStatus"
-                  data-testid="btn-reject-draft"
-                  color="error"
-                  variant="soft"
-                  icon="i-heroicons-arrow-uturn-left"
-                  size="sm"
-                  :disabled="savingPO || !isFormValid"
-                  :loading="savingPO"
-                  @click="handleRejectToDraft"
-                >
-                  Revise
-                </UButton>
               </template>
-              
-              <!-- Reject button for Approved status (for users with approve permission) -->
-              <template v-else-if="!isViewMode && showReviseForApprovedStatus">
-                <UButton
-                  data-testid="btn-reject-pending"
-                  color="error"
-                  variant="soft"
-                  icon="i-heroicons-no-symbol"
-                  size="sm"
-                  :disabled="isEstimateImportBlocked || savingPO || !isFormValid"
-                  :loading="savingPO"
-                  @click="handleRejectToPending"
-                >
-                  Reject
-                </UButton>
-                <UButton
-                  data-testid="btn-save-draft"
-                  :color="saveDraftButtonColor"
-                  :variant="saveDraftButtonVariant"
-                  :icon="saveDraftButtonIcon"
-                  size="sm"
-                  :disabled="isEstimateImportBlocked || isSaveDraftButtonDisabled || !isFormValid"
-                  :loading="savingPO"
-                  @click="handleSaveAsDraft"
-                >
-                  {{ saveDraftButtonLabel }}
-                </UButton>
-              </template>
+
+              <UButton
+                v-if="showApproverUpdateButton"
+                data-testid="btn-update"
+                color="primary"
+                variant="solid"
+                icon="i-heroicons-arrow-path"
+                size="sm"
+                :disabled="isEstimateImportBlocked || savingPO || !isFormValid"
+                :loading="savingPO"
+                @click="handleApproverUpdate"
+              >
+                Update
+              </UButton>
+
+              <UButton
+                v-if="showApprovedReviseActions"
+                type="button"
+                data-testid="btn-save-draft"
+                :color="saveDraftButtonColor"
+                :variant="saveDraftButtonVariant"
+                :icon="saveDraftButtonIcon"
+                size="sm"
+                :disabled="isReviseButtonDisabled"
+                :loading="savingPO"
+                @click="handleSaveAsDraft"
+              >
+                {{ saveDraftButtonLabel }}
+              </UButton>
             </div>
 
             <UTooltip text="Close Modal" color="neutral">
@@ -953,6 +940,7 @@
           :editing-purchase-order="!!poForm.uuid"
           :loading="loadingEditPO"
           :readonly="isViewMode || isReadOnlyStatus"
+          :allow-revise="isApprovalLevelUser && !!poForm.uuid"
           @estimate-import-blocked-change="isEstimateImportBlocked = $event"
           @validation-change="isFormValid = $event"
           @nimble-vendor-saved="closeFormModal"
@@ -1621,10 +1609,34 @@ const canEdit = computed(() => hasPermission('po_edit') || hasPermission('po_cre
 const canVerify = computed(() => hasPermission('po_verify'))
 const canApprove = computed(() => hasPermission('po_approve'))
 
+const isPurchaseOrderReviseEligibleStatus = (status?: string | null): boolean => {
+  const normalized = String(status || '').trim()
+  return (
+    normalized === 'Draft'
+    || normalized === 'Ready'
+    || normalized === 'Approved'
+    || normalized === 'Rejected'
+  )
+}
+
+/** True for approval-level users (po_approve). */
+const isApprovalLevelUser = computed(() => canApprove.value)
+
 // Check if PO status should make the form read-only
 const isReadOnlyStatus = computed(() => {
+  if (poHasLinkedVendorInvoices.value === true) return true
+  if (isApprovalLevelUser.value && poForm.value?.uuid) {
+    const status = String(poForm.value?.status || '').trim()
+    if (
+      isPurchaseOrderReviseEligibleStatus(status)
+      && status !== 'Draft'
+      && status !== 'Partially_Received'
+      && status !== 'Completed'
+    ) {
+      return false
+    }
+  }
   const status = String(poForm.value?.status || '').toLowerCase()
-  // Form should be read-only for Approved, Partially_Received, or Completed statuses
   return status === 'approved' || status === 'partially_received' || status === 'completed'
 })
 
@@ -1685,8 +1697,7 @@ const showApproveButtons = computed(() => {
     return false
   }
   
-  // Don't show approve buttons when status is already Approved
-  // (use reject button via showRejectButtonForApproved instead)
+  // Don't show approve buttons when status is already Approved (approvers use Update + revision checkbox)
   if (poForm.value?.status === 'Approved') {
     return false
   }
@@ -1694,49 +1705,31 @@ const showApproveButtons = computed(() => {
   return true
 })
 
-// Show Reject button when user has approve permission and PO status is Ready
-const showRejectButton = computed(() => {
-  if (isViewMode.value) return false
-  if (!canApprove.value) return false
-  
-  // Don't show if status is Partially_Received or Completed
-  const status = String(poForm.value?.status || '').toLowerCase()
-  if (status === 'partially_received' || status === 'completed') {
-    return false
-  }
-  
-  // Only show reject button when status is Ready (case-insensitive check)
-  const currentStatus = String(poForm.value?.status || '').trim()
-  return currentStatus === 'Ready' || currentStatus.toLowerCase() === 'ready'
+// Revise button is replaced by the checkbox in PurchaseOrderForm for approval-level users.
+const showApprovedReviseActions = computed(() => false)
+
+const isReviseButtonDisabled = computed(() => {
+  if (savingPO.value) return true
+  if (poHasLinkedVendorInvoices.value === true) return true
+  if (poForm.value?.uuid && poHasLinkedVendorInvoices.value === null) return true
+  return false
 })
 
-// Show Reject button for Approved status (for users with approve permission)
-const showRejectButtonForApproved = computed(() => {
+/** Update existing Ready/Approved/Rejected PO without changing workflow status. */
+const showApproverUpdateButton = computed(() => {
   if (isViewMode.value) return false
-  if (!canApprove.value) return false
+  if (!isApprovalLevelUser.value) return false
   if (!poForm.value?.uuid) return false
-  
-  // Only show when status is Approved
-  return poForm.value.status === 'Approved'
-})
-
-// Revise (Ready → Draft): hidden while invoice check pending or when invoices lock the PO
-const showReviseForReadyStatus = computed(() => {
   if (poHasLinkedVendorInvoices.value === true) return false
   if (poForm.value?.uuid && poHasLinkedVendorInvoices.value === null) return false
-  return showRejectButton.value
-})
-
-// Revise (Approved → Draft): hidden while invoice check pending or when invoices lock the PO
-const showReviseForApprovedStatus = computed(() => {
-  if (poHasLinkedVendorInvoices.value === true) return false
-  if (poForm.value?.uuid && poHasLinkedVendorInvoices.value === null) return false
-  return showRejectButtonForApproved.value
+  const status = String(poForm.value?.status || '').trim()
+  if (status === 'Partially_Received' || status === 'Completed') return false
+  return isPurchaseOrderReviseEligibleStatus(status) && status !== 'Draft'
 })
 
 // Legacy computed properties for backward compatibility (if needed elsewhere)
 const showApprovalButtons = computed(() => false) // Deprecated - use showApproveButtons instead
-const showSaveDraftButton = computed(() => showRejectButtonForApproved.value) // For Approved status, show reject button
+const showSaveDraftButton = computed(() => showApprovedReviseActions.value)
 const showMarkReadyButton = computed(() => false) // Deprecated - use showVerifyButtons instead
 const showAnySaveButtons = computed(() => showSaveButtons.value || showVerifyButtons.value || showApproveButtons.value)
 
@@ -1745,7 +1738,10 @@ const saveDraftButtonLabel = computed(() => {
   if (status === 'partially_received' || status === 'completed') {
     return 'Locked'
   }
-  if (poForm.value?.uuid && poForm.value.status === 'Approved') {
+  if (
+    poForm.value?.uuid
+    && isPurchaseOrderReviseEligibleStatus(poForm.value?.status)
+  ) {
     return 'Revise'
   }
   return 'Save'
@@ -1756,7 +1752,10 @@ const saveDraftButtonIcon = computed(() => {
   if (status === 'partially_received' || status === 'completed') {
     return 'i-heroicons-lock-closed'
   }
-  if (poForm.value?.uuid && poForm.value.status === 'Approved') {
+  if (
+    poForm.value?.uuid
+    && isPurchaseOrderReviseEligibleStatus(poForm.value?.status)
+  ) {
     return 'i-heroicons-arrow-uturn-left'
   }
   return 'i-heroicons-document'
@@ -1767,7 +1766,10 @@ const saveDraftButtonColor = computed(() => {
   if (status === 'partially_received' || status === 'completed') {
     return 'warning'
   }
-  if (poForm.value?.uuid && poForm.value.status === 'Approved') {
+  if (
+    poForm.value?.uuid
+    && isPurchaseOrderReviseEligibleStatus(poForm.value?.status)
+  ) {
     return 'error'
   }
   return 'primary'
@@ -1777,14 +1779,7 @@ const saveDraftButtonVariant = computed((): 'solid' => {
   return 'solid'
 })
 
-const isSaveDraftButtonDisabled = computed(() => {
-  if (savingPO.value) return true
-  const status = String(poForm.value?.status || '').toLowerCase()
-  if (status === 'partially_received' || status === 'completed') {
-    return true
-  }
-  return false
-})
+const isSaveDraftButtonDisabled = computed(() => isReviseButtonDisabled.value)
 
 // Computed
 const selectedCorporationId = computed(() => corporationStore.selectedCorporationId)
@@ -4107,18 +4102,26 @@ const handleVerifyAndClose = () => submitWithStatus('Ready', false)
 const handleApproveAndNew = () => submitWithStatus('Approved', true)
 const handleApproveAndClose = () => submitWithStatus('Approved', false)
 
-// Legacy handlers for backward compatibility (if needed elsewhere)
-// When rejecting Approved status, skip validation
+// Revise: independent of approval policy — keeps current status on save when revising
 const handleSaveAsDraft = () => {
-  // If rejecting from Approved status, skip validation
-  const isRejecting = poForm.value?.status === 'Approved'
-  if (isRejecting) {
-    // When "Revise" is clicked we set status back to Draft and auto-check revision fields.
-    poForm.value.status = 'Draft'
+  if (savingPO.value) return
+  if (isViewMode.value) {
+    isViewMode.value = false
+  }
+  const currentStatus = String(poForm.value?.status || '').trim()
+  const isRevising = isPurchaseOrderReviseEligibleStatus(currentStatus)
+  if (isRevising) {
     poForm.value.is_revised = true
     poForm.value.revision_date = toUTCString(getCurrentLocal())
+    void savePurchaseOrder(true)
+    return
   }
-  submitWithStatus('Draft', false, isRejecting, isRejecting)
+  submitWithStatus('Draft', false)
+}
+
+const handleApproverUpdate = () => {
+  if (savingPO.value) return
+  void savePurchaseOrder(false)
 }
 const handleMarkReady = () => submitWithStatus('Ready', false)
 const handleApprove = async () => {
@@ -4126,18 +4129,6 @@ const handleApprove = async () => {
 }
 const handleApproveAndRaise = async () => {
   await submitWithStatus('Approved', false)
-}
-const handleRejectToDraft = () => {
-  // When "Revise" is clicked we set status back to Draft and auto-check revision fields.
-  poForm.value.is_revised = true
-  poForm.value.revision_date = toUTCString(getCurrentLocal())
-  submitWithStatus('Draft', false, true, true) // Skip validation and modal close when revising
-}
-
-const handleRejectToPending = () => {
-  // Pending in this module is represented by Draft status.
-  // This follows the same save/update flow as other actions.
-  submitWithStatus('Draft', false)
 }
 
 /**
