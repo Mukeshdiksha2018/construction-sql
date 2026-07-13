@@ -1151,20 +1151,18 @@ const getNumericValueForInput = (draftValue: string | undefined, itemValue: any)
   return parsed
 }
 
-const toInputString = (value: any): string => {
+import {
+  finalizeUnitPriceInput,
+  normalizeUnitPriceDraftInput,
+} from '~/utils/unitPriceInput'
+
+const toInputString = (value: unknown): string => {
   if (value === null || value === undefined) return ''
   return typeof value === 'number' ? String(value) : String(value)
 }
 
-const normalizeUnitPriceInput = (value: any): string => {
-  const normalized = toInputString(value).replace(/,/g, '').trim()
-  if (!normalized) return ''
-  if (!/^\d*\.?\d*$/.test(normalized)) return ''
-  const parts = normalized.split('.')
-  const integerPart = parts[0] ?? ''
-  const decimalPart = parts[1] ?? ''
-  if (!normalized.includes('.')) return integerPart
-  return `${integerPart}.${decimalPart.slice(0, 2)}`
+const normalizeUnitPriceInput = (value: any, previousInput = ''): string => {
+  return normalizeUnitPriceDraftInput(value, previousInput)
 }
 
 const preventNonNumericKeydown = (event: KeyboardEvent) => {
@@ -1739,7 +1737,7 @@ const emitPoUnitPriceChange = (index: number, value: string | number | null | un
       unitTouched: false,
       quantityTouched: false,
     })
-  const normalizedValue = normalizeUnitPriceInput(value)
+  const normalizedValue = normalizeUnitPriceInput(value, draft.unitPriceInput)
   draft.unitPriceInput = normalizedValue
   draft.unitTouched = true
   const numericValue = parseNumericInput(draft.unitPriceInput)
@@ -1790,7 +1788,7 @@ const emitInvoiceUnitPriceChange = (index: number, value: string | number | null
       unitTouched: false,
       quantityTouched: false,
     })
-  const normalizedValue = normalizeUnitPriceInput(value)
+  const normalizedValue = normalizeUnitPriceInput(value, draft.unitPriceInput)
   draft.unitPriceInput = normalizedValue
   draft.unitTouched = true
   const numericValue = parseNumericInput(draft.unitPriceInput)

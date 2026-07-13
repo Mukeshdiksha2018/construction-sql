@@ -1,11 +1,16 @@
-﻿<template>
+<template>
   <div>
     <div :class="[className, 'relative']">
       <!-- Button to open modal -->
       <UButton
-        :disabled="props.disabled || purchaseOrdersStore.loading || changeOrdersStore.loading || !props.projectUuid || !props.vendorUuid"
+        :disabled="props.disabled || optionsLoading || !props.projectUuid || !props.vendorUuid"
         :size="size"
-        class="w-full"
+        :class="[
+          'w-full',
+          showValidationError && hasValidationError
+            ? 'ring-2 ring-red-500 dark:ring-red-400'
+            : '',
+        ]"
         variant="outline"
         color="neutral"
         @click="openModal"
@@ -26,12 +31,23 @@
     <!-- Modal with table -->
     <UModal
       v-model:open="showModal"
-      :title="showOnlyPOs ? 'Select Purchase Order' : showOnlyCOs ? 'Select Change Order' : 'Select PO/CO'"
       :fullscreen="isFullscreenModal"
       :ui="{
         content: isFullscreenModal ? 'w-screen h-screen max-w-none max-h-none' : 'max-w-6xl'
       }"
     >
+      <template #header>
+        <div class="flex items-center justify-between w-full">
+          <h3 class="text-base font-semibold">{{ modalTitle }}</h3>
+          <UButton
+            icon="i-heroicons-x-mark"
+            size="xs"
+            variant="solid"
+            color="neutral"
+            @click="closeModal"
+          />
+        </div>
+      </template>
       <template #body>
         <div class="space-y-4">
           <!-- Search -->
@@ -47,9 +63,9 @@
           </div>
 
           <!-- Loading state -->
-          <div v-if="purchaseOrdersStore.loading || changeOrdersStore.loading" class="text-center py-12">
+          <div v-if="isModalContentLoading" class="text-center py-12">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-            <p class="mt-2 text-xs text-gray-500">Loading PO/CO data...</p>
+            <p class="mt-2 text-xs text-gray-500">{{ modalLoadingMessage }}</p>
           </div>
 
           <!-- Table -->
@@ -82,8 +98,6 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, h, resolveComponent } from 'vue'
-import { usePurchaseOrdersStore } from '~/stores/purchaseOrders'
-import { useChangeOrdersStore } from '~/stores/changeOrders'
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
 import { useDateFormat } from '~/composables/useDateFormat'
 import {
@@ -113,6 +127,9 @@ interface Props {
   showOnlyPOs?: boolean // Only show Purchase Orders (hide Change Orders)
   showOnlyCOs?: boolean // Only show Change Orders (hide Purchase Orders)
   fullscreen?: boolean // Force modal to open in fullscreen mode
+  required?: boolean
+  /** When true, show required-field styling after the parent form enables validation UI */
+  showValidationError?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -124,7 +141,9 @@ const props = withDefaults(defineProps<Props>(), {
   showOnlyPOs: false,
   showOnlyCOs: false,
   fullscreen: false,
-  modelValueFallbackLabel: undefined
+  modelValueFallbackLabel: undefined,
+  required: false,
+  showValidationError: false,
 })
 
 // Emits
@@ -133,17 +152,68 @@ const emit = defineEmits<{
   'change': [order: any]
 }>()
 
-// Stores
-const purchaseOrdersStore = usePurchaseOrdersStore()
-const changeOrdersStore = useChangeOrdersStore()
-const { formatCurrency } = useCurrencyFormat()
+const hasValidationError = computed(() => {
+  if (!props.required || props.disabled) return false
+  return !String(props.modelValue || '').trim()
+})
+
+// PO/CO options fetched fresh from the DB (scoped to corporation + project + vendor),
+// instead of relying on the corporation-wide paginated stores which cap recent rows.
+const fetchedPurchaseOrders = ref<any[]>([])
+const fetchedChangeOrders = ref<any[]>([])
+const optionsLoading = ref(false)
+const optionsError = ref<string | null>(null)
+
+const loadPoCoOptions = async () => {
+  const corporationUuid = props.corporationUuid
+  const projectUuid = props.projectUuid
+  const vendorUuid = props.vendorUuid
+
+  if (!corporationUuid || !projectUuid || !vendorUuid) {
+    fetchedPurchaseOrders.value = []
+    fetchedChangeOrders.value = []
+    return
+  }
+
+  const type = props.showOnlyPOs ? 'po' : props.showOnlyCOs ? 'co' : 'both'
+  optionsLoading.value = true
+  optionsError.value = null
+
+  try {
+    const response = await $fetch<{
+      data: { purchaseOrders: any[]; changeOrders: any[] }
+    }>('/api/payables/po-co-options', {
+      query: {
+        corporation_uuid: corporationUuid,
+        project_uuid: projectUuid,
+        vendor_uuid: vendorUuid,
+        type,
+      },
+    })
+    fetchedPurchaseOrders.value = Array.isArray(response?.data?.purchaseOrders)
+      ? response.data.purchaseOrders
+      : []
+    fetchedChangeOrders.value = Array.isArray(response?.data?.changeOrders)
+      ? response.data.changeOrders
+      : []
+  } catch (error: any) {
+    console.error('[POCOSelect] Error loading PO/CO options:', error)
+    optionsError.value = error?.message || 'Failed to load options'
+    fetchedPurchaseOrders.value = []
+    fetchedChangeOrders.value = []
+  } finally {
+    optionsLoading.value = false
+  }
+}
+
+const { formatCurrency, formatNumber } = useCurrencyFormat()
 const { formatDate } = useDateFormat()
 
 const formatQty = (value: number | undefined | null): string => {
   if (value === null || value === undefined) return '-'
   const num = typeof value === 'string' ? parseFloat(value) : value
   if (!Number.isFinite(num)) return '-'
-  return new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(num)
+  return formatNumber(num, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
 type InvoiceSummaryAmounts = {
@@ -162,14 +232,14 @@ type InvoiceSummaryAmounts = {
 
 const displayAmountForOrder = (
   order: Record<string, unknown> | null | undefined,
-  amount: number | null | undefined,
+  amount: number | null | undefined
 ): number => amountInPoToCurrency(amount, order)
 
 const resolveBalanceToBeInvoicedForDisplay = (
   order: Record<string, unknown>,
   orderType: string | undefined,
   summary: InvoiceSummaryAmounts,
-  items: any[],
+  items: any[]
 ): number => {
   if (!isMaterialOrderType(orderType)) {
     return computeLaborBalanceToBeInvoicedForDisplay(order, {
@@ -183,12 +253,15 @@ const resolveBalanceToBeInvoicedForDisplay = (
   }
 
   let balance: number
+
   if ((summary.invoicedQuantity ?? 0) > 0) {
     balance = summary.balanceToBeInvoiced
   } else if (!items.length) {
     balance = summary.balanceToBeInvoiced
   } else {
-    const computed = computeMaterialBalanceToBeInvoicedFromItems({ lineItems: items })
+    const computed = computeMaterialBalanceToBeInvoicedFromItems({
+      lineItems: items,
+    })
     balance = computed ?? summary.balanceToBeInvoiced
   }
 
@@ -199,47 +272,22 @@ const mapInvoiceSummaryForDisplay = (
   order: Record<string, unknown>,
   summary: InvoiceSummaryAmounts,
   items: any[] = [],
-  orderType?: string,
+  orderType?: string
 ): InvoiceSummaryAmounts => ({
-  advancePaid: displayAmountForOrder(order, summary.advancePaid),
-  invoicedValue: displayAmountForOrder(order, summary.invoicedValue),
-  holdbackBalanceToBeInvoiced: displayAmountForOrder(
-    order,
-    summary.holdbackBalanceToBeInvoiced,
-  ),
+  advancePaid: summary.advancePaid,
+  invoicedValue: summary.invoicedValue,
+  holdbackBalanceToBeInvoiced: summary.holdbackBalanceToBeInvoiced,
   balanceToBeInvoiced: resolveBalanceToBeInvoicedForDisplay(
     order,
     orderType,
     summary,
-    items,
+    items
   ),
   poQuantity: summary.poQuantity,
   coQuantity: summary.coQuantity,
   invoicedQuantity: summary.invoicedQuantity,
   qtyRemainingToBeInvoiced: summary.qtyRemainingToBeInvoiced,
 })
-
-const shouldHideOrderFromPicker = (
-  orderType: string | undefined,
-  invoiceSummary: {
-    balanceToBeInvoiced?: number
-    qtyRemainingToBeInvoiced?: number
-  } | null,
-  optionValue: string,
-  currentModelValue: string | undefined,
-): boolean => {
-  if (!invoiceSummary) return false
-  if (currentModelValue === optionValue) return false
-
-  const normalizedType = String(orderType ?? '').toUpperCase()
-  if (normalizedType === 'LABOR') {
-    return (invoiceSummary.balanceToBeInvoiced ?? 0) <= 0
-  }
-  if (normalizedType === 'MATERIAL') {
-    return (invoiceSummary.qtyRemainingToBeInvoiced ?? 0) <= 0
-  }
-  return false
-}
 
 // Resolve components for table columns
 const UButton = resolveComponent('UButton')
@@ -262,6 +310,7 @@ const buttonDisplayLabel = computed(() => {
 
 const showModal = ref(false)
 const searchFilter = ref('')
+const modalPrefetchLoading = ref(false)
 const itemsCache = ref<Map<string, { items: any[], totalQuantity: number }>>(new Map())
 const loadingItems = ref<Set<string>>(new Set())
 const cacheUpdateTrigger = ref(0) // Trigger for reactivity
@@ -279,6 +328,19 @@ const invoiceSummaryCache = ref<Map<string, {
 const loadingInvoiceSummaries = ref<Set<string>>(new Set())
 const isAdvancePaymentPicker = computed(() => props.showInvoiceSummary && !props.showOnlyPOs && !props.showOnlyCOs)
 const isFullscreenModal = computed(() => props.fullscreen || isAdvancePaymentPicker.value)
+const modalTitle = computed(() => {
+  if (props.showOnlyPOs) return 'Select Purchase Order'
+  if (props.showOnlyCOs) return 'Select Change Order'
+  return 'Select PO/CO'
+})
+const isModalContentLoading = computed(
+  () => optionsLoading.value || modalPrefetchLoading.value
+)
+const modalLoadingMessage = computed(() => {
+  if (props.showOnlyCOs) return 'Loading change orders...'
+  if (props.showOnlyPOs) return 'Loading purchase orders...'
+  return 'Loading PO/CO data...'
+})
 
 // Table columns configuration - computed to conditionally show invoice summary columns
 const tableColumns = computed<TableColumn<any>[]>(() => {
@@ -507,6 +569,28 @@ const tableColumns = computed<TableColumn<any>[]>(() => {
 // Allowed statuses for PO/CO selection
 const allowedStatuses = ['Approved', 'Completed', 'Partially_Received', 'partially_received']
 
+const shouldHideOrderFromPicker = (
+  orderType: string | undefined,
+  invoiceSummary: {
+    balanceToBeInvoiced?: number
+    qtyRemainingToBeInvoiced?: number
+  } | null,
+  optionValue: string,
+  currentModelValue: string | undefined
+): boolean => {
+  if (!invoiceSummary) return false
+  if (currentModelValue === optionValue) return false
+
+  const normalizedType = String(orderType ?? '').toUpperCase()
+  if (normalizedType === 'LABOR') {
+    return (invoiceSummary.balanceToBeInvoiced ?? 0) <= 0
+  }
+  if (normalizedType === 'MATERIAL') {
+    return (invoiceSummary.qtyRemainingToBeInvoiced ?? 0) <= 0
+  }
+  return false
+}
+
 // Helper function to check if status is allowed
 const isStatusAllowed = (status: string | undefined): boolean => {
   if (!status) return false
@@ -568,9 +652,12 @@ const fetchPOItems = async (poUuid: string): Promise<{ items: any[], totalQuanti
 // Helper function to fetch PO invoice summary
 const fetchPOInvoiceSummary = async (poUuid: string, forceRefresh: boolean = false): Promise<{
   advancePaid: number
+  advancePaidNet: number
   invoicedValue: number
   holdbackBalanceToBeInvoiced: number
   balanceToBeInvoiced: number
+  totalOrderValue: number
+  holdbackReleased: number
   poQuantity?: number
   invoicedQuantity?: number
   qtyRemainingToBeInvoiced?: number
@@ -595,6 +682,7 @@ const fetchPOInvoiceSummary = async (poUuid: string, forceRefresh: boolean = fal
     
     if (summary) {
       const result = {
+        // "Advance Paid" column: total advance invoice amount including sales taxes (API: advance_paid_including_taxes)
         advancePaid: summary.advance_paid_including_taxes ?? summary.advance_paid ?? 0,
         advancePaidNet: summary.advance_paid ?? 0,
         invoicedValue: summary.invoiced_value || 0,
@@ -623,9 +711,12 @@ const fetchPOInvoiceSummary = async (poUuid: string, forceRefresh: boolean = fal
 // Helper function to fetch CO invoice summary
 const fetchCOInvoiceSummary = async (coUuid: string, forceRefresh: boolean = false): Promise<{
   advancePaid: number
+  advancePaidNet: number
   invoicedValue: number
   holdbackBalanceToBeInvoiced: number
   balanceToBeInvoiced: number
+  totalOrderValue: number
+  holdbackReleased: number
   coQuantity?: number
   invoicedQuantity?: number
   qtyRemainingToBeInvoiced?: number
@@ -730,12 +821,10 @@ const poCoOptions = computed(() => {
 
   const options: any[] = [];
   
-  // Filter and add Purchase Orders (only if not showing only COs)
+  // Filter and add Purchase Orders (only if not showing only COs).
+  // Rows are already scoped to corporation + project + vendor + allowed status by the API.
   if (!props.showOnlyCOs) {
-    const filteredPOs = purchaseOrdersStore.purchaseOrders.filter(po =>
-      po.corporation_uuid === props.corporationUuid &&
-      po.project_uuid === props.projectUuid &&
-      po.vendor_uuid === props.vendorUuid &&
+    const filteredPOs = fetchedPurchaseOrders.value.filter(po =>
       isStatusAllowed(po.status)
     );
 
@@ -791,7 +880,7 @@ const poCoOptions = computed(() => {
             po.po_type,
             rawSummary,
             `PO:${po.uuid}`,
-            currentModelValue,
+            currentModelValue
           )
         ) {
           return
@@ -822,26 +911,14 @@ const poCoOptions = computed(() => {
     });
   }
   
-  // Filter and add Change Orders (only if showOnlyPOs is false and showOnlyCOs is true or both are false)
+  // Filter and add Change Orders (only if showOnlyPOs is false and showOnlyCOs is true or both are false).
+  // Rows are already scoped to corporation + project + vendor + allowed status by the API.
   if (!props.showOnlyPOs || props.showOnlyCOs) {
-    const filteredCOs = changeOrdersStore.changeOrders.filter(co =>
-      co.corporation_uuid === props.corporationUuid &&
-      co.project_uuid === props.projectUuid &&
-      co.vendor_uuid === props.vendorUuid &&
+    const filteredCOs = fetchedChangeOrders.value.filter(co =>
       isStatusAllowed(co.status)
     );
 
   filteredCOs.forEach(co => {
-    // Always fetch invoice summary to check for remaining balance to invoice
-    if (co.uuid) {
-      const cacheKey = `CO_SUMMARY:${co.uuid}`
-      if (!invoiceSummaryCache.value.has(cacheKey)) {
-        // Trigger async fetch if not in cache (will update on next render)
-        fetchCOInvoiceSummary(co.uuid, true).catch(() => {
-          // Silently fail - summary will show as '-' if fetch fails
-        })
-      }
-    }
     const coNumber = co.co_number || 'Unnamed CO';
     const vendorName = co.vendor_name || 'Unknown Vendor';
     const amount = displayAmountForOrder(co, co.total_co_amount || 0);
@@ -893,7 +970,7 @@ const poCoOptions = computed(() => {
             co.co_type,
             rawSummary,
             `CO:${co.uuid}`,
-            currentModelValue,
+            currentModelValue
           )
         ) {
           return
@@ -960,96 +1037,65 @@ const updateSelectedObject = () => {
   }
 }
 
+// Helper to get PO/CO rows visible in the picker (already scoped by the API).
+const getFilteredOrdersForModal = () => {
+  const pos = !props.showOnlyCOs
+    ? fetchedPurchaseOrders.value.filter((po) => isStatusAllowed(po.status))
+    : []
+
+  const cos =
+    !props.showOnlyPOs || props.showOnlyCOs
+      ? fetchedChangeOrders.value.filter((co) => isStatusAllowed(co.status))
+      : []
+
+  return { pos, cos }
+}
+
 // Modal methods
 const openModal = async () => {
-  if (props.disabled || purchaseOrdersStore.loading || changeOrdersStore.loading || !props.projectUuid || !props.vendorUuid) {
+  if (props.disabled || optionsLoading.value || !props.projectUuid || !props.vendorUuid) {
     return
   }
+
   showModal.value = true
   searchFilter.value = ''
-  
-  // Fetch items and invoice summaries for all POs and COs in parallel
-  const fetchPromises: Promise<any>[] = []
-  
-  // Pre-fetch items for all visible POs (only if not showing only COs)
-  if (!props.showOnlyCOs) {
-    const filteredPOs = purchaseOrdersStore.purchaseOrders.filter(po => 
-      po.corporation_uuid === props.corporationUuid &&
-      po.project_uuid === props.projectUuid &&
-      po.vendor_uuid === props.vendorUuid &&
-      isStatusAllowed(po.status)
-    )
-    
-    // Fetch PO items and summaries
-    filteredPOs.forEach(po => {
+  modalPrefetchLoading.value = true
+
+  try {
+    // Always load a fresh, fully-scoped PO/CO list straight from the DB.
+    await loadPoCoOptions()
+
+    const fetchPromises: Promise<any>[] = []
+    const { pos: filteredPOs, cos: filteredCOs } = getFilteredOrdersForModal()
+
+    filteredPOs.forEach((po) => {
       if (po.uuid && (!Array.isArray(po.po_items) || po.po_items.length === 0)) {
         fetchPromises.push(fetchPOItems(po.uuid))
       }
-      // Fetch invoice summary if enabled (always refresh to get latest data including draft invoices)
       if (props.showInvoiceSummary && po.uuid) {
         fetchPromises.push(fetchPOInvoiceSummary(po.uuid, true))
       }
     })
-    
-    // When showInvoiceSummary is true, also fetch invoice summaries for ALL POs (regardless of status)
-    // This ensures advance paid and invoiced values are shown for all POs in the modal
-    if (props.showInvoiceSummary) {
-      const allPOs = purchaseOrdersStore.purchaseOrders.filter(po => 
-        po.corporation_uuid === props.corporationUuid &&
-        po.project_uuid === props.projectUuid &&
-        po.vendor_uuid === props.vendorUuid
-      )
-      
-      allPOs.forEach(po => {
-        if (po.uuid) {
-          fetchPromises.push(fetchPOInvoiceSummary(po.uuid, true))
-        }
-      })
-    }
-  }
-  
-  // Fetch CO items and summaries (only if showOnlyPOs is false or showOnlyCOs is true)
-  if (!props.showOnlyPOs || props.showOnlyCOs) {
-    const filteredCOs = changeOrdersStore.changeOrders.filter(co => 
-      co.corporation_uuid === props.corporationUuid &&
-      co.project_uuid === props.projectUuid &&
-      co.vendor_uuid === props.vendorUuid &&
-      isStatusAllowed(co.status)
-    )
-    
-    filteredCOs.forEach(co => {
+
+    filteredCOs.forEach((co) => {
       if (co.uuid && (!Array.isArray(co.co_items) || co.co_items.length === 0)) {
         fetchPromises.push(fetchCOItems(co.uuid))
       }
-      // Fetch invoice summary if enabled (always refresh to get latest data including draft invoices)
       if (props.showInvoiceSummary && co.uuid) {
         fetchPromises.push(fetchCOInvoiceSummary(co.uuid, true))
       }
     })
-    
-    // When showInvoiceSummary is true, also fetch invoice summaries for ALL COs (regardless of status)
-    // This ensures advance paid and invoiced values are shown for all COs in the modal
-    if (props.showInvoiceSummary) {
-      const allCOs = changeOrdersStore.changeOrders.filter(co => 
-        co.corporation_uuid === props.corporationUuid &&
-        co.project_uuid === props.projectUuid &&
-        co.vendor_uuid === props.vendorUuid
-      )
-      
-      allCOs.forEach(co => {
-        if (co.uuid) {
-          fetchPromises.push(fetchCOInvoiceSummary(co.uuid, true))
-        }
-      })
-    }
+
+    await Promise.all(fetchPromises)
+  } finally {
+    modalPrefetchLoading.value = false
   }
-  
-  await Promise.all(fetchPromises)
 }
 
 const closeModal = () => {
   showModal.value = false
   searchFilter.value = ''
+  modalPrefetchLoading.value = false
 }
 
 const clearSelection = () => {
@@ -1110,45 +1156,30 @@ watch(selectedOrder, () => {
   updateSelectedObject()
 })
 
-// Watch for project, corporation, or vendor changes and fetch data
-watch([() => props.projectUuid, () => props.corporationUuid, () => props.vendorUuid], async ([newProjectUuid, newCorpUuid, newVendorUuid], [oldProjectUuid, oldCorpUuid, oldVendorUuid]) => {
-  // Clear selected order when project, corporation, or vendor changes
-  if ((newProjectUuid !== oldProjectUuid || newCorpUuid !== oldCorpUuid || newVendorUuid !== oldVendorUuid) && (oldProjectUuid || oldCorpUuid || oldVendorUuid)) {
-    selectedOrder.value = undefined
-    selectedOption.value = undefined
-    emit('update:modelValue', undefined)
-  }
-  
-  // Fetch purchase orders and change orders for the new corporation
-  if (newCorpUuid) {
-    try {
-      await Promise.all([
-        purchaseOrdersStore.fetchPurchaseOrders(newCorpUuid),
-        changeOrdersStore.fetchChangeOrders(newCorpUuid)
-      ])
-    } catch (error) {
-      console.error('[POCOSelect] Error fetching orders:', error)
+// Clear any stale selection and cached options when the scope changes.
+// Fresh options are loaded lazily when the modal is opened (see openModal).
+watch(
+  [() => props.projectUuid, () => props.corporationUuid, () => props.vendorUuid],
+  ([newProjectUuid, newCorpUuid, newVendorUuid], [oldProjectUuid, oldCorpUuid, oldVendorUuid]) => {
+    if (
+      (newProjectUuid !== oldProjectUuid ||
+        newCorpUuid !== oldCorpUuid ||
+        newVendorUuid !== oldVendorUuid) &&
+      (oldProjectUuid || oldCorpUuid || oldVendorUuid)
+    ) {
+      selectedOrder.value = undefined
+      selectedOption.value = undefined
+      emit('update:modelValue', undefined)
+      // Drop cached rows so the next open re-fetches for the new scope.
+      fetchedPurchaseOrders.value = []
+      fetchedChangeOrders.value = []
     }
   }
-}, { immediate: true })
+)
 
-// Load data if needed on mount
-if (props.corporationUuid && typeof window !== 'undefined') {
-  // Check if we need to fetch data for this corporation
-  const hasPOsForCorp = purchaseOrdersStore.purchaseOrders.some(
-    po => po.corporation_uuid === props.corporationUuid
-  )
-  const hasCOsForCorp = changeOrdersStore.changeOrders.some(
-    co => co.corporation_uuid === props.corporationUuid
-  )
-  
-  Promise.all([
-    hasPOsForCorp ? Promise.resolve() : purchaseOrdersStore.fetchPurchaseOrders(props.corporationUuid),
-    hasCOsForCorp ? Promise.resolve() : changeOrdersStore.fetchChangeOrders(props.corporationUuid)
-  ]).catch(error => {
-    console.error('[POCOSelect] Error loading data on mount:', error)
-  })
-}
+defineExpose({
+  hasValidationError,
+})
 </script>
 
 <style scoped>

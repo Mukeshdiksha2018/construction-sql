@@ -113,12 +113,14 @@
                 <VendorSelect
                   v-model="filterVendor"
                   :corporation-uuid="filterCorporation || selectedCorporationId || undefined"
+                  :project-uuid="filterProject || undefined"
                   placeholder="All Vendors"
                   size="sm"
                   class="w-full"
                   :disabled="!filterCorporation && !selectedCorporationId"
                   :include-all-option="true"
                   all-option-label="All Vendors"
+                  with-po-or-co-only
                 />
               </div>
 
@@ -281,12 +283,14 @@
             <VendorSelect
               v-model="filterVendor"
               :corporation-uuid="filterCorporation || selectedCorporationId || undefined"
+              :project-uuid="filterProject || undefined"
               placeholder="All Vendors"
               size="sm"
               class="w-full"
               :disabled="!filterCorporation && !selectedCorporationId"
               :include-all-option="true"
               all-option-label="All Vendors"
+              with-po-or-co-only
             />
           </div>
 

@@ -50,10 +50,16 @@ interface Props {
   className?: string
   disabled?: boolean
   corporationUuid?: string
+  /** Optional project scope for withPoOrCoOnly filtering. */
+  projectUuid?: string
   localVendors?: any[]
   includeAllOption?: boolean
   allOptionLabel?: string
   showAddButton?: boolean
+  /** Only show vendors that have Approved/Completed/Partially_Received PO or CO. */
+  withPoOrCoOnly?: boolean
+  /** Optional PO/CO type filter (MATERIAL or LABOR) when withPoOrCoOnly is true. */
+  orderType?: 'MATERIAL' | 'LABOR'
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -66,6 +72,7 @@ const props = withDefaults(defineProps<Props>(), {
   includeAllOption: false,
   allOptionLabel: 'All Vendors',
   showAddButton: false,
+  withPoOrCoOnly: false,
 })
 
 const emit = defineEmits<{
@@ -76,6 +83,8 @@ const emit = defineEmits<{
 const vendorStore = useVendorStore()
 const selectedVendor = ref<string | undefined>(props.modelValue)
 const selectedVendorObject = ref<any>(undefined)
+const allowedVendorUuids = ref<Set<string> | null>(null)
+const filteringVendors = ref(false)
 
 const menuUi = {
   content: 'max-h-60 min-w-full w-max',
@@ -89,7 +98,11 @@ const vendors = computed(() => {
 })
 
 const vendorOptions = computed(() => {
-  const options = vendors.value.map((v: any) => ({
+  let list = vendors.value
+  if (props.withPoOrCoOnly && allowedVendorUuids.value) {
+    list = list.filter((v: any) => allowedVendorUuids.value!.has(String(v.uuid || '').trim()))
+  }
+  const options = list.map((v: any) => ({
     label: v.vendor_name,
     value: v.uuid,
     vendor: v,
@@ -139,6 +152,32 @@ const handleSelection = (vendor: any) => {
   }
 }
 
+async function refreshPoOrCoVendorFilter() {
+  if (!props.withPoOrCoOnly || !props.corporationUuid) {
+    allowedVendorUuids.value = null
+    return
+  }
+  filteringVendors.value = true
+  try {
+    const response = await $fetch<{ data: string[] }>('/api/purchase-orders/vendors-with-po-or-co', {
+      query: {
+        corporation_uuid: props.corporationUuid,
+        ...(props.projectUuid ? { project_uuid: props.projectUuid } : {}),
+        ...(props.orderType ? { order_type: props.orderType } : {}),
+      },
+    })
+    allowedVendorUuids.value = new Set(
+      (response?.data || []).map(id => String(id).trim()).filter(Boolean),
+    )
+  }
+  catch {
+    allowedVendorUuids.value = new Set()
+  }
+  finally {
+    filteringVendors.value = false
+  }
+}
+
 watch(() => props.modelValue, v => { selectedVendor.value = v; updateSelectedObject() })
 watch(vendorOptions, () => updateSelectedObject(), { immediate: true })
 watch(selectedVendor, () => updateSelectedObject())
@@ -148,4 +187,11 @@ watch(() => props.corporationUuid, (v) => {
     vendorStore.fetchVendors(v).catch(() => {})
   }
 }, { immediate: true })
-</script>
+
+watch(
+  () => [props.corporationUuid, props.projectUuid, props.withPoOrCoOnly, props.orderType] as const,
+  () => {
+    void refreshPoOrCoVendorFilter()
+  },
+  { immediate: true },
+)

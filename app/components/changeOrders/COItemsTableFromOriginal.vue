@@ -777,6 +777,7 @@ import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
 import { formatPoAmountColumnHeader, type PoCurrencyCode } from '~/utils/poCurrencyConversion'
+import { normalizeUnitPriceDraftInput } from '~/utils/unitPriceInput'
 import ApprovalChecksSelect from '~/components/shared/ApprovalChecksSelect.vue'
 import { useApprovalChecksStore } from '~/stores/approvalChecks'
 import CostCodeSelect from '~/components/shared/CostCodeSelect.vue'
@@ -1049,13 +1050,8 @@ const toInputString = (value: any): string => {
   if (value === null || value === undefined) return ''
   return typeof value === 'number' ? String(value) : String(value)
 }
-const normalizeUnitPriceInput = (value: any): string => {
-  const normalized = toInputString(value).replace(/,/g, '').trim()
-  if (!normalized) return ''
-  if (!/^\d*\.?\d*$/.test(normalized)) return ''
-  const [integerPart, decimalPart = ''] = normalized.split('.')
-  if (!normalized.includes('.')) return integerPart
-  return `${integerPart}.${decimalPart.slice(0, 2)}`
+const normalizeUnitPriceInput = (value: any, previousInput = ''): string => {
+  return normalizeUnitPriceDraftInput(value, previousInput)
 }
 // Helper to show "0" as placeholder when value is null/undefined (for initial display)
 const toInputStringWithZeroPlaceholder = (value: any): string => {
@@ -1338,7 +1334,7 @@ const computeInvoiceTotal = (row: OriginalItemDisplay, index?: number): number =
 const onCoUnitPriceInput = (index: number, value: string | number | null | undefined) => {
   if (props.readonly || showInvoiceValues.value) return
   const d = coDrafts[index] || (coDrafts[index] = { unitPriceInput: '', quantityInput: '' })
-  d.unitPriceInput = normalizeUnitPriceInput(value)
+  d.unitPriceInput = normalizeUnitPriceInput(value, d.unitPriceInput)
   const unit = parseNumericInput(d.unitPriceInput)
   const qty = parseNumericInput(d.quantityInput)
   const computedTotal = roundCurrency(unit * qty)
@@ -1378,7 +1374,7 @@ const onInvoiceUnitPriceInput = (index: number, value: string | number | null | 
     unitPriceInput: invoiceUnitInput,
     quantityInput: invoiceQuantityInput,
   })
-  d.unitPriceInput = normalizeUnitPriceInput(value)
+  d.unitPriceInput = normalizeUnitPriceInput(value, d.unitPriceInput)
   const unit = parseNumericInput(d.unitPriceInput)
   const qty = parseNumericInput(d.quantityInput)
   const computedTotal = roundCurrency(unit * qty)
