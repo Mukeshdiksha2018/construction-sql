@@ -7,8 +7,6 @@ import {
 } from './receiptNoteReceiptLinePersistence'
 
 const prisma = getPrisma()
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
 function parseJson<T = unknown>(val: string | null | undefined, fallback: T): T {
   if (!val) return fallback
   try { return JSON.parse(val) as T } catch { return fallback }
@@ -54,16 +52,11 @@ function normalizeReceiptType(val: unknown): 'purchase_order' | 'change_order' {
   return String(val || '').trim() === 'change_order' ? 'change_order' : 'purchase_order'
 }
 
-function normalizeReceivedByFields(rawValue: unknown) {
-  if (rawValue === null || rawValue === undefined) {
-    return { receivedBy: null as string | null, nimbleReceivedByUserId: null as string | null }
-  }
+/** Free-text name of the person who received the goods. */
+function normalizeReceivedByText(rawValue: unknown): string | null {
+  if (rawValue === null || rawValue === undefined) return null
   const value = String(rawValue).trim()
-  if (!value) return { receivedBy: null, nimbleReceivedByUserId: null }
-  if (UUID_REGEX.test(value)) {
-    return { receivedBy: value, nimbleReceivedByUserId: null }
-  }
-  return { receivedBy: null, nimbleReceivedByUserId: value }
+  return value || null
 }
 
 function buildReceiptMetadata(input: Record<string, any>): Record<string, unknown> {
@@ -102,7 +95,6 @@ function mapReceiptNoteRow(row: any): any {
     grn_number: row.grn_number,
     reference_number: row.reference_number ?? null,
     received_by: row.received_by ?? null,
-    nimble_received_by_user_id: row.nimble_received_by_user_id ?? null,
     location_uuid: row.location_uuid ?? null,
     notes: row.notes ?? null,
     status: row.status,
@@ -354,8 +346,6 @@ async function maybeMarkSourceOrderCompleted(
 function buildHeaderData(body: Record<string, any>, noteUuid: string, grnNumber: string) {
   const receiptType = normalizeReceiptType(body.receipt_type)
   const { purchaseOrderUuid, changeOrderUuid } = resolveSourceUuids(body, receiptType)
-  const receivedBy = normalizeReceivedByFields(body.received_by)
-
   return {
     uuid: noteUuid,
     corporation_uuid: body.corporation_uuid,
@@ -369,8 +359,7 @@ function buildHeaderData(body: Record<string, any>, noteUuid: string, grnNumber:
     shipment_date: parseDate(body.shipment_date),
     grn_number: grnNumber,
     reference_number: body.reference_number ?? null,
-    received_by: receivedBy.receivedBy,
-    nimble_received_by_user_id: body.nimble_received_by_user_id ?? receivedBy.nimbleReceivedByUserId,
+    received_by: normalizeReceivedByText(body.received_by),
     location_uuid: body.location_uuid ?? null,
     notes: body.notes ?? null,
     status: normalizeStatus(body.status),
@@ -456,10 +445,6 @@ export async function updateStockReceiptNote(uuid: string, input: Record<string,
     purchaseOrderUuid = resolved.purchaseOrderUuid
     changeOrderUuid = resolved.changeOrderUuid
   }
-  const receivedBy = normalizeReceivedByFields(
-    input.received_by !== undefined ? input.received_by : existing.received_by,
-  )
-
   const grnNumber =
     input.grn_number !== undefined
       ? await ensureUniqueGrnNumber(existing.corporation_uuid, input.grn_number)
@@ -473,13 +458,7 @@ export async function updateStockReceiptNote(uuid: string, input: Record<string,
     vendor_uuid: input.vendor_uuid !== undefined ? (input.vendor_uuid ?? null) : undefined,
     grn_number: grnNumber,
     reference_number: input.reference_number !== undefined ? (input.reference_number ?? null) : undefined,
-    received_by: input.received_by !== undefined ? receivedBy.receivedBy : undefined,
-    nimble_received_by_user_id:
-      input.nimble_received_by_user_id !== undefined
-        ? input.nimble_received_by_user_id
-        : input.received_by !== undefined
-          ? receivedBy.nimbleReceivedByUserId
-          : undefined,
+    received_by: input.received_by !== undefined ? normalizeReceivedByText(input.received_by) : undefined,
     location_uuid: input.location_uuid !== undefined ? (input.location_uuid ?? null) : undefined,
     notes: input.notes !== undefined ? (input.notes ?? null) : undefined,
     status: input.status !== undefined ? normalizeStatus(input.status) : undefined,

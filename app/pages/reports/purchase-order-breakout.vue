@@ -617,7 +617,12 @@ import {
   downloadReportExcelFile,
 } from '~/utils/reportExcelExport.client'
 import ReportOrderPoAmountCell from '~/components/Reports/ReportOrderPoAmountCell.vue'
-import { formatReportPoAmountForExport } from '~/utils/reportPoCurrencyDisplay'
+import {
+  appendBreakoutAmountExportCells,
+  appendBreakoutAmountExportEmptyCells,
+  buildBreakoutAmountExportHeaders,
+  formatReportPoAmountForExport,
+} from '~/utils/reportPoCurrencyDisplay'
 
 const { fromUTCString, toUTCString } = useUTCDateFormat()
 
@@ -1325,30 +1330,15 @@ const exportReportToCsv = () => {
     'Location',
     'Item Description',
     'Item Quantity',
-    'Item Unit Cost',
-    'Goods Amount',
-    'Freight Amount',
-    'Packing Amount',
-    'Customs & Duties',
-    'Other Amount',
-    'HST',
-    'Expected Costs',
+    ...buildBreakoutAmountExportHeaders(),
   ]]
 
   for (const po of data) {
-    rows.push([
-      po.po_number || '',
-      po._record_type === 'CO' ? 'Change Order' : 'Purchase Order',
-      po.vendor_name || '',
-      '', '', '', '', '', '', '', '', '',
-      '', '', '', '', '', '',
-    ])
-
     for (const item of po.items || []) {
       const quantity = item.po_quantity || item.co_quantity || item.quantity || 0
       const unitPrice = item.po_unit_price || item.co_unit_price || item.unit_price || 0
       const goodsAmount = item.po_total || item.co_total || item.total || quantity * unitPrice
-      rows.push([
+      const itemRow: unknown[] = [
         po.po_number || '',
         po._record_type === 'CO' ? 'Change Order' : 'Purchase Order',
         po.vendor_name || '',
@@ -1359,30 +1349,38 @@ const exportReportToCsv = () => {
         item._location_name || '',
         getDescriptionDisplayText(item.description),
         `${formatNumber(quantity)} ${item.uom || ''}`.trim(),
-        exportPoAmount(po, unitPrice),
-        exportPoAmount(po, goodsAmount),
-        exportPoAmount(po, getItemFreightAmount(item, po)),
-        exportPoAmount(po, getItemPackingAmount(item, po)),
-        exportPoAmount(po, getItemCustomsAmount(item, po)),
-        exportPoAmount(po, getItemOtherAmount(item, po)),
-        exportPoAmount(po, getItemHSTAmount(item, po)),
-        exportPoAmount(po, getItemExpectedCost(item, po)),
-      ])
+      ]
+      appendBreakoutAmountExportCells(itemRow, po, unitPrice)
+      appendBreakoutAmountExportCells(itemRow, po, goodsAmount)
+      appendBreakoutAmountExportCells(itemRow, po, getItemFreightAmount(item, po))
+      appendBreakoutAmountExportCells(itemRow, po, getItemPackingAmount(item, po))
+      appendBreakoutAmountExportCells(itemRow, po, getItemCustomsAmount(item, po))
+      appendBreakoutAmountExportCells(itemRow, po, getItemOtherAmount(item, po))
+      appendBreakoutAmountExportCells(itemRow, po, getItemHSTAmount(item, po))
+      appendBreakoutAmountExportCells(itemRow, po, getItemExpectedCost(item, po))
+      rows.push(itemRow)
     }
 
-    rows.push([
-      po.po_number || '',
-      po._record_type === 'CO' ? 'Change Order' : 'Purchase Order',
-      po.vendor_name || '',
-      '', '', '', '', '', '', '', '',
-      exportPoAmount(po, po.item_total || 0),
-      exportPoAmount(po, po.freight_charges_amount || 0),
-      exportPoAmount(po, po.packing_charges_amount || 0),
-      exportPoAmount(po, po.custom_duties_amount || 0),
-      exportPoAmount(po, po.other_charges_amount || 0),
-      exportPoAmount(po, (po.sales_tax_1_amount || 0) + (po.sales_tax_2_amount || 0)),
-      exportPoAmount(po, getTotalExpectedCosts(po)),
-    ])
+    const totalRow: unknown[] = [
+      'Total',
+      '',
+      '',
+      '', '', '', '', '', '', '',
+    ]
+    appendBreakoutAmountExportEmptyCells(totalRow)
+    appendBreakoutAmountExportCells(totalRow, po, po.item_total || 0)
+    appendBreakoutAmountExportCells(totalRow, po, po.freight_charges_amount || 0)
+    appendBreakoutAmountExportCells(totalRow, po, po.packing_charges_amount || 0)
+    appendBreakoutAmountExportCells(totalRow, po, po.custom_duties_amount || 0)
+    appendBreakoutAmountExportCells(totalRow, po, po.other_charges_amount || 0)
+    appendBreakoutAmountExportCells(
+      totalRow,
+      po,
+      (po.sales_tax_1_amount || 0) + (po.sales_tax_2_amount || 0),
+    )
+    appendBreakoutAmountExportCells(totalRow, po, getTotalExpectedCosts(po))
+    rows.push(totalRow)
+    rows.push(Array(rows[0]!.length).fill(''))
   }
 
   const project = projectsStore.projects.find((p) => p.uuid === selectedProjectId.value)

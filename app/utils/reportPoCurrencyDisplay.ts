@@ -189,3 +189,68 @@ export function formatReportPoAmountForExport(
   )
   return formatReportDualCurrencyForExport(cadAmount, usdAmount)
 }
+
+function parseReportPoAmount(amount: number | string | null | undefined): number {
+  if (amount === null || amount === undefined || amount === '') return 0
+  const numeric =
+    typeof amount === 'string' ? parseFloat(amount) : Number(amount)
+  if (!Number.isFinite(numeric)) return 0
+  return roundPoCurrencyValue(numeric)
+}
+
+export type ReportPoAmountExportPair = {
+  cadAmount: number | ''
+  usdAmount: number | ''
+}
+
+/** Split PO/CO amount into CAD and USD columns for Excel export. */
+export function resolveReportPoAmountsForExport(
+  amount: number | string | null | undefined,
+  row: ReportOrderCurrencyRow
+): ReportPoAmountExportPair {
+  const numeric = parseReportPoAmount(amount)
+  const currency = getOrderCurrencyFields(row)
+
+  if (!currency.currency_conversion_enabled) {
+    return { cadAmount: numeric, usdAmount: '' }
+  }
+
+  const { cadAmount, usdAmount } = resolveDualCurrencyAmounts(
+    numeric,
+    currency.currency_from,
+    currency.currency_to,
+    currency.conversion_rate
+  )
+  return { cadAmount, usdAmount }
+}
+
+export const BREAKOUT_AMOUNT_EXPORT_LABELS = [
+  'Item Unit Cost',
+  'Goods Amount',
+  'Freight Amount',
+  'Packing Amount',
+  'Customs & Duties',
+  'Other Amount',
+  'HST',
+  'Expected Costs',
+] as const
+
+export function buildBreakoutAmountExportHeaders(): string[] {
+  return BREAKOUT_AMOUNT_EXPORT_LABELS.flatMap(label => [
+    `${label} (CAD)`,
+    `${label} (USD)`,
+  ])
+}
+
+export function appendBreakoutAmountExportCells(
+  row: unknown[],
+  record: ReportOrderCurrencyRow,
+  amount: number | string | null | undefined,
+): void {
+  const { cadAmount, usdAmount } = resolveReportPoAmountsForExport(amount, record)
+  row.push(cadAmount, usdAmount)
+}
+
+export function appendBreakoutAmountExportEmptyCells(row: unknown[]): void {
+  row.push('', '')
+}

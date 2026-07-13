@@ -700,7 +700,6 @@ model StockReceiptNote {
   grn_number                String    @db.NVarChar(100)
   reference_number          String?   @db.NVarChar(100)
   received_by               String?   @db.NVarChar(255)
-  nimble_received_by_user_id String?  @db.NVarChar(128)
   location_uuid             String?   @db.NVarChar(36)
   notes                     String?   @db.NVarChar(Max)
   status                    String    @default("Shipment") @db.NVarChar(50)

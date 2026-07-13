@@ -15,8 +15,8 @@ export interface StockReceiptNote {
   shipment_date?: string | null
   grn_number: string
   reference_number?: string | null
+  /** Free-text name of the person who received the goods. */
   received_by?: string | null
-  nimble_received_by_user_id?: string | null
   location_uuid?: string | null
   notes?: string | null
   status: 'Shipment' | 'Received'

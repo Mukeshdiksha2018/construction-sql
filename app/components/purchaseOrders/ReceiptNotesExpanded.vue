@@ -41,23 +41,7 @@
               {{ formatDate(note.entry_date || new Date().toISOString()) }}
             </td>
             <td class="px-3 py-2 text-left text-gray-700 dark:text-gray-300">
-              <div v-if="note.received_by" class="flex items-center gap-2">
-                <div class="w-5 h-5 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center overflow-hidden">
-                  <UIcon 
-                    v-if="!getUser(note.received_by)?.imageUrl" 
-                    name="i-heroicons-user" 
-                    class="w-3 h-3 text-primary-600 dark:text-primary-400"
-                  />
-                  <UAvatar
-                    v-else
-                    :src="getUser(note.received_by)?.imageUrl"
-                    :alt="getUser(note.received_by)?.name"
-                    size="xs"
-                  />
-                </div>
-                <span class="text-xs">{{ getUser(note.received_by)?.name || 'Unknown' }}</span>
-              </div>
-              <span v-else class="text-muted text-xs">N/A</span>
+              <span class="text-xs">{{ getReceivedByDisplay(note) || 'N/A' }}</span>
             </td>
             <td class="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-mono text-xs">
               {{ formatCurrency(note.total_received_amount || 0) }}
@@ -157,8 +141,8 @@ const userLookup = computed(() => {
   return map
 })
 
-const getUser = (userId: string) => {
-  return userLookup.value.get(userId)
+const getReceivedByDisplay = (note: { received_by?: string | null }) => {
+  return String(note?.received_by || '').trim()
 }
 
 const getStatusColor = (status: string): string => {

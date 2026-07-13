@@ -243,25 +243,15 @@
             <label class="block text-xs font-medium text-default mb-1">
               Received By
             </label>
-            <div class="flex items-center gap-2">
-              <UAvatar
-                v-if="receivedByOption?.avatar"
-                v-bind="receivedByOption.avatar"
-                size="xs"
-                class="flex-shrink-0"
-              />
-              <USelectMenu
-                v-model="receivedByOption"
-                :items="receivedByOptions"
-                placeholder="Select team member"
-                size="sm"
-                class="flex-1 min-w-0"
-                value-key="value"
-                searchable
-                clearable
-                :disabled="props.readonly"
-              />
-            </div>
+            <UInput
+              :model-value="form.received_by || ''"
+              placeholder="Name of person who received goods"
+              size="sm"
+              class="w-full"
+              icon="i-heroicons-user"
+              :disabled="props.readonly"
+              @update:model-value="(value) => updateFormField('received_by', value || null)"
+            />
           </div>
 
           <!-- 12. Reference Number -->

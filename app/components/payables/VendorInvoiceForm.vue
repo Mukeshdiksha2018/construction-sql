@@ -209,6 +209,8 @@
                 :show-invoice-summary="true"
                 :showOnlyPOs="true"
                 :fullscreen="true"
+                required
+                :show-validation-error="showFormValidationErrors"
                 :disabled="areSubsequentFieldsDisabled"
                 placeholder="Select purchase order"
                 size="sm"
@@ -232,6 +234,8 @@
                 :show-invoice-summary="true"
                 :showOnlyCOs="true"
                 :fullscreen="true"
+                required
+                :show-validation-error="showFormValidationErrors"
                 :disabled="areSubsequentFieldsDisabled"
                 placeholder="Select change order"
                 size="sm"
@@ -252,6 +256,8 @@
                 :corporation-uuid="form.corporation_uuid || corpStore.selectedCorporation?.uuid"
                 :vendor-uuid="form.vendor_uuid"
                 :show-invoice-summary="true"
+                required
+                :show-validation-error="showFormValidationErrors"
                 :disabled="areSubsequentFieldsDisabled"
                 placeholder="Select PO or CO"
                 size="sm"
@@ -9634,6 +9640,30 @@ const hasCreditDaysValidationError = computed(() => {
   return cd === null || cd === undefined || String(cd).trim() === '';
 });
 
+const hasPoCoSelectionValidationError = computed(() => {
+  if (areSubsequentFieldsDisabled.value) return false;
+
+  const poCoUuid = String(props.form.po_co_uuid || '').trim();
+
+  if (isAgainstPO.value) {
+    return !props.form.purchase_order_uuid && !poCoUuid.startsWith('PO:');
+  }
+
+  if (isAgainstCO.value) {
+    return !props.form.change_order_uuid && !poCoUuid.startsWith('CO:');
+  }
+
+  if (isAgainstAdvancePayment.value) {
+    return (
+      !poCoUuid &&
+      !props.form.purchase_order_uuid &&
+      !props.form.change_order_uuid
+    );
+  }
+
+  return false;
+});
+
 // Validation for due date - must be selected
 const hasDueDateValidationError = computed(() => {
   if (areSubsequentFieldsDisabled.value) return false; // Skip validation if fields are disabled
@@ -9648,6 +9678,7 @@ const hasValidationError = computed(
     hasInvoiceItemsLessThanAdvanceError.value ||
     hasHoldbackValidationError.value ||
     hasCreditDaysValidationError.value ||
+    hasPoCoSelectionValidationError.value ||
     hasDueDateValidationError.value
 );
 
