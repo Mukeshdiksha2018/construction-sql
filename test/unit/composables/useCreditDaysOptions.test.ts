@@ -44,7 +44,9 @@ describe('useCreditDaysOptions', () => {
       const { refreshCreditDaysOptions, creditDaysOptions } = await getComposable()
       await refreshCreditDaysOptions()
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/credit-days')
+      expect(mockFetch).toHaveBeenCalledWith('/api/credit-days', {
+        credentials: 'include',
+      })
       expect(creditDaysOptions.value).toHaveLength(2)
       expect(creditDaysOptions.value[0]).toMatchObject({ id: 'id-1', label: 'Net 15', days: 15 })
     })

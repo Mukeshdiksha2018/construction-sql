@@ -90,6 +90,7 @@ describe('useTabRouting', () => {
       'project-types',
       'service-types',
       'terms-and-conditions',
+      'special-instructions',
     ])
   })
 })

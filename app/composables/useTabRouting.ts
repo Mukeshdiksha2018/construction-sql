@@ -5,7 +5,11 @@ import { computed, readonly } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 export type ProjectsTabName = 'project-details' | 'items' | 'estimates' | 'cost-codes'
-export type ConfigurationsTabName = 'project-types' | 'service-types' | 'terms-and-conditions'
+export type ConfigurationsTabName =
+  | 'project-types'
+  | 'service-types'
+  | 'terms-and-conditions'
+  | 'special-instructions'
 export type PurchaseOrdersTabName = 'purchase-orders' | 'stock-receipt-note'
 export type PayablesTabName = 'vendor-invoices' | 'bill-entry-payment' | 'print-checks'
 export type CorporationTabName =
