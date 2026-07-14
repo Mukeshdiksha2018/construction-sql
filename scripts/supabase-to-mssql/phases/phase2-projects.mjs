@@ -109,20 +109,16 @@ export async function runPhase2Projects(ctx) {
 
   {
     const rows = await pgQuery(pg, `
-      select uuid::text as uuid, project_uuid::text as project_uuid,
-             location_uuid::text as location_uuid, location_name, area_sq_ft, no_of_rooms,
-             is_active, created_at, updated_at
-      from public.project_location_breakdowns
+      select * from public.project_location_breakdowns
       ${inProjects}`)
     await upsertByUuid(mssql, {
       table: 'project_location_breakdowns',
-      columns: ['uuid', 'project_uuid', 'location_uuid', 'location_name', 'area_sq_ft', 'no_of_rooms', 'is_active', 'created_at', 'updated_at'],
+      columns: ['uuid', 'project_uuid', 'location_uuid', 'area_sq_ft', 'no_of_rooms', 'is_active', 'created_at', 'updated_at'],
       dryRun,
       rows: rows.map((r) => ({
         uuid: uuidStr(r.uuid),
         project_uuid: uuidStr(r.project_uuid),
         location_uuid: remapMasterUuid(lookups, r.location_uuid),
-        location_name: asStr(r.location_name, 255),
         area_sq_ft: asNum(r.area_sq_ft),
         no_of_rooms: asNum(r.no_of_rooms) != null ? Math.trunc(asNum(r.no_of_rooms)) : null,
         is_active: asBool(r.is_active, true),
