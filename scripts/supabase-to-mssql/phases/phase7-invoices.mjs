@@ -6,7 +6,7 @@ import {
   parseBreakdown,
   taxRowsFromBreakdown,
 } from '../expandBlobs.mjs'
-import { remapCoa, remapCorp, remapUom, remapVendor } from '../lookups.mjs'
+import { remapCoa, remapCorp, remapUom, remapVendor, remapMasterUuid } from '../lookups.mjs'
 import { replaceChildren, upsertByUuid } from '../upsert.mjs'
 import { asBool, asDate, asNum, asStr, log, stringifyJson, uuidStr } from '../utils.mjs'
 
@@ -82,7 +82,7 @@ export async function runPhase7VendorInvoices(ctx) {
     project_uuid: uuidStr(r.project_uuid),
     vendor_invoice_uuid: uuidStr(r.vendor_invoice_uuid),
     order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
-    cost_code_uuid: uuidStr(r.cost_code_uuid),
+    cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
     cost_code_label: asStr(r.cost_code_label, 255),
     cost_code_number: asStr(r.cost_code_number, 100),
     cost_code_name: asStr(r.cost_code_name, 255),
@@ -112,7 +112,7 @@ export async function runPhase7VendorInvoices(ctx) {
     vendor_invoice_uuid: uuidStr(r.vendor_invoice_uuid),
     order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
     po_item_uuid: uuidStr(r.po_item_uuid || r.source_item_uuid),
-    cost_code_uuid: uuidStr(r.cost_code_uuid),
+    cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
     cost_code_label: asStr(r.cost_code_label, 255),
     cost_code_number: asStr(r.cost_code_number, 100),
     cost_code_name: asStr(r.cost_code_name, 255),
@@ -123,7 +123,7 @@ export async function runPhase7VendorInvoices(ctx) {
     item_name: asStr(r.item_name, 500),
     description: asStr(r.description),
     model_number: asStr(r.model_number, 255),
-    location_uuid: uuidStr(r.location_uuid),
+    location_uuid: remapMasterUuid(lookups, r.location_uuid),
     location_label: asStr(r.location_label, 255),
     unit_uuid: remapUom(lookups, r.unit_uuid),
     unit_label: asStr(r.unit_label, 100),
@@ -145,7 +145,7 @@ export async function runPhase7VendorInvoices(ctx) {
     vendor_invoice_uuid: uuidStr(r.vendor_invoice_uuid),
     order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
     co_item_uuid: uuidStr(r.co_item_uuid || r.source_item_uuid),
-    cost_code_uuid: uuidStr(r.cost_code_uuid),
+    cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
     cost_code_label: asStr(r.cost_code_label, 255),
     cost_code_number: asStr(r.cost_code_number, 100),
     cost_code_name: asStr(r.cost_code_name, 255),
@@ -156,7 +156,7 @@ export async function runPhase7VendorInvoices(ctx) {
     item_name: asStr(r.item_name, 500),
     description: asStr(r.description),
     model_number: asStr(r.model_number, 255),
-    location_uuid: uuidStr(r.location_uuid),
+    location_uuid: remapMasterUuid(lookups, r.location_uuid),
     location_label: asStr(r.location_label, 255),
     unit_uuid: remapUom(lookups, r.unit_uuid),
     unit_label: asStr(r.unit_label, 100),
@@ -178,12 +178,12 @@ export async function runPhase7VendorInvoices(ctx) {
     vendor_invoice_uuid: uuidStr(r.vendor_invoice_uuid),
     order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
     po_lwm_uuid: uuidStr(r.po_lwm_uuid || r.source_item_uuid),
-    cost_code_uuid: uuidStr(r.cost_code_uuid),
+    cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
     cost_code_number: asStr(r.cost_code_number, 100),
     cost_code_name: asStr(r.cost_code_name, 255),
     cost_code_label: asStr(r.cost_code_label, 255),
     division_name: asStr(r.division_name, 255),
-    location_uuid: uuidStr(r.location_uuid),
+    location_uuid: remapMasterUuid(lookups, r.location_uuid),
     location_label: asStr(r.location_label, 255),
     material_budgeted_amount: asNum(r.material_budgeted_amount),
     po_amount: asNum(r.po_amount),
@@ -204,12 +204,12 @@ export async function runPhase7VendorInvoices(ctx) {
     vendor_invoice_uuid: uuidStr(r.vendor_invoice_uuid),
     order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
     co_lwm_uuid: uuidStr(r.co_lwm_uuid || r.source_item_uuid),
-    cost_code_uuid: uuidStr(r.cost_code_uuid),
+    cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
     cost_code_number: asStr(r.cost_code_number, 100),
     cost_code_name: asStr(r.cost_code_name, 255),
     cost_code_label: asStr(r.cost_code_label, 255),
     division_name: asStr(r.division_name, 255),
-    location_uuid: uuidStr(r.location_uuid),
+    location_uuid: remapMasterUuid(lookups, r.location_uuid),
     location_label: asStr(r.location_label, 255),
     material_budgeted_amount: asNum(r.material_budgeted_amount),
     co_amount: asNum(r.co_amount),
@@ -237,7 +237,7 @@ export async function runPhase7VendorInvoices(ctx) {
         order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
         labor_po_item_uuid: uuidStr(r.labor_po_item_uuid),
         labor_co_item_uuid: uuidStr(r.labor_co_item_uuid),
-        cost_code_uuid: uuidStr(r.cost_code_uuid),
+        cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
         cost_code_label: asStr(r.cost_code_label, 255),
         cost_code_number: asStr(r.cost_code_number, 100),
         cost_code_name: asStr(r.cost_code_name, 255),
@@ -258,7 +258,7 @@ export async function runPhase7VendorInvoices(ctx) {
       const corp = remapCorp(lookups, r.corporation_uuid) || ''
       if (!uuid) continue
       parents.push(uuid)
-      appr.push(...approvalCheckJunctionRows(r.approval_checks || r.approval_checks_uuids, corp, uuid, 'labor_invoice_item_uuid'))
+      appr.push(...approvalCheckJunctionRows(r.approval_checks || r.approval_checks_uuids, corp, uuid, 'labor_invoice_item_uuid', lookups))
     }
     await replaceChildren(mssql, {
       table: 'labor_invoice_approval_checks',
@@ -279,7 +279,7 @@ export async function runPhase7VendorInvoices(ctx) {
     vendor_uuid: remapVendor(lookups, r.vendor_uuid),
     purchase_order_uuid: uuidStr(r.purchase_order_uuid),
     change_order_uuid: uuidStr(r.change_order_uuid),
-    cost_code_uuid: uuidStr(r.cost_code_uuid),
+    cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
     gl_account_uuid: remapCoa(lookups, r.gl_account_uuid),
     cost_code_label: asStr(r.cost_code_label, 255),
     cost_code_number: asStr(r.cost_code_number, 100),
@@ -303,7 +303,7 @@ export async function runPhase7VendorInvoices(ctx) {
     purchase_order_uuid: uuidStr(r.purchase_order_uuid),
     change_order_uuid: uuidStr(r.change_order_uuid),
     holdback_invoice_uuid: uuidStr(r.holdback_invoice_uuid),
-    cost_code_uuid: uuidStr(r.cost_code_uuid),
+    cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
     gl_account_uuid: remapCoa(lookups, r.gl_account_uuid),
     cost_code_label: asStr(r.cost_code_label, 255),
     cost_code_number: asStr(r.cost_code_number, 100),
@@ -325,7 +325,7 @@ export async function runPhase7VendorInvoices(ctx) {
     project_uuid: uuidStr(r.project_uuid),
     purchase_order_uuid: uuidStr(r.purchase_order_uuid),
     change_order_uuid: uuidStr(r.change_order_uuid),
-    cost_code_uuid: uuidStr(r.cost_code_uuid),
+    cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
     cost_code_label: asStr(r.cost_code_label, 255),
     cost_code_number: asStr(r.cost_code_number, 100),
     cost_code_name: asStr(r.cost_code_name, 255),
@@ -344,7 +344,7 @@ export async function runPhase7VendorInvoices(ctx) {
     vendor_invoice_uuid: uuidStr(r.vendor_invoice_uuid),
     purchase_order_uuid: uuidStr(r.purchase_order_uuid),
     change_order_uuid: uuidStr(r.change_order_uuid),
-    cost_code_uuid: uuidStr(r.cost_code_uuid),
+    cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
     cost_code_label: asStr(r.cost_code_label, 255),
     cost_code_number: asStr(r.cost_code_number, 100),
     cost_code_name: asStr(r.cost_code_name, 255),

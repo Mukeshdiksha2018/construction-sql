@@ -1,6 +1,6 @@
 import { pgQuery } from '../db.mjs'
 import { documentTagRows } from '../expandBlobs.mjs'
-import { remapCorp } from '../lookups.mjs'
+import { remapCorp, remapMasterUuid } from '../lookups.mjs'
 import { replaceChildren, upsertByUuid } from '../upsert.mjs'
 import { asBool, asDate, asNum, asStr, log, stringifyJson, uuidStr } from '../utils.mjs'
 
@@ -40,8 +40,8 @@ export async function runPhase2Projects(ctx) {
       corporation_uuid: remapCorp(lookups, r.corporation_uuid),
       project_name: asStr(r.project_name, 255) || '',
       project_id: asStr(r.project_id, 100) || '',
-      project_type_uuid: uuidStr(r.project_type_uuid),
-      service_type_uuid: uuidStr(r.service_type_uuid),
+      project_type_uuid: remapMasterUuid(lookups, r.project_type_uuid),
+      service_type_uuid: remapMasterUuid(lookups, r.service_type_uuid),
       project_description: asStr(r.project_description),
       estimated_amount: asNum(r.estimated_amount),
       area_sq_ft: asNum(r.area_sq_ft),
@@ -121,7 +121,7 @@ export async function runPhase2Projects(ctx) {
       rows: rows.map((r) => ({
         uuid: uuidStr(r.uuid),
         project_uuid: uuidStr(r.project_uuid),
-        location_uuid: uuidStr(r.location_uuid),
+        location_uuid: remapMasterUuid(lookups, r.location_uuid),
         location_name: asStr(r.location_name, 255),
         area_sq_ft: asNum(r.area_sq_ft),
         no_of_rooms: asNum(r.no_of_rooms) != null ? Math.trunc(asNum(r.no_of_rooms)) : null,

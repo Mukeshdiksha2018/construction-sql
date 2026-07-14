@@ -3,35 +3,58 @@ import { log, warn } from './utils.mjs'
 
 /**
  * Upsert rows into MSSQL by uuid.
+ * Optional matchBy: if uuid is new but a unique natural-key row already exists,
+ * UPDATE that MS SQL row (keeping its uuid) instead of INSERT.
+ *
  * @param {import('mssql').ConnectionPool} pool
  * @param {{
  *   table: string,
  *   columns: string[],
  *   rows: Record<string, unknown>[],
  *   dryRun?: boolean,
- *   identityInsert?: boolean,
+ *   matchBy?: string | string[],
+ *   onAlias?: (fromUuid: string, toUuid: string) => void,
  * }} opts
  */
 export async function upsertByUuid(pool, opts) {
-  const { table, columns, rows, dryRun = false } = opts
+  const { table, columns, rows, dryRun = false, matchBy, onAlias } = opts
   if (!rows.length) {
     log(`${table}: 0 rows`)
-    return { inserted: 0, updated: 0, skipped: 0 }
+    return { inserted: 0, updated: 0, skipped: 0, aliased: 0 }
   }
 
   const cols = columns.filter((c) => c !== 'id')
   if (!cols.includes('uuid')) throw new Error(`${table}: columns must include uuid`)
 
+  const matchCols = matchBy
+    ? (Array.isArray(matchBy) ? matchBy : [matchBy])
+    : []
+
   let inserted = 0
   let updated = 0
   let skipped = 0
+  let aliased = 0
 
-  // Existing uuids
-  const existing = new Set()
+  /** @type {Map<string, string>} */
+  const existingByUuid = new Map()
+  /** @type {Map<string, string>} natural key → existing mssql uuid */
+  const existingByNatural = new Map()
+
   {
-    const rs = await pool.request().query(`SELECT CAST(uuid AS NVARCHAR(100)) AS uuid FROM dbo.[${table}]`)
+    const naturalSelect = matchCols.length
+      ? `, ${matchCols.map((c) => `[${c}]`).join(', ')}`
+      : ''
+    const rs = await pool.request().query(
+      `SELECT CAST(uuid AS NVARCHAR(100)) AS uuid${naturalSelect} FROM dbo.[${table}]`,
+    )
     for (const r of rs.recordset) {
-      if (r.uuid) existing.add(String(r.uuid).toLowerCase())
+      if (!r.uuid) continue
+      const u = String(r.uuid).toLowerCase()
+      existingByUuid.set(u, u)
+      if (matchCols.length) {
+        const nk = naturalKey(r, matchCols)
+        if (nk) existingByNatural.set(nk, u)
+      }
     }
   }
 
@@ -51,13 +74,50 @@ export async function upsertByUuid(pool, opts) {
       }
       data.uuid = uuid
 
+      const nk = matchCols.length ? naturalKey(data, matchCols) : null
+      const existingNaturalUuid = nk ? existingByNatural.get(nk) : null
+
+      // Prefer keep MS SQL row when natural key already exists under a different uuid
+      if (!existingByUuid.has(key) && existingNaturalUuid && existingNaturalUuid !== key) {
+        if (dryRun) {
+          updated++
+          aliased++
+          continue
+        }
+        const setCols = cols.filter((c) => c !== 'uuid' && !matchCols.includes(c))
+        if (!setCols.length) {
+          // Still register alias so FKs remap; nothing else to update
+          onAlias?.(uuid, existingNaturalUuid)
+          existingByUuid.set(key, existingNaturalUuid)
+          updated++
+          aliased++
+          continue
+        }
+        const req = pool.request()
+        const sets = setCols.map((c, idx) => {
+          const p = `p${idx}`
+          bind(req, p, data[c])
+          return `[${c}] = @${p}`
+        })
+        matchCols.forEach((c, idx) => {
+          bind(req, `k${idx}`, data[c])
+        })
+        const where = matchCols.map((c, idx) => `[${c}] = @k${idx}`).join(' AND ')
+        await req.query(`UPDATE dbo.[${table}] SET ${sets.join(', ')} WHERE ${where}`)
+        onAlias?.(uuid, existingNaturalUuid)
+        existingByUuid.set(key, existingNaturalUuid)
+        updated++
+        aliased++
+        continue
+      }
+
       if (dryRun) {
-        if (existing.has(key)) updated++
+        if (existingByUuid.has(key)) updated++
         else inserted++
         continue
       }
 
-      if (existing.has(key)) {
+      if (existingByUuid.has(key)) {
         const setCols = cols.filter((c) => c !== 'uuid')
         if (!setCols.length) {
           skipped++
@@ -72,6 +132,7 @@ export async function upsertByUuid(pool, opts) {
         })
         await req.query(`UPDATE dbo.[${table}] SET ${sets.join(', ')} WHERE CAST(uuid AS NVARCHAR(100)) = @uuid`)
         updated++
+        if (nk) existingByNatural.set(nk, key)
       }
       else {
         const req = pool.request()
@@ -81,9 +142,46 @@ export async function upsertByUuid(pool, opts) {
         }
         const colList = insertCols.map((c) => `[${c}]`).join(', ')
         const paramList = insertCols.map((_, idx) => `@p${idx}`).join(', ')
-        await req.query(`INSERT INTO dbo.[${table}] (${colList}) VALUES (${paramList})`)
-        existing.add(key)
-        inserted++
+        try {
+          await req.query(`INSERT INTO dbo.[${table}] (${colList}) VALUES (${paramList})`)
+          existingByUuid.set(key, key)
+          if (nk) existingByNatural.set(nk, key)
+          inserted++
+        }
+        catch (e) {
+          // Race / missed natural match — try update by natural key if configured
+          if (matchCols.length && nk && /UNIQUE KEY|duplicate key/i.test(e.message || '')) {
+            warn(`${table}: insert collided on unique key; updating existing MS SQL row for ${nk}`)
+            const setCols = cols.filter((c) => c !== 'uuid' && !matchCols.includes(c))
+            const req2 = pool.request()
+            const sets = setCols.map((c, idx) => {
+              const p = `p${idx}`
+              bind(req2, p, data[c])
+              return `[${c}] = @${p}`
+            })
+            matchCols.forEach((c, idx) => bind(req2, `k${idx}`, data[c]))
+            const where = matchCols.map((c, idx) => `[${c}] = @k${idx}`).join(' AND ')
+            if (sets.length) {
+              await req2.query(`UPDATE dbo.[${table}] SET ${sets.join(', ')} WHERE ${where}`)
+            }
+            const find = pool.request()
+            matchCols.forEach((c, idx) => bind(find, `k${idx}`, data[c]))
+            const found = await find.query(
+              `SELECT CAST(uuid AS NVARCHAR(100)) AS uuid FROM dbo.[${table}] WHERE ${where}`,
+            )
+            const keep = found.recordset[0]?.uuid
+            if (keep) {
+              onAlias?.(uuid, String(keep))
+              existingByUuid.set(key, String(keep).toLowerCase())
+              existingByNatural.set(nk, String(keep).toLowerCase())
+            }
+            updated++
+            aliased++
+          }
+          else {
+            throw e
+          }
+        }
       }
     }
     if ((i + BATCH) % 500 < BATCH || i + BATCH >= rows.length) {
@@ -91,8 +189,22 @@ export async function upsertByUuid(pool, opts) {
     }
   }
 
-  log(`${table}: inserted=${inserted} updated=${updated} skipped=${skipped}`)
-  return { inserted, updated, skipped }
+  log(`${table}: inserted=${inserted} updated=${updated} skipped=${skipped} aliased=${aliased}`)
+  return { inserted, updated, skipped, aliased }
+}
+
+/**
+ * @param {Record<string, unknown>} row
+ * @param {string[]} matchCols
+ */
+function naturalKey(row, matchCols) {
+  const parts = matchCols.map((c) => {
+    const v = row[c]
+    if (v == null) return ''
+    return String(v).trim().toLowerCase()
+  })
+  if (parts.some((p) => !p)) return null
+  return parts.join('\0')
 }
 
 /**
@@ -156,7 +268,6 @@ export async function replaceChildren(pool, opts) {
     return { deleted: parents.length, inserted: rows.length }
   }
 
-  // Delete in chunks
   let deleted = 0
   const DEL_BATCH = 100
   for (let i = 0; i < parents.length; i += DEL_BATCH) {

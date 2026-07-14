@@ -144,14 +144,19 @@ export function removedCostCodeRows(ids, corporationUuid, estimateUuid) {
  * @param {'purchase_order_item_uuid'|'change_order_item_uuid'|'labor_invoice_item_uuid'} itemKey
  * @param {'po_item_approval_checks'|'co_item_approval_checks'|'labor_invoice_approval_checks'} _table
  */
-export function approvalCheckJunctionRows(uuidsJson, corporationUuid, itemUuid, itemKey) {
+export function approvalCheckJunctionRows(uuidsJson, corporationUuid, itemUuid, itemKey, lookups = null) {
   const arr = parseJson(uuidsJson, [])
   if (!Array.isArray(arr)) return []
-  return [...new Set(arr.map((u) => uuidStr(u)).filter(Boolean))].map((approval_check_uuid) => ({
-    corporation_uuid: corporationUuid,
-    [itemKey]: itemUuid,
-    approval_check_uuid,
-  }))
+  return [...new Set(arr.map((u) => uuidStr(u)).filter(Boolean))].map((raw) => {
+    const approval_check_uuid = lookups?.masterUuidAlias
+      ? (lookups.masterUuidAlias.get(raw) || raw)
+      : raw
+    return {
+      corporation_uuid: corporationUuid,
+      [itemKey]: itemUuid,
+      approval_check_uuid,
+    }
+  })
 }
 
 /**

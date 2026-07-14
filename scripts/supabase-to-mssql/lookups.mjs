@@ -15,6 +15,7 @@ import { log, uuidStr, warn } from './utils.mjs'
  *   coaByNimble: Map<string, string>,
  *   misses: { kind: string, value: string }[],
  *   strict: boolean,
+ *   masterUuidAlias: Map<string, string>,
  * }} Lookups
  */
 
@@ -45,8 +46,10 @@ export async function loadLookups(pg, opts = {}) {
     shipViaByNimble: new Map(),
     coaByUuid: new Map(),
     coaByNimble: new Map(),
-    misses: [],
+      misses: [],
     strict: !!opts.strict,
+    /** @type {Map<string, string>} Supabase master uuid → existing MS SQL uuid (name collision) */
+    masterUuidAlias: new Map(),
   }
 
   const properties = await pgQuery(
@@ -175,6 +178,30 @@ export const remapUom = (L, v) => remap(L, 'uom', v)
 export const remapShipVia = (L, v) => remap(L, 'shipVia', v)
 /** @param {Lookups} L @param {unknown} v */
 export const remapCoa = (L, v) => remap(L, 'coa', v)
+
+/**
+ * When a master matched by unique name kept the MS SQL uuid, remap Supabase uuid → MS SQL uuid.
+ * @param {Lookups} lookups
+ * @param {unknown} value
+ */
+export function remapMasterUuid(lookups, value) {
+  const u = uuidStr(value)
+  if (!u) return null
+  return lookups.masterUuidAlias?.get(u) || u
+}
+
+/**
+ * @param {Lookups} lookups
+ * @param {unknown} fromUuid Supabase uuid
+ * @param {unknown} toUuid MS SQL uuid to keep
+ */
+export function registerMasterAlias(lookups, fromUuid, toUuid) {
+  const from = uuidStr(fromUuid)
+  const to = uuidStr(toUuid)
+  if (!from || !to || from === to) return
+  lookups.masterUuidAlias.set(from, to)
+  warn(`master uuid alias (keep MS SQL): ${from} → ${to}`)
+}
 
 /**
  * Resolve --corporation filter to local Supabase properties.uuid values (for WHERE).

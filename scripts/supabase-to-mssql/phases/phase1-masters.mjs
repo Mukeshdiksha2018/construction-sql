@@ -1,22 +1,25 @@
 import { pgQuery } from '../db.mjs'
-import { remapCoa, remapCorp, remapUom, remapVendor } from '../lookups.mjs'
+import { remapCoa, remapCorp, remapMasterUuid, remapUom, remapVendor, registerMasterAlias } from '../lookups.mjs'
 import { upsertByUuid } from '../upsert.mjs'
 import { asBool, asDate, asNum, asStr, log, uuidStr } from '../utils.mjs'
 
-/**
- * @param {{ pg: any, mssql: import('mssql').ConnectionPool, lookups: any, dryRun: boolean, corpFilter: null|{localUuids:string[]} }} ctx
- */
+function aliasCb(lookups) {
+  return (from, to) => registerMasterAlias(lookups, from, to)
+}
+
+/** @param {any} ctx */
 export async function runPhase1Masters(ctx) {
   const { pg, mssql, lookups, dryRun } = ctx
   log('=== Phase 1: local masters ===')
 
-  // freight
   {
     const rows = await pgQuery(pg, `select * from public.freight`)
     await upsertByUuid(mssql, {
       table: 'freight',
       columns: ['uuid', 'ship_via', 'description', 'active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
       dryRun,
+      matchBy: 'ship_via',
+      onAlias: aliasCb(lookups),
       rows: rows.map((r) => ({
         uuid: uuidStr(r.uuid),
         ship_via: asStr(r.ship_via, 255) || 'freight',
@@ -30,13 +33,14 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
-  // approval_checks
   {
     const rows = await pgQuery(pg, `select * from public.approval_checks`)
     await upsertByUuid(mssql, {
       table: 'approval_checks',
       columns: ['uuid', 'approval_check', 'description', 'active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
       dryRun,
+      matchBy: 'approval_check',
+      onAlias: aliasCb(lookups),
       rows: rows.map((r) => ({
         uuid: uuidStr(r.uuid),
         approval_check: asStr(r.approval_check, 255) || 'check',
@@ -50,13 +54,14 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
-  // location (no corp in MSSQL)
   {
     const rows = await pgQuery(pg, `select * from public.location`)
     await upsertByUuid(mssql, {
       table: 'location',
       columns: ['uuid', 'location_name', 'location_code', 'description', 'active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
       dryRun,
+      matchBy: 'location_name',
+      onAlias: aliasCb(lookups),
       rows: rows.map((r) => ({
         uuid: uuidStr(r.uuid),
         location_name: asStr(r.location_name, 255) || 'location',
@@ -71,7 +76,6 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
-  // po_instructions
   {
     const rows = await pgQuery(pg, `select * from public.po_instructions ${corpWhere(ctx, 'corporation_uuid')}`)
     await upsertByUuid(mssql, {
@@ -92,7 +96,6 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
-  // reasons
   {
     const rows = await pgQuery(pg, `select * from public.reasons`)
     await upsertByUuid(mssql, {
@@ -111,13 +114,14 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
-  // project_types
   {
     const rows = await pgQuery(pg, `select * from public.project_types`)
     await upsertByUuid(mssql, {
       table: 'project_types',
       columns: ['uuid', 'name', 'description', 'color', 'is_active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
       dryRun,
+      matchBy: 'name',
+      onAlias: aliasCb(lookups),
       rows: rows.map((r) => ({
         uuid: uuidStr(r.uuid),
         name: asStr(r.name, 255) || 'type',
@@ -132,13 +136,14 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
-  // service_types
   {
     const rows = await pgQuery(pg, `select * from public.service_types`)
     await upsertByUuid(mssql, {
       table: 'service_types',
       columns: ['uuid', 'name', 'description', 'color', 'is_active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
       dryRun,
+      matchBy: 'name',
+      onAlias: aliasCb(lookups),
       rows: rows.map((r) => ({
         uuid: uuidStr(r.uuid),
         name: asStr(r.name, 255) || 'type',
@@ -153,13 +158,14 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
-  // terms_and_conditions
   {
     const rows = await pgQuery(pg, `select * from public.terms_and_conditions`)
     await upsertByUuid(mssql, {
       table: 'terms_and_conditions',
       columns: ['uuid', 'name', 'content', 'is_active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
       dryRun,
+      matchBy: 'name',
+      onAlias: aliasCb(lookups),
       rows: rows.map((r) => ({
         uuid: uuidStr(r.uuid),
         name: asStr(r.name, 255) || 'terms',
@@ -173,13 +179,14 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
-  // cost_code_divisions
   {
     const rows = await pgQuery(pg, `select * from public.cost_code_divisions ${corpWhere(ctx, 'corporation_uuid')}`)
     await upsertByUuid(mssql, {
       table: 'cost_code_divisions',
       columns: ['uuid', 'corporation_uuid', 'division_number', 'division_name', 'division_order', 'description', 'is_active', 'exclude_in_estimates_and_reports', 'created_at', 'updated_at'],
       dryRun,
+      matchBy: ['corporation_uuid', 'division_number'],
+      onAlias: aliasCb(lookups),
       rows: rows.map((r) => ({
         uuid: uuidStr(r.uuid),
         corporation_uuid: remapCorp(lookups, r.corporation_uuid),
@@ -195,20 +202,21 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
-  // cost_code_configurations
   {
     const rows = await pgQuery(pg, `select * from public.cost_code_configurations ${corpWhere(ctx, 'corporation_uuid')}`)
     await upsertByUuid(mssql, {
       table: 'cost_code_configurations',
       columns: ['uuid', 'corporation_uuid', 'division_uuid', 'cost_code_number', 'cost_code_name', 'parent_cost_code_uuid', 'order_number', 'gl_account_uuid', 'effective_from', 'description', 'update_previous_transactions', 'is_active', 'created_at', 'updated_at'],
       dryRun,
+      matchBy: ['corporation_uuid', 'cost_code_number'],
+      onAlias: aliasCb(lookups),
       rows: rows.map((r) => ({
         uuid: uuidStr(r.uuid),
         corporation_uuid: remapCorp(lookups, r.corporation_uuid),
-        division_uuid: uuidStr(r.division_uuid),
+        division_uuid: remapMasterUuid(lookups, r.division_uuid),
         cost_code_number: asStr(r.cost_code_number, 50) || '',
         cost_code_name: asStr(r.cost_code_name, 255) || '',
-        parent_cost_code_uuid: uuidStr(r.parent_cost_code_uuid),
+        parent_cost_code_uuid: remapMasterUuid(lookups, r.parent_cost_code_uuid),
         order_number: asNum(r.order_number) != null ? Math.trunc(asNum(r.order_number)) : null,
         gl_account_uuid: remapCoa(lookups, r.gl_account_uuid),
         effective_from: asDate(r.effective_from),
@@ -221,7 +229,6 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
-  // item_types
   {
     const rows = await pgQuery(pg, `select * from public.item_types ${corpWhereNullable(ctx, 'corporation_uuid')}`)
     await upsertByUuid(mssql, {
@@ -243,7 +250,6 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
-  // cost_code_preferred_items
   {
     const rows = await pgQuery(pg, `select * from public.cost_code_preferred_items ${corpWhere(ctx, 'corporation_uuid')}`)
     await upsertByUuid(mssql, {
@@ -254,7 +260,7 @@ export async function runPhase1Masters(ctx) {
         uuid: uuidStr(r.uuid),
         corporation_uuid: remapCorp(lookups, r.corporation_uuid),
         project_uuid: uuidStr(r.project_uuid),
-        cost_code_configuration_uuid: uuidStr(r.cost_code_configuration_uuid),
+        cost_code_configuration_uuid: remapMasterUuid(lookups, r.cost_code_configuration_uuid),
         item_type_uuid: uuidStr(r.item_type_uuid),
         category: asStr(r.category, 50),
         item_name: asStr(r.item_name, 255) || '',
@@ -262,7 +268,7 @@ export async function runPhase1Masters(ctx) {
         model_number: asStr(r.model_number, 100),
         unit_price: asNum(r.unit_price),
         uom_uuid: remapUom(lookups, r.uom_uuid),
-        location_uuid: uuidStr(r.location_uuid),
+        location_uuid: remapMasterUuid(lookups, r.location_uuid),
         preferred_vendor_uuid: remapVendor(lookups, r.preferred_vendor_uuid),
         initial_quantity: asNum(r.initial_quantity),
         as_of_date: asDate(r.as_of_date),
@@ -277,7 +283,6 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
-  // customers
   {
     const rows = await pgQuery(pg, `select * from public.customers ${corpWhere(ctx, 'corporation_uuid')}`)
     await upsertByUuid(mssql, {

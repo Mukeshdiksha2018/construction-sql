@@ -4,7 +4,7 @@ import {
   auditRowsFromJson,
   removedCostCodeRows,
 } from '../expandBlobs.mjs'
-import { remapCorp, remapUom, remapVendor } from '../lookups.mjs'
+import { remapCorp, remapUom, remapVendor, remapMasterUuid } from '../lookups.mjs'
 import { replaceChildren, upsertByUuid } from '../upsert.mjs'
 import { asBool, asDate, asNum, asStr, log, stringifyJson, uuidStr } from '../utils.mjs'
 
@@ -95,7 +95,7 @@ export async function runPhase3Estimates(ctx) {
         corporation_uuid: remapCorp(lookups, r.corporation_uuid),
         project_uuid: uuidStr(r.project_uuid),
         estimate_uuid: uuidStr(r.estimate_uuid),
-        cost_code_uuid: uuidStr(r.cost_code_uuid),
+        cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
         cost_code_number: asStr(r.cost_code_number, 100),
         cost_code_name: asStr(r.cost_code_name, 255),
         division_name: asStr(r.division_name, 255),
@@ -140,13 +140,13 @@ export async function runPhase3Estimates(ctx) {
         corporation_uuid: remapCorp(lookups, r.corporation_uuid),
         project_uuid: uuidStr(r.project_uuid),
         estimate_uuid: uuidStr(r.estimate_uuid),
-        cost_code_uuid: uuidStr(r.cost_code_uuid),
+        cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
         estimate_line_item_uuid: uuidStr(r.estimate_line_item_uuid),
         item_type_uuid: uuidStr(r.item_type_uuid),
         item_uuid: uuidStr(r.item_uuid),
         preferred_vendor_uuid: remapVendor(lookups, r.preferred_vendor_uuid),
         item_division_uuid: uuidStr(r.item_division_uuid),
-        location_uuid: uuidStr(r.location_uuid),
+        location_uuid: remapMasterUuid(lookups, r.location_uuid),
         category: asStr(r.category, 100),
         name: asStr(r.name, 500) || '',
         description: asStr(r.description),
@@ -187,7 +187,7 @@ export async function runPhase3Estimates(ctx) {
             project_uuid: uuidStr(r.project_uuid),
             estimate_uuid: uuidStr(r.estimate_uuid),
             estimate_line_item_uuid: uuidStr(r.estimate_line_item_uuid),
-            location_uuid: uuidStr(r.location_uuid),
+            location_uuid: remapMasterUuid(lookups, r.location_uuid),
             created_at: asDate(r.created_at),
             updated_at: asDate(r.updated_at) || new Date(),
           }

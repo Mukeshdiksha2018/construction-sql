@@ -9,7 +9,7 @@ import {
   removedItemRowsFromJson,
   taxRowsFromBreakdown,
 } from '../expandBlobs.mjs'
-import { remapCorp, remapShipVia, remapVendor } from '../lookups.mjs'
+import { remapCorp, remapShipVia, remapVendor, remapMasterUuid } from '../lookups.mjs'
 import { replaceChildren, upsertByUuid } from '../upsert.mjs'
 import { asBool, asDate, asNum, asStr, log, stringifyJson, uuidStr } from '../utils.mjs'
 
@@ -46,13 +46,13 @@ export async function runPhase5ChangeOrders(ctx) {
       nimble_requested_by_user_id: asStr(r.nimble_requested_by_user_id, 128),
       co_type: asStr(r.co_type, 20),
       ship_via_uuid: remapShipVia(lookups, r.ship_via_uuid || r.ship_via),
-      freight_uuid: uuidStr(r.freight_uuid || r.freight),
+      freight_uuid: remapMasterUuid(lookups, r.freight_uuid || r.freight),
       shipping_instructions: asStr(r.shipping_instructions),
       quote_reference: asStr(r.quote_reference, 255),
       reason: asStr(r.reason),
       reason_uuid: uuidStr(r.reason_uuid),
       shipping_address_uuid: uuidStr(r.shipping_address_uuid),
-      terms_and_conditions_uuid: uuidStr(r.terms_and_conditions_uuid),
+      terms_and_conditions_uuid: remapMasterUuid(lookups, r.terms_and_conditions_uuid),
       special_instruction_uuid: uuidStr(r.special_instruction_uuid),
       prepared_by: asStr(r.prepared_by, 255),
       status: asStr(r.status, 50) || 'Draft',
@@ -113,7 +113,7 @@ export async function runPhase5ChangeOrders(ctx) {
       change_order_uuid: uuidStr(r.change_order_uuid),
       order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
       source: asStr(r.source, 100),
-      cost_code_uuid: uuidStr(r.cost_code_uuid),
+      cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
       cost_code_label: asStr(r.cost_code_label, 255),
       cost_code_number: asStr(r.cost_code_number, 100),
       cost_code_name: asStr(r.cost_code_name, 255),
@@ -126,7 +126,7 @@ export async function runPhase5ChangeOrders(ctx) {
       item_name: asStr(r.item_name, 500),
       description: asStr(r.description),
       model_number: asStr(r.model_number, 255),
-      location_uuid: uuidStr(r.location_uuid),
+      location_uuid: remapMasterUuid(lookups, r.location_uuid),
       location_label: asStr(r.location_label, 255),
       unit_uuid: remapUom(lookups, r.unit_uuid || r.uom_uuid),
       unit_label: asStr(r.unit_label, 100),
@@ -156,7 +156,7 @@ export async function runPhase5ChangeOrders(ctx) {
     const corp = remapCorp(lookups, r.corporation_uuid) || ''
     if (!uuid) continue
     itemParents.push(uuid)
-    appr.push(...approvalCheckJunctionRows(r.approval_checks_uuids, corp, uuid, 'change_order_item_uuid'))
+    appr.push(...approvalCheckJunctionRows(r.approval_checks_uuids, corp, uuid, 'change_order_item_uuid', lookups))
     rcpt.push(...receiptNoteJunctionRows(r.receipt_note_uuids, corp, uuid, 'change_order_item_uuid'))
   }
   await replaceChildren(mssql, { table: 'co_item_approval_checks', parentCol: 'change_order_item_uuid', parentUuids: itemParents, columns: ['corporation_uuid', 'change_order_item_uuid', 'approval_check_uuid'], rows: appr, dryRun })
@@ -175,12 +175,12 @@ export async function runPhase5ChangeOrders(ctx) {
         purchase_order_uuid: uuidStr(r.purchase_order_uuid) || uuidStr(headers.find((h) => uuidStr(h.uuid) === uuidStr(r.change_order_uuid))?.original_purchase_order_uuid) || '',
         change_order_uuid: uuidStr(r.change_order_uuid),
         order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
-        cost_code_uuid: uuidStr(r.cost_code_uuid),
+        cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
         cost_code_number: asStr(r.cost_code_number, 100),
         cost_code_name: asStr(r.cost_code_name, 255),
         cost_code_label: asStr(r.cost_code_label, 255),
         division_name: asStr(r.division_name, 255),
-        location_uuid: uuidStr(r.location_uuid),
+        location_uuid: remapMasterUuid(lookups, r.location_uuid),
         location_label: asStr(r.location_label, 255),
         po_amount: asNum(r.po_amount ?? r.labor_amount) ?? 0,
         co_amount: asNum(r.co_amount ?? r.labor_amount),
@@ -207,12 +207,12 @@ export async function runPhase5ChangeOrders(ctx) {
         change_order_uuid: uuidStr(r.change_order_uuid),
         purchase_order_uuid: uuidStr(r.purchase_order_uuid),
         order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
-        cost_code_uuid: uuidStr(r.cost_code_uuid),
+        cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
         cost_code_number: asStr(r.cost_code_number, 100),
         cost_code_name: asStr(r.cost_code_name, 255),
         cost_code_label: asStr(r.cost_code_label, 255),
         division_name: asStr(r.division_name, 255),
-        location_uuid: uuidStr(r.location_uuid),
+        location_uuid: remapMasterUuid(lookups, r.location_uuid),
         location_label: asStr(r.location_label, 255),
         material_budgeted_amount: asNum(r.material_budgeted_amount),
         po_amount: asNum(r.po_amount ?? r.total) ?? 0,

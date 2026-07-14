@@ -6,7 +6,7 @@ import {
   parseBreakdown,
   taxRowsFromBreakdown,
 } from '../expandBlobs.mjs'
-import { remapCorp, remapUom, remapVendor } from '../lookups.mjs'
+import { remapCorp, remapUom, remapVendor, remapMasterUuid } from '../lookups.mjs'
 import { replaceChildren, upsertByUuid } from '../upsert.mjs'
 import { asBool, asDate, asNum, asStr, log, parseJson, stringifyJson, uuidStr } from '../utils.mjs'
 
@@ -41,7 +41,7 @@ export async function runPhase6Inventory(ctx) {
       grn_number: asStr(r.grn_number, 100),
       reference_number: asStr(r.reference_number, 100),
       received_by: asStr(r.received_by, 255),
-      location_uuid: uuidStr(r.location_uuid),
+      location_uuid: remapMasterUuid(lookups, r.location_uuid),
       notes: asStr(r.notes),
       status: asStr(r.status, 50) || 'Shipment',
       total_received_amount: asNum(r.total_received_amount),
@@ -76,7 +76,7 @@ export async function runPhase6Inventory(ctx) {
         item_type: asStr(r.item_type, 50),
         purchase_order_uuid: uuidStr(r.purchase_order_uuid),
         change_order_uuid: uuidStr(r.change_order_uuid),
-        cost_code_uuid: uuidStr(r.cost_code_uuid),
+        cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
         cost_code_label: asStr(r.cost_code_label, 255),
         cost_code_number: asStr(r.cost_code_number, 100),
         cost_code_name: asStr(r.cost_code_name, 255),
@@ -85,7 +85,7 @@ export async function runPhase6Inventory(ctx) {
         item_name: asStr(r.item_name, 500),
         description: asStr(r.description),
         model_number: asStr(r.model_number, 255),
-        location_uuid: uuidStr(r.location_uuid),
+        location_uuid: remapMasterUuid(lookups, r.location_uuid),
         unit_uuid: remapUom(lookups, r.unit_uuid || r.uom_uuid),
         unit_label: asStr(r.unit_label, 100),
         category: asStr(r.category, 100),
@@ -123,7 +123,7 @@ export async function runPhase6Inventory(ctx) {
       reference_number: asStr(r.reference_number, 100),
       returned_by: asStr(r.returned_by, 255),
       nimble_returned_by_user_id: asStr(r.nimble_returned_by_user_id, 255),
-      location_uuid: uuidStr(r.location_uuid),
+      location_uuid: remapMasterUuid(lookups, r.location_uuid),
       notes: asStr(r.notes),
       status: asStr(r.status, 50) || 'Returned',
       total_return_amount: asNum(r.total_return_amount),
@@ -159,7 +159,7 @@ export async function runPhase6Inventory(ctx) {
         item_type: asStr(r.item_type, 50),
         purchase_order_uuid: uuidStr(r.purchase_order_uuid),
         change_order_uuid: uuidStr(r.change_order_uuid),
-        cost_code_uuid: uuidStr(r.cost_code_uuid),
+        cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
         cost_code_label: asStr(r.cost_code_label, 255),
         cost_code_number: asStr(r.cost_code_number, 100),
         cost_code_name: asStr(r.cost_code_name, 255),
@@ -168,7 +168,7 @@ export async function runPhase6Inventory(ctx) {
         item_name: asStr(r.item_name, 500),
         description: asStr(r.description),
         model_number: asStr(r.model_number, 255),
-        location_uuid: uuidStr(r.location_uuid),
+        location_uuid: remapMasterUuid(lookups, r.location_uuid),
         unit_uuid: remapUom(lookups, r.unit_uuid || r.uom_uuid),
         unit_label: asStr(r.unit_label, 100),
         category: asStr(r.category, 100),

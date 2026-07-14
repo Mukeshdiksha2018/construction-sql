@@ -9,7 +9,7 @@ import {
   removedItemRowsFromJson,
   taxRowsFromBreakdown,
 } from '../expandBlobs.mjs'
-import { remapCorp, remapShipVia, remapUom, remapVendor } from '../lookups.mjs'
+import { remapCorp, remapShipVia, remapUom, remapVendor, remapMasterUuid } from '../lookups.mjs'
 import { replaceChildren, upsertByUuid } from '../upsert.mjs'
 import { asBool, asDate, asNum, asStr, log, parseJson, stringifyJson, uuidStr } from '../utils.mjs'
 
@@ -80,7 +80,7 @@ export async function runPhase4PurchaseOrders(ctx) {
     const corp = remapCorp(lookups, r.corporation_uuid) || remapCorp(lookups, headers.find((h) => uuidStr(h.uuid) === uuidStr(r.purchase_order_uuid))?.corporation_uuid)
     if (!uuid) continue
     itemParents.push(uuid)
-    appr.push(...approvalCheckJunctionRows(r.approval_checks_uuids, corp || '', uuid, 'purchase_order_item_uuid'))
+    appr.push(...approvalCheckJunctionRows(r.approval_checks_uuids, corp || '', uuid, 'purchase_order_item_uuid', lookups))
     rcpt.push(...receiptNoteJunctionRows(r.receipt_note_uuids, corp || '', uuid, 'purchase_order_item_uuid'))
   }
   await replaceChildren(mssql, { table: 'po_item_approval_checks', parentCol: 'purchase_order_item_uuid', parentUuids: itemParents, columns: ['corporation_uuid', 'purchase_order_item_uuid', 'approval_check_uuid'], rows: appr, dryRun })
@@ -109,12 +109,12 @@ export async function runPhase4PurchaseOrders(ctx) {
         project_uuid: uuidStr(r.project_uuid),
         purchase_order_uuid: uuidStr(r.purchase_order_uuid),
         order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
-        cost_code_uuid: uuidStr(r.cost_code_uuid),
+        cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
         cost_code_label: asStr(r.cost_code_label, 255),
         cost_code_number: asStr(r.cost_code_number, 100),
         cost_code_name: asStr(r.cost_code_name, 255),
         division_name: asStr(r.division_name, 255),
-        location_uuid: uuidStr(r.location_uuid),
+        location_uuid: remapMasterUuid(lookups, r.location_uuid),
         location_label: asStr(r.location_label, 255),
         material_budgeted_amount: asNum(r.material_budgeted_amount),
         po_amount: asNum(r.po_amount ?? r.total) ?? 0,
@@ -142,7 +142,7 @@ function mapPoHeader(r, lookups) {
     credit_days: asStr(r.credit_days, 100),
     credit_days_id: asStr(r.credit_days_id, 100),
     ship_via: remapShipVia(lookups, r.ship_via_uuid || r.ship_via),
-    freight: uuidStr(r.freight_uuid || r.freight) || asStr(r.freight, 255),
+    freight: remapMasterUuid(lookups, r.freight_uuid || r.freight) || asStr(r.freight, 255),
     shipping_instructions: asStr(r.shipping_instructions),
     estimated_delivery_date: asDate(r.estimated_delivery_date),
     include_items: asStr(r.include_items),
@@ -181,7 +181,7 @@ function mapPoItem(r, lookups) {
     purchase_order_uuid: uuidStr(r.purchase_order_uuid),
     order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
     source: asStr(r.source, 100),
-    cost_code_uuid: uuidStr(r.cost_code_uuid),
+    cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
     cost_code_label: asStr(r.cost_code_label, 255),
     cost_code_number: asStr(r.cost_code_number, 100),
     cost_code_name: asStr(r.cost_code_name, 255),
@@ -194,7 +194,7 @@ function mapPoItem(r, lookups) {
     item_name: asStr(r.item_name, 500),
     description: asStr(r.description),
     model_number: asStr(r.model_number, 255),
-    location_uuid: uuidStr(r.location_uuid),
+    location_uuid: remapMasterUuid(lookups, r.location_uuid),
     location_label: asStr(r.location_label, 255),
     unit_uuid: remapUom(lookups, r.unit_uuid || r.uom_uuid),
     unit_label: asStr(r.unit_label, 100),
@@ -224,12 +224,12 @@ function mapLaborPo(r, lookups) {
     project_uuid: uuidStr(r.project_uuid),
     purchase_order_uuid: uuidStr(r.purchase_order_uuid),
     order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
-    cost_code_uuid: uuidStr(r.cost_code_uuid),
+    cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
     cost_code_label: asStr(r.cost_code_label, 255),
     cost_code_number: asStr(r.cost_code_number, 100),
     cost_code_name: asStr(r.cost_code_name, 255),
     division_name: asStr(r.division_name, 255),
-    location_uuid: uuidStr(r.location_uuid),
+    location_uuid: remapMasterUuid(lookups, r.location_uuid),
     location_label: asStr(r.location_label, 255),
     labor_budgeted_amount: asNum(r.labor_budgeted_amount),
     po_amount: asNum(r.po_amount ?? r.labor_amount) ?? 0,
