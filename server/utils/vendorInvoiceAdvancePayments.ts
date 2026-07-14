@@ -1,16 +1,7 @@
 import { getPrisma } from './prisma'
+import { assembleFinancialBreakdownMap } from './normalizedChildren'
 
 const prisma = getPrisma()
-
-function parseJson(val: unknown, fallback: unknown = null) {
-  if (val == null || val === '') return fallback
-  if (typeof val === 'object') return val
-  try {
-    return JSON.parse(String(val))
-  } catch {
-    return fallback
-  }
-}
 
 function toNum(val: unknown): number | null {
   if (val == null || val === '') return null
@@ -29,7 +20,15 @@ function toLocalDate(val: unknown): string | null {
 
 function mapAdvancePaymentCostCodeRow(row: Record<string, unknown>) {
   const mapped: Record<string, unknown> = { ...row }
-  mapped.metadata = parseJson(row.metadata, {})
+  if (typeof row.metadata === 'string') {
+    try {
+      mapped.metadata = JSON.parse(row.metadata)
+    } catch {
+      mapped.metadata = {}
+    }
+  } else {
+    mapped.metadata = row.metadata ?? {}
+  }
   if (mapped.id != null) mapped.id = String(mapped.id)
   for (const key of ['total_amount', 'advance_amount']) {
     if (key in mapped) mapped[key] = toNum(mapped[key])
@@ -40,6 +39,7 @@ function mapAdvancePaymentCostCodeRow(row: Record<string, unknown>) {
 function mapAdvancePaymentInvoiceRow(
   row: Record<string, unknown>,
   costCodes: Record<string, unknown>[],
+  financialBreakdown: unknown,
 ) {
   return {
     uuid: row.uuid,
@@ -47,7 +47,7 @@ function mapAdvancePaymentInvoiceRow(
     bill_date: toLocalDate(row.bill_date),
     amount: toNum(row.amount),
     is_active: row.is_active ?? true,
-    financial_breakdown: parseJson(row.financial_breakdown, {}),
+    financial_breakdown: financialBreakdown ?? {},
     adjusted_against_vendor_invoice_uuid: row.adjusted_against_vendor_invoice_uuid ?? null,
     costCodes,
   }
@@ -55,7 +55,15 @@ function mapAdvancePaymentInvoiceRow(
 
 function mapAdjustedCostCodeRow(row: Record<string, unknown>) {
   const mapped: Record<string, unknown> = { ...row }
-  mapped.metadata = parseJson(row.metadata, {})
+  if (typeof row.metadata === 'string') {
+    try {
+      mapped.metadata = JSON.parse(row.metadata)
+    } catch {
+      mapped.metadata = {}
+    }
+  } else {
+    mapped.metadata = row.metadata ?? {}
+  }
   mapped.adjusted_amount = toNum(row.adjusted_amount) ?? 0
   if (mapped.id != null) mapped.id = String(mapped.id)
   return mapped
@@ -69,6 +77,7 @@ async function loadCostCodesByInvoiceUuids(invoiceUuids: string[]) {
     where: {
       vendor_invoice_uuid: { in: invoiceUuids },
       is_active: true,
+      is_removed: false,
     },
     orderBy: { created_at: 'asc' },
   })
@@ -81,6 +90,28 @@ async function loadCostCodesByInvoiceUuids(invoiceUuids: string[]) {
   }
 
   return byInvoice
+}
+
+async function loadViFinancialMap(invoiceUuids: string[], amountsByUuid: Map<string, unknown>) {
+  if (!invoiceUuids.length) return new Map()
+  const [chargeRows, taxRows] = await Promise.all([
+    prisma.viFinancialCharge.findMany({
+      where: { vendor_invoice_uuid: { in: invoiceUuids } },
+    }),
+    prisma.viFinancialTax.findMany({
+      where: { vendor_invoice_uuid: { in: invoiceUuids } },
+    }),
+  ])
+  const headerTotals = new Map<string, Record<string, unknown>>()
+  for (const [uuid, amount] of amountsByUuid) {
+    headerTotals.set(uuid, { total_invoice_amount: amount })
+  }
+  return assembleFinancialBreakdownMap(
+    chargeRows,
+    taxRows,
+    'vendor_invoice_uuid',
+    headerTotals,
+  )
 }
 
 export async function listAdvancePaymentsForPurchaseOrder(purchaseOrderUuid: string) {
@@ -96,18 +127,23 @@ export async function listAdvancePaymentsForPurchaseOrder(purchaseOrderUuid: str
       bill_date: true,
       amount: true,
       is_active: true,
-      financial_breakdown: true,
       adjusted_against_vendor_invoice_uuid: true,
     },
     orderBy: { bill_date: 'desc' },
   })
 
-  const costCodesByInvoice = await loadCostCodesByInvoiceUuids(invoices.map((i) => i.uuid))
+  const uuids = invoices.map((i) => i.uuid)
+  const amountsByUuid = new Map(invoices.map((i) => [i.uuid, i.amount]))
+  const [costCodesByInvoice, fbByUuid] = await Promise.all([
+    loadCostCodesByInvoiceUuids(uuids),
+    loadViFinancialMap(uuids, amountsByUuid),
+  ])
 
   return invoices.map((invoice) =>
     mapAdvancePaymentInvoiceRow(
       invoice as unknown as Record<string, unknown>,
       costCodesByInvoice.get(invoice.uuid) ?? [],
+      fbByUuid.get(invoice.uuid) ?? {},
     ),
   )
 }
@@ -125,18 +161,23 @@ export async function listAdvancePaymentsForChangeOrder(changeOrderUuid: string)
       bill_date: true,
       amount: true,
       is_active: true,
-      financial_breakdown: true,
       adjusted_against_vendor_invoice_uuid: true,
     },
     orderBy: { bill_date: 'desc' },
   })
 
-  const costCodesByInvoice = await loadCostCodesByInvoiceUuids(invoices.map((i) => i.uuid))
+  const uuids = invoices.map((i) => i.uuid)
+  const amountsByUuid = new Map(invoices.map((i) => [i.uuid, i.amount]))
+  const [costCodesByInvoice, fbByUuid] = await Promise.all([
+    loadCostCodesByInvoiceUuids(uuids),
+    loadViFinancialMap(uuids, amountsByUuid),
+  ])
 
   return invoices.map((invoice) =>
     mapAdvancePaymentInvoiceRow(
       invoice as unknown as Record<string, unknown>,
       costCodesByInvoice.get(invoice.uuid) ?? [],
+      fbByUuid.get(invoice.uuid) ?? {},
     ),
   )
 }

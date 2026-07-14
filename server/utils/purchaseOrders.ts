@@ -111,7 +111,7 @@ function mapPORow(row: any, extras?: {
   removed_po_items?: any[]
   audit_log?: any[]
 }): any {
-  const financialBreakdown = extras?.financialBreakdown ?? parseJson(row.financial_breakdown, null) as any
+  const financialBreakdown = extras?.financialBreakdown ?? null
   const savedCharges = financialBreakdown?.charges ?? {}
   const savedSalesTaxes = financialBreakdown?.sales_taxes ?? {}
 
@@ -146,9 +146,9 @@ function mapPORow(row: any, extras?: {
     shipping_address_uuid: row.shipping_address_uuid ?? null,
     status: row.status,
     financial_breakdown: financialBreakdown,
-    attachments: extras?.attachments ?? parseJson(row.attachments, []),
-    removed_po_items: extras?.removed_po_items ?? parseJson(row.removed_po_items, []),
-    audit_log: extras?.audit_log ?? parseJson(row.audit_log, []),
+    attachments: extras?.attachments ?? [],
+    removed_po_items: extras?.removed_po_items ?? [],
+    audit_log: extras?.audit_log ?? [],
     prepared_by: row.prepared_by ?? null,
     approved_by: row.approved_by ?? null,
     approved_at: row.approved_at ? row.approved_at.toISOString() : null,
@@ -214,7 +214,6 @@ async function loadPoNormalizedExtras(uuid: string, corporationUuid: string, row
   const financialBreakdown = resolveFinancialBreakdown({
     chargeRows,
     taxRows,
-    legacyJson: parseJson(row.financial_breakdown, null),
     headerTotals: {
       item_total: row.item_total,
       charges_total: row.charges_total,
@@ -223,28 +222,16 @@ async function loadPoNormalizedExtras(uuid: string, corporationUuid: string, row
     },
   })
 
-  const attachments = attachmentRows.length
-    ? attachmentsJsonFromRows(attachmentRows)
-    : parseJson(row.attachments, [])
-
-  const audit_log = auditRows.length
-    ? auditLogJsonFromRows(auditRows)
-    : parseJson(row.audit_log, [])
-
-  let removed_po_items: any[] = []
-  if (removedRows.length) {
-    removed_po_items = removedRows.map((r) => {
-      try {
-        return { ...JSON.parse(r.item_snapshot), removed_at: r.removed_at?.toISOString?.() ?? r.removed_at }
-      }
-      catch {
-        return { uuid: r.source_item_uuid, item_uuid: r.item_uuid, removed_at: r.removed_at }
-      }
-    })
-  }
-  else {
-    removed_po_items = parseJson(row.removed_po_items, [])
-  }
+  const attachments = attachmentsJsonFromRows(attachmentRows)
+  const audit_log = auditLogJsonFromRows(auditRows)
+  const removed_po_items = removedRows.map((r) => {
+    try {
+      return { ...JSON.parse(r.item_snapshot), removed_at: r.removed_at?.toISOString?.() ?? r.removed_at }
+    }
+    catch {
+      return { uuid: r.source_item_uuid, item_uuid: r.item_uuid, removed_at: r.removed_at }
+    }
+  })
 
   void corporationUuid
   return { financialBreakdown, attachments, removed_po_items, audit_log }
@@ -520,10 +507,6 @@ export async function createPurchaseOrder(input: any) {
     billing_address_uuid: input.billing_address_uuid ?? null,
     shipping_address_uuid: input.shipping_address_uuid ?? null,
     status: input.status ?? 'Draft',
-    financial_breakdown: stringifyJson(input.financial_breakdown ?? null),
-    attachments: stringifyJson(input.attachments ?? []),
-    removed_po_items: stringifyJson(input.removed_po_items ?? []),
-    audit_log: stringifyJson(input.audit_log ?? []),
     prepared_by: input.prepared_by ?? null,
     approved_by: input.approved_by ?? null,
     approved_at: parseDate(input.approved_at),
@@ -584,10 +567,6 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
   for (const f of dateFields) {
     if (f in input) updateData[f] = parseDate(input[f])
   }
-  const jsonFields = ['financial_breakdown', 'attachments', 'removed_po_items', 'audit_log']
-  for (const f of jsonFields) {
-    if (f in input) updateData[f] = stringifyJson(input[f])
-  }
   if (input.po_type !== undefined) updateData.po_type = input.po_type ? String(input.po_type).toUpperCase() : null
 
   const currencyFieldNames = [
@@ -600,10 +579,12 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
     Object.assign(updateData, poCurrencyDataFromInput(input))
   }
 
-  await prisma.purchaseOrderForm.update({ where: { uuid }, data: updateData })
+  if (Object.keys(updateData).length) {
+    await prisma.purchaseOrderForm.update({ where: { uuid }, data: updateData })
+  }
 
   const corp = existing.corporation_uuid
-  const dualWrites: Promise<unknown>[] = []
+  const childWrites: Promise<unknown>[] = []
   if ('financial_breakdown' in input || [
     'freight_charges_percentage', 'freight_charges_amount', 'packing_charges_percentage',
     'packing_charges_amount', 'custom_duties_percentage', 'custom_duties_amount',
@@ -611,18 +592,18 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
     'sales_tax_1_percentage', 'sales_tax_1_amount', 'sales_tax_2_percentage', 'sales_tax_2_amount',
     'item_total', 'charges_total', 'tax_total', 'total_po_amount',
   ].some((k) => k in input)) {
-    dualWrites.push(replacePoFinancialChildren(prisma, uuid, corp, { ...existing, ...input }))
+    childWrites.push(replacePoFinancialChildren(prisma, uuid, corp, { ...existing, ...input }))
   }
   if ('removed_po_items' in input) {
-    dualWrites.push(replacePoRemovedItems(prisma, uuid, corp, input.removed_po_items ?? []))
+    childWrites.push(replacePoRemovedItems(prisma, uuid, corp, input.removed_po_items ?? []))
   }
   if ('attachments' in input) {
-    dualWrites.push(replacePoAttachments(prisma, uuid, corp, input.attachments ?? []))
+    childWrites.push(replacePoAttachments(prisma, uuid, corp, input.attachments ?? []))
   }
   if ('audit_log' in input) {
-    dualWrites.push(replacePoAuditEvents(prisma, uuid, corp, input.audit_log ?? []))
+    childWrites.push(replacePoAuditEvents(prisma, uuid, corp, input.audit_log ?? []))
   }
-  if (dualWrites.length) await Promise.all(dualWrites)
+  if (childWrites.length) await Promise.all(childWrites)
 
   return getPurchaseOrder(uuid)
 }

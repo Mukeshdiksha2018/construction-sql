@@ -27,6 +27,46 @@ const mockLaborItemFindMany = vi.fn()
 const mockLwMaterialFindMany = vi.fn()
 const mockProjectFindFirst = vi.fn()
 const mockProjectFindMany = vi.fn()
+const mockEmptyFindMany = vi.fn()
+const mockEmptyDeleteMany = vi.fn()
+const mockEmptyCreateMany = vi.fn()
+const mockPoChargeFindMany = vi.fn()
+const mockPoTaxFindMany = vi.fn()
+
+function emptyChildDelegate() {
+  return {
+    findMany: (...a: unknown[]) => mockEmptyFindMany(...a),
+    deleteMany: (...a: unknown[]) => mockEmptyDeleteMany(...a),
+    createMany: (...a: unknown[]) => mockEmptyCreateMany(...a),
+  }
+}
+
+function sampleChargeRows() {
+  const c = SAMPLE_FINANCIAL_BREAKDOWN.charges
+  return (Object.keys(c) as Array<keyof typeof c>).map((charge_key) => ({
+    charge_key,
+    percentage: c[charge_key].percentage,
+    amount: c[charge_key].amount,
+    taxable: c[charge_key].taxable,
+  }))
+}
+
+function sampleTaxRows() {
+  const t = SAMPLE_FINANCIAL_BREAKDOWN.sales_taxes
+  return (Object.keys(t) as Array<keyof typeof t>).map((tax_key) => ({
+    tax_key,
+    percentage: t[tax_key].percentage,
+    amount: t[tax_key].amount,
+  }))
+}
+
+function stubNormalizedChildren(withSampleFinancial = false) {
+  mockEmptyFindMany.mockResolvedValue([])
+  mockEmptyDeleteMany.mockResolvedValue({ count: 0 })
+  mockEmptyCreateMany.mockResolvedValue({ count: 0 })
+  mockPoChargeFindMany.mockResolvedValue(withSampleFinancial ? sampleChargeRows() : [])
+  mockPoTaxFindMany.mockResolvedValue(withSampleFinancial ? sampleTaxRows() : [])
+}
 
 vi.mock('../../../server/utils/prisma', () => ({
   getPrisma: () => ({
@@ -50,6 +90,21 @@ vi.mock('../../../server/utils/prisma', () => ({
       findFirst: (...a: unknown[]) => mockProjectFindFirst(...a),
       findMany: (...a: unknown[]) => mockProjectFindMany(...a),
     },
+    poFinancialCharge: {
+      findMany: (...a: unknown[]) => mockPoChargeFindMany(...a),
+      deleteMany: (...a: unknown[]) => mockEmptyDeleteMany(...a),
+      createMany: (...a: unknown[]) => mockEmptyCreateMany(...a),
+    },
+    poFinancialTax: {
+      findMany: (...a: unknown[]) => mockPoTaxFindMany(...a),
+      deleteMany: (...a: unknown[]) => mockEmptyDeleteMany(...a),
+      createMany: (...a: unknown[]) => mockEmptyCreateMany(...a),
+    },
+    poAttachment: emptyChildDelegate(),
+    poAuditEvent: emptyChildDelegate(),
+    poRemovedItem: emptyChildDelegate(),
+    poItemApprovalCheck: emptyChildDelegate(),
+    poItemReceiptNote: emptyChildDelegate(),
   }),
 }))
 
@@ -100,10 +155,6 @@ function makePrismaPORow(overrides: Record<string, unknown> = {}) {
     billing_address_uuid: null,
     shipping_address_uuid: null,
     status: 'Draft',
-    financial_breakdown: JSON.stringify(SAMPLE_FINANCIAL_BREAKDOWN),
-    attachments: '[]',
-    removed_po_items: '[]',
-    audit_log: '[]',
     prepared_by: null,
     approved_by: null,
     approved_at: null,
@@ -127,12 +178,16 @@ async function importUtils() {
 describe('createPurchaseOrder – freight / ship_via UUID preference', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPOFormCreate.mockImplementation(async ({ data }: any) => ({
-      ...makePrismaPORow(),
-      ship_via: data.ship_via,
-      freight: data.freight,
-      financial_breakdown: data.financial_breakdown,
-    }))
+    stubNormalizedChildren(false)
+    mockPOFormCreate.mockImplementation(async ({ data }: any) => {
+      const row = {
+        ...makePrismaPORow(),
+        ship_via: data.ship_via,
+        freight: data.freight,
+      }
+      mockPOFormFindFirst.mockResolvedValue(row)
+      return row
+    })
     mockPOItemFindMany.mockResolvedValue([])
     mockProjectFindFirst.mockResolvedValue(null)
   })
@@ -187,7 +242,7 @@ describe('createPurchaseOrder – freight / ship_via UUID preference', () => {
     expect(createArg.data.ship_via).toBe('Manual Ship Via')
   })
 
-  it('persists financial_breakdown as a JSON string', async () => {
+  it('writes financial breakdown to child charge/tax tables (not header JSON)', async () => {
     const { createPurchaseOrder } = await importUtils()
     await createPurchaseOrder({
       corporation_uuid: 'corp-1',
@@ -196,15 +251,19 @@ describe('createPurchaseOrder – freight / ship_via UUID preference', () => {
     })
 
     const createArg = mockPOFormCreate.mock.calls[0][0]
-    expect(typeof createArg.data.financial_breakdown).toBe('string')
-    expect(JSON.parse(createArg.data.financial_breakdown)).toEqual(SAMPLE_FINANCIAL_BREAKDOWN)
+    expect(createArg.data.financial_breakdown).toBeUndefined()
+    expect(mockEmptyCreateMany).toHaveBeenCalled()
   })
 
   it('returns mapped row with freight_uuid and ship_via_uuid exposed', async () => {
-    mockPOFormCreate.mockResolvedValue(makePrismaPORow({
-      ship_via: 'sv-uuid-fedex',
-      freight: 'fr-uuid-ups',
-    }))
+    mockPOFormCreate.mockImplementation(async ({ data }: any) => {
+      const row = makePrismaPORow({
+        ship_via: data.ship_via,
+        freight: data.freight,
+      })
+      mockPOFormFindFirst.mockResolvedValue(row)
+      return row
+    })
 
     const { createPurchaseOrder } = await importUtils()
     const result = await createPurchaseOrder({
@@ -227,6 +286,7 @@ describe('createPurchaseOrder – freight / ship_via UUID preference', () => {
 describe('updatePurchaseOrder – freight / ship_via UUID preference', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren(false)
     mockPOFormFindFirst.mockResolvedValue(makePrismaPORow())
     mockPOFormUpdate.mockResolvedValue(makePrismaPORow())
     mockPOItemFindMany.mockResolvedValue([])
@@ -273,13 +333,15 @@ describe('updatePurchaseOrder – freight / ship_via UUID preference', () => {
     expect(updateArg.data.freight).toBeNull()
   })
 
-  it('stringifies financial_breakdown on update', async () => {
+  it('writes financial breakdown to child tables on update (not header JSON)', async () => {
+    stubNormalizedChildren(true)
     const { updatePurchaseOrder } = await importUtils()
-    await updatePurchaseOrder('po-uuid-1', { financial_breakdown: SAMPLE_FINANCIAL_BREAKDOWN })
+    const result = await updatePurchaseOrder('po-uuid-1', { financial_breakdown: SAMPLE_FINANCIAL_BREAKDOWN })
 
-    const updateArg = mockPOFormUpdate.mock.calls[0][0]
-    expect(typeof updateArg.data.financial_breakdown).toBe('string')
-    expect(JSON.parse(updateArg.data.financial_breakdown)).toEqual(SAMPLE_FINANCIAL_BREAKDOWN)
+    // Child-only write: no header JSON column to update
+    expect(mockPOFormUpdate).not.toHaveBeenCalled()
+    expect(mockEmptyCreateMany).toHaveBeenCalled()
+    expect(result?.financial_breakdown?.charges?.freight?.percentage).toBe(5)
   })
 
   it('returns null when PO does not exist', async () => {
@@ -297,10 +359,15 @@ describe('updatePurchaseOrder – freight / ship_via UUID preference', () => {
 describe('createPurchaseOrder – terms_and_conditions_uuid', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPOFormCreate.mockImplementation(async ({ data }: any) => ({
-      ...makePrismaPORow(),
-      terms_and_conditions: data.terms_and_conditions,
-    }))
+    stubNormalizedChildren(false)
+    mockPOFormCreate.mockImplementation(async ({ data }: any) => {
+      const row = {
+        ...makePrismaPORow(),
+        terms_and_conditions: data.terms_and_conditions,
+      }
+      mockPOFormFindFirst.mockResolvedValue(row)
+      return row
+    })
     mockPOItemFindMany.mockResolvedValue([])
     mockProjectFindFirst.mockResolvedValue(null)
   })
@@ -350,6 +417,7 @@ describe('createPurchaseOrder – terms_and_conditions_uuid', () => {
 describe('updatePurchaseOrder – print option flags', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren(false)
     mockPOFormFindFirst.mockResolvedValue(makePrismaPORow())
     mockPOFormUpdate.mockResolvedValue(makePrismaPORow())
     mockPOItemFindMany.mockResolvedValue([])
@@ -377,10 +445,14 @@ describe('updatePurchaseOrder – print option flags', () => {
   })
 
   it('returns print flags on mapped row after create', async () => {
-    mockPOFormCreate.mockResolvedValue(makePrismaPORow({
-      print_include_approved_by_vendor: true,
-      print_use_entity_name: false,
-    }))
+    mockPOFormCreate.mockImplementation(async ({ data }: any) => {
+      const row = makePrismaPORow({
+        print_include_approved_by_vendor: data.print_include_approved_by_vendor,
+        print_use_entity_name: data.print_use_entity_name,
+      })
+      mockPOFormFindFirst.mockResolvedValue(row)
+      return row
+    })
     mockPOItemFindMany.mockResolvedValue([])
     mockProjectFindFirst.mockResolvedValue(null)
 
@@ -400,6 +472,7 @@ describe('updatePurchaseOrder – print option flags', () => {
 describe('updatePurchaseOrder – terms_and_conditions_uuid', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren(false)
     mockPOFormFindFirst.mockResolvedValue(makePrismaPORow())
     mockPOFormUpdate.mockResolvedValue(makePrismaPORow())
     mockPOItemFindMany.mockResolvedValue([])
@@ -431,15 +504,17 @@ describe('updatePurchaseOrder – terms_and_conditions_uuid', () => {
 describe('getPurchaseOrder – financial_breakdown field restoration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren(true)
     mockPOFormFindFirst.mockResolvedValue(makePrismaPORow())
     mockPOItemFindMany.mockResolvedValue([])
     mockProjectFindFirst.mockResolvedValue(null)
   })
 
-  it('parses financial_breakdown JSON into an object', async () => {
+  it('assembles financial_breakdown from child charge/tax rows', async () => {
     const { getPurchaseOrder } = await importUtils()
     const po = await getPurchaseOrder('po-uuid-1')
-    expect(po?.financial_breakdown).toEqual(SAMPLE_FINANCIAL_BREAKDOWN)
+    expect(po?.financial_breakdown?.charges?.freight?.percentage).toBe(5)
+    expect(po?.financial_breakdown?.totals?.total_po_amount).toBe(1166.4)
   })
 
   it('restores freight charge fields from financial_breakdown.charges.freight', async () => {
@@ -483,22 +558,15 @@ describe('getPurchaseOrder – financial_breakdown field restoration', () => {
     expect(po?.sales_tax_2_amount).toBe(0)
   })
 
-  it('returns null charge fields when financial_breakdown is null', async () => {
-    mockPOFormFindFirst.mockResolvedValue(makePrismaPORow({ financial_breakdown: null }))
+  it('returns empty charge fields when no child financial rows exist', async () => {
+    stubNormalizedChildren(false)
+    mockPOFormFindFirst.mockResolvedValue(makePrismaPORow())
     const { getPurchaseOrder } = await importUtils()
     const po = await getPurchaseOrder('po-uuid-1')
-    expect(po?.financial_breakdown).toBeNull()
     expect(po?.freight_charges_percentage).toBeNull()
+    expect(po?.freight_charges_amount).toBeNull()
     expect(po?.freight_charges_taxable).toBe(false)
     expect(po?.sales_tax_1_percentage).toBeNull()
-  })
-
-  it('returns null charge fields when financial_breakdown is invalid JSON', async () => {
-    mockPOFormFindFirst.mockResolvedValue(makePrismaPORow({ financial_breakdown: 'not-json{{{' }))
-    const { getPurchaseOrder } = await importUtils()
-    const po = await getPurchaseOrder('po-uuid-1')
-    expect(po?.financial_breakdown).toBeNull()
-    expect(po?.freight_charges_percentage).toBeNull()
   })
 
   it('exposes freight_uuid and ship_via_uuid equal to stored column values', async () => {
@@ -534,6 +602,7 @@ describe('getPurchaseOrder – financial_breakdown field restoration', () => {
 describe('PO save round-trip – freight UUID + financial breakdown', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren(true)
     mockPOItemFindMany.mockResolvedValue([])
     mockProjectFindFirst.mockResolvedValue(null)
   })
@@ -543,7 +612,6 @@ describe('PO save round-trip – freight UUID + financial breakdown', () => {
       uuid: 'po-roundtrip',
       ship_via: 'sv-uuid-dhl',
       freight: 'fr-uuid-fedex',
-      financial_breakdown: JSON.stringify(SAMPLE_FINANCIAL_BREAKDOWN),
     })
 
     mockPOFormCreate.mockResolvedValue(savedRow)

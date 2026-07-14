@@ -5,17 +5,12 @@ import {
   computeMaterialBalanceToBeInvoicedFromItems,
   isMaterialOrderType,
 } from '../../app/utils/materialBalanceToBeInvoiced'
+import {
+  assembleFinancialBreakdownFromRows,
+  assembleFinancialBreakdownMap,
+} from './normalizedChildren'
 
 const prisma = getPrisma()
-
-function parseJson<T = unknown>(val: string | null | undefined, fallback: T): T {
-  if (!val) return fallback
-  try {
-    return JSON.parse(val) as T
-  } catch {
-    return fallback
-  }
-}
 
 function toNum(val: unknown): number {
   if (val === null || val === undefined || val === '') return 0
@@ -24,31 +19,37 @@ function toNum(val: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+async function loadViFinancialByUuid(invoiceUuids: string[]) {
+  if (!invoiceUuids.length) return new Map()
+  const [chargeRows, taxRows] = await Promise.all([
+    prisma.viFinancialCharge.findMany({
+      where: { vendor_invoice_uuid: { in: invoiceUuids } },
+    }),
+    prisma.viFinancialTax.findMany({
+      where: { vendor_invoice_uuid: { in: invoiceUuids } },
+    }),
+  ])
+  return assembleFinancialBreakdownMap(chargeRows, taxRows, 'vendor_invoice_uuid')
+}
+
 function netVendorInvoiceAmountWithoutTaxes(invoice: {
   amount?: unknown
   financial_breakdown?: unknown
 }): number {
   const totalAmount = parseFloat(String(invoice.amount ?? '0')) || 0
   let taxTotal = 0
-  if (invoice.financial_breakdown) {
-    try {
-      let breakdown: any = invoice.financial_breakdown
-      if (typeof breakdown === 'string') {
-        breakdown = JSON.parse(breakdown)
-      }
-      const totals = breakdown?.totals || breakdown || {}
-      if (breakdown?.sales_taxes) {
-        const salesTaxes = breakdown.sales_taxes
-        const tax1 =
-          parseFloat(salesTaxes.sales_tax_1?.amount || salesTaxes.salesTax1?.amount || '0') || 0
-        const tax2 =
-          parseFloat(salesTaxes.sales_tax_2?.amount || salesTaxes.salesTax2?.amount || '0') || 0
-        taxTotal = tax1 + tax2
-      } else {
-        taxTotal = parseFloat(totals.tax_total || totals.taxTotal || '0') || 0
-      }
-    } catch {
-      taxTotal = 0
+  const breakdown = invoice.financial_breakdown as any
+  if (breakdown && typeof breakdown === 'object') {
+    const totals = breakdown?.totals || breakdown || {}
+    if (breakdown?.sales_taxes) {
+      const salesTaxes = breakdown.sales_taxes
+      const tax1 =
+        parseFloat(salesTaxes.sales_tax_1?.amount || salesTaxes.salesTax1?.amount || '0') || 0
+      const tax2 =
+        parseFloat(salesTaxes.sales_tax_2?.amount || salesTaxes.salesTax2?.amount || '0') || 0
+      taxTotal = tax1 + tax2
+    } else {
+      taxTotal = parseFloat(totals.tax_total || totals.taxTotal || '0') || 0
     }
   }
   return totalAmount - taxTotal
@@ -67,22 +68,47 @@ function sumProgressInvoicedValue(
   )
 }
 
+async function resolveCoContractTotal(changeOrderUuid: string): Promise<number> {
+  const [chargeRows, taxRows, materialItems, laborItems] = await Promise.all([
+    prisma.coFinancialCharge.findMany({ where: { change_order_uuid: changeOrderUuid } }),
+    prisma.coFinancialTax.findMany({ where: { change_order_uuid: changeOrderUuid } }),
+    prisma.changeOrderItem.findMany({
+      where: { change_order_uuid: changeOrderUuid, is_active: true },
+      select: { co_quantity: true, co_unit_price: true, unit_price: true, co_total: true },
+    }),
+    prisma.laborChangeOrderItem.findMany({
+      where: { change_order_uuid: changeOrderUuid, is_active: true },
+      select: { co_amount: true },
+    }),
+  ])
+
+  const itemTotal =
+    materialItems.reduce((sum, it) => {
+      const line =
+        toNum(it.co_total) ||
+        toNum(it.co_quantity) * toNum(it.co_unit_price ?? it.unit_price)
+      return sum + line
+    }, 0) + laborItems.reduce((sum, it) => sum + toNum(it.co_amount), 0)
+
+  const assembled = assembleFinancialBreakdownFromRows(chargeRows, taxRows, {
+    item_total: itemTotal,
+    total_co_amount: null,
+  })
+  return toNum(
+    assembled.totals.total_co_amount ??
+      assembled.totals.total_po_amount ??
+      (itemTotal + toNum(assembled.totals.charges_total) + toNum(assembled.totals.tax_total)),
+  )
+}
+
 export async function getPurchaseOrderInvoiceSummary(purchaseOrderUuid: string) {
   const po = await prisma.purchaseOrderForm.findFirst({
     where: { uuid: purchaseOrderUuid, is_active: true },
-    select: { uuid: true, po_type: true, financial_breakdown: true },
+    select: { uuid: true, po_type: true, total_po_amount: true },
   })
   if (!po) return null
 
-  let totalPOValue = 0
-  const breakdown = parseJson(po.financial_breakdown, null) as any
-  if (breakdown?.totals) {
-    totalPOValue = toNum(
-      breakdown.totals.total_po_amount ??
-        breakdown.totals.totalAmount ??
-        breakdown.totals.total,
-    )
-  }
+  const totalPOValue = toNum(po.total_po_amount)
 
   const advanceInvoices = await prisma.vendorInvoice.findMany({
     where: {
@@ -90,17 +116,8 @@ export async function getPurchaseOrderInvoiceSummary(purchaseOrderUuid: string) 
       invoice_type: 'AGAINST_ADVANCE_PAYMENT',
       is_active: true,
     },
-    select: { amount: true, financial_breakdown: true },
+    select: { uuid: true, amount: true, holdback: true },
   })
-
-  const advancePaid = advanceInvoices.reduce(
-    (sum, invoice) => sum + netVendorInvoiceAmountWithoutTaxes(invoice),
-    0,
-  )
-  const advancePaidIncludingTaxes = advanceInvoices.reduce(
-    (sum, invoice) => sum + toNum(invoice.amount),
-    0,
-  )
 
   const progressInvoices = await prisma.vendorInvoice.findMany({
     where: {
@@ -108,16 +125,8 @@ export async function getPurchaseOrderInvoiceSummary(purchaseOrderUuid: string) 
       invoice_type: 'AGAINST_PO',
       is_active: true,
     },
-    select: { amount: true, financial_breakdown: true, holdback: true },
+    select: { uuid: true, amount: true, holdback: true },
   })
-
-  const isLaborPO = String(po.po_type ?? '').toUpperCase() === 'LABOR'
-  const invoicedValue = sumProgressInvoicedValue(progressInvoices, isLaborPO)
-
-  const holdbackAccruedOnProgress = progressInvoices.reduce(
-    (sum, invoice) => sum + accruedHoldbackFromProgressInvoice(invoice),
-    0,
-  )
 
   const holdbackInvoices = await prisma.vendorInvoice.findMany({
     where: {
@@ -125,10 +134,44 @@ export async function getPurchaseOrderInvoiceSummary(purchaseOrderUuid: string) 
       invoice_type: 'AGAINST_HOLDBACK_AMOUNT',
       is_active: true,
     },
-    select: { amount: true, financial_breakdown: true },
+    select: { uuid: true, amount: true, holdback: true },
   })
 
-  const holdbackReleased = holdbackInvoices.reduce(
+  const allInvoiceUuids = [
+    ...advanceInvoices.map((i) => i.uuid),
+    ...progressInvoices.map((i) => i.uuid),
+    ...holdbackInvoices.map((i) => i.uuid),
+  ]
+  const fbByUuid = await loadViFinancialByUuid(allInvoiceUuids)
+
+  const withBreakdown = <T extends { uuid: string }>(rows: T[]) =>
+    rows.map((row) => ({
+      ...row,
+      financial_breakdown: fbByUuid.get(row.uuid) ?? null,
+    }))
+
+  const advanceWithFb = withBreakdown(advanceInvoices)
+  const progressWithFb = withBreakdown(progressInvoices)
+  const holdbackWithFb = withBreakdown(holdbackInvoices)
+
+  const advancePaid = advanceWithFb.reduce(
+    (sum, invoice) => sum + netVendorInvoiceAmountWithoutTaxes(invoice),
+    0,
+  )
+  const advancePaidIncludingTaxes = advanceWithFb.reduce(
+    (sum, invoice) => sum + toNum(invoice.amount),
+    0,
+  )
+
+  const isLaborPO = String(po.po_type ?? '').toUpperCase() === 'LABOR'
+  const invoicedValue = sumProgressInvoicedValue(progressWithFb, isLaborPO)
+
+  const holdbackAccruedOnProgress = progressWithFb.reduce(
+    (sum, invoice) => sum + accruedHoldbackFromProgressInvoice(invoice),
+    0,
+  )
+
+  const holdbackReleased = holdbackWithFb.reduce(
     (sum, invoice) => sum + netVendorInvoiceAmountWithoutTaxes(invoice),
     0,
   )
@@ -161,16 +204,7 @@ export async function getPurchaseOrderInvoiceSummary(purchaseOrderUuid: string) 
     0,
   )
 
-  const vendorInvoiceUuids = (
-    await prisma.vendorInvoice.findMany({
-      where: {
-        purchase_order_uuid: purchaseOrderUuid,
-        invoice_type: 'AGAINST_PO',
-        is_active: true,
-      },
-      select: { uuid: true },
-    })
-  ).map((i) => i.uuid)
+  const vendorInvoiceUuids = progressInvoices.map((i) => i.uuid)
 
   let invoicedQuantity = 0
   let poInvoiceItemRows: Array<{ po_item_uuid?: string; invoice_quantity?: unknown }> = []
@@ -216,19 +250,11 @@ export async function getPurchaseOrderInvoiceSummary(purchaseOrderUuid: string) 
 export async function getChangeOrderInvoiceSummary(changeOrderUuid: string) {
   const co = await prisma.changeOrder.findFirst({
     where: { uuid: changeOrderUuid, is_active: true },
-    select: { uuid: true, co_type: true, financial_breakdown: true },
+    select: { uuid: true, co_type: true },
   })
   if (!co) return null
 
-  let totalCOValue = 0
-  const breakdown = parseJson(co.financial_breakdown, null) as any
-  if (breakdown?.totals) {
-    totalCOValue = toNum(
-      breakdown.totals.total_co_amount ??
-        breakdown.totals.totalAmount ??
-        breakdown.totals.total,
-    )
-  }
+  const totalCOValue = await resolveCoContractTotal(changeOrderUuid)
 
   const advanceInvoices = await prisma.vendorInvoice.findMany({
     where: {
@@ -236,17 +262,8 @@ export async function getChangeOrderInvoiceSummary(changeOrderUuid: string) {
       invoice_type: 'AGAINST_ADVANCE_PAYMENT',
       is_active: true,
     },
-    select: { amount: true, financial_breakdown: true },
+    select: { uuid: true, amount: true, holdback: true },
   })
-
-  const advancePaid = advanceInvoices.reduce(
-    (sum, invoice) => sum + netVendorInvoiceAmountWithoutTaxes(invoice),
-    0,
-  )
-  const advancePaidIncludingTaxes = advanceInvoices.reduce(
-    (sum, invoice) => sum + toNum(invoice.amount),
-    0,
-  )
 
   const progressInvoices = await prisma.vendorInvoice.findMany({
     where: {
@@ -254,16 +271,8 @@ export async function getChangeOrderInvoiceSummary(changeOrderUuid: string) {
       invoice_type: 'AGAINST_CO',
       is_active: true,
     },
-    select: { amount: true, financial_breakdown: true, holdback: true },
+    select: { uuid: true, amount: true, holdback: true },
   })
-
-  const isLaborCO = String(co.co_type ?? '').toUpperCase() === 'LABOR'
-  const invoicedValue = sumProgressInvoicedValue(progressInvoices, isLaborCO)
-
-  const holdbackAccruedOnProgress = progressInvoices.reduce(
-    (sum, invoice) => sum + accruedHoldbackFromProgressInvoice(invoice),
-    0,
-  )
 
   const holdbackInvoices = await prisma.vendorInvoice.findMany({
     where: {
@@ -271,10 +280,44 @@ export async function getChangeOrderInvoiceSummary(changeOrderUuid: string) {
       invoice_type: 'AGAINST_HOLDBACK_AMOUNT',
       is_active: true,
     },
-    select: { amount: true, financial_breakdown: true },
+    select: { uuid: true, amount: true, holdback: true },
   })
 
-  const holdbackReleased = holdbackInvoices.reduce(
+  const allInvoiceUuids = [
+    ...advanceInvoices.map((i) => i.uuid),
+    ...progressInvoices.map((i) => i.uuid),
+    ...holdbackInvoices.map((i) => i.uuid),
+  ]
+  const fbByUuid = await loadViFinancialByUuid(allInvoiceUuids)
+
+  const withBreakdown = <T extends { uuid: string }>(rows: T[]) =>
+    rows.map((row) => ({
+      ...row,
+      financial_breakdown: fbByUuid.get(row.uuid) ?? null,
+    }))
+
+  const advanceWithFb = withBreakdown(advanceInvoices)
+  const progressWithFb = withBreakdown(progressInvoices)
+  const holdbackWithFb = withBreakdown(holdbackInvoices)
+
+  const advancePaid = advanceWithFb.reduce(
+    (sum, invoice) => sum + netVendorInvoiceAmountWithoutTaxes(invoice),
+    0,
+  )
+  const advancePaidIncludingTaxes = advanceWithFb.reduce(
+    (sum, invoice) => sum + toNum(invoice.amount),
+    0,
+  )
+
+  const isLaborCO = String(co.co_type ?? '').toUpperCase() === 'LABOR'
+  const invoicedValue = sumProgressInvoicedValue(progressWithFb, isLaborCO)
+
+  const holdbackAccruedOnProgress = progressWithFb.reduce(
+    (sum, invoice) => sum + accruedHoldbackFromProgressInvoice(invoice),
+    0,
+  )
+
+  const holdbackReleased = holdbackWithFb.reduce(
     (sum, invoice) => sum + netVendorInvoiceAmountWithoutTaxes(invoice),
     0,
   )
@@ -304,16 +347,7 @@ export async function getChangeOrderInvoiceSummary(changeOrderUuid: string) {
 
   const totalCOQuantity = coItemRows.reduce((sum, it) => sum + toNum(it.co_quantity), 0)
 
-  const vendorInvoiceUuids = (
-    await prisma.vendorInvoice.findMany({
-      where: {
-        change_order_uuid: changeOrderUuid,
-        invoice_type: 'AGAINST_CO',
-        is_active: true,
-      },
-      select: { uuid: true },
-    })
-  ).map((i) => i.uuid)
+  const vendorInvoiceUuids = progressInvoices.map((i) => i.uuid)
 
   let invoicedQuantity = 0
   let coInvoiceItemRows: Array<{ co_item_uuid?: string; invoice_quantity?: unknown }> = []

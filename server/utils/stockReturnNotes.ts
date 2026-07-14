@@ -102,8 +102,33 @@ function buildReturnMetadata(input: Record<string, any>): Record<string, unknown
     input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
       ? { ...input.metadata }
       : {}
-  if (input.financial_breakdown !== undefined) {
-    base.financial_breakdown = input.financial_breakdown
+  const stripKeys = [
+    'financial_breakdown',
+    'freight_charges_percentage',
+    'freight_charges_amount',
+    'freight_charges_taxable',
+    'packing_charges_percentage',
+    'packing_charges_amount',
+    'packing_charges_taxable',
+    'custom_duties_percentage',
+    'custom_duties_amount',
+    'custom_duties_taxable',
+    'custom_duties_charges_percentage',
+    'custom_duties_charges_amount',
+    'custom_duties_charges_taxable',
+    'other_charges_percentage',
+    'other_charges_amount',
+    'other_charges_taxable',
+    'sales_tax_1_percentage',
+    'sales_tax_1_amount',
+    'sales_tax_2_percentage',
+    'sales_tax_2_amount',
+  ] as const
+  for (const key of stripKeys) {
+    delete base[key]
+  }
+  for (const key of ['item_total', 'charges_total', 'tax_total'] as const) {
+    if (input[key] !== undefined) base[key] = input[key]
   }
   return base
 }
@@ -117,7 +142,9 @@ function mapReturnNoteRow(row: any, extras?: {
   const financialBreakdown =
     extras?.financialBreakdown !== undefined
       ? extras.financialBreakdown
-      : metadata.financial_breakdown
+      : undefined
+  const scrubbedMetadata = { ...metadata }
+  delete scrubbedMetadata.financial_breakdown
   const returnNoteNumber = row.return_note_number
   const record: Record<string, unknown> = {
     id: String(row.id),
@@ -138,12 +165,12 @@ function mapReturnNoteRow(row: any, extras?: {
     notes: row.notes ?? null,
     status: row.status,
     total_return_amount: toNum(row.total_return_amount),
-    attachments: extras?.attachments ?? parseJson(row.attachments, []),
+    attachments: extras?.attachments ?? [],
     metadata: {
-      ...metadata,
+      ...scrubbedMetadata,
       ...(financialBreakdown !== undefined ? { financial_breakdown: financialBreakdown } : {}),
     },
-    audit_log: extras?.audit_log ?? parseJson(row.audit_log, []),
+    audit_log: extras?.audit_log ?? [],
     is_active: row.is_active,
     created_at: row.created_at?.toISOString?.() ?? row.created_at ?? null,
     updated_at: row.updated_at?.toISOString?.() ?? row.updated_at ?? null,
@@ -172,23 +199,18 @@ async function loadReturnNormalizedExtras(uuid: string, row: any) {
   const financialBreakdown = resolveFinancialBreakdown({
     chargeRows,
     taxRows,
-    legacyJson: metadata.financial_breakdown ?? null,
     headerTotals: {
-      item_total: (metadata.financial_breakdown as any)?.totals?.item_total,
-      charges_total: (metadata.financial_breakdown as any)?.totals?.charges_total,
-      tax_total: (metadata.financial_breakdown as any)?.totals?.tax_total,
+      item_total: metadata.item_total,
+      charges_total: metadata.charges_total,
+      tax_total: metadata.tax_total,
     },
   })
 
-  const attachments = attachmentRows.length
-    ? attachmentsJsonFromRows(attachmentRows)
-    : parseJson(row.attachments, [])
-
-  const audit_log = auditRows.length
-    ? auditLogJsonFromRows(auditRows)
-    : parseJson(row.audit_log, [])
-
-  return { financialBreakdown, attachments, audit_log }
+  return {
+    financialBreakdown,
+    attachments: attachmentsJsonFromRows(attachmentRows),
+    audit_log: auditLogJsonFromRows(auditRows),
+  }
 }
 
 function financialInputFromReturnBody(body: Record<string, any>, metadata?: Record<string, unknown>) {
@@ -196,7 +218,7 @@ function financialInputFromReturnBody(body: Record<string, any>, metadata?: Reco
   return {
     ...body,
     ...meta,
-    financial_breakdown: body.financial_breakdown ?? meta.financial_breakdown,
+    financial_breakdown: body.financial_breakdown,
   }
 }
 
@@ -423,9 +445,7 @@ function buildHeaderData(body: Record<string, any>, noteUuid: string, returnNumb
     notes: body.notes ?? null,
     status: normalizeStatus(body.status),
     total_return_amount: toNum(body.total_return_amount),
-    attachments: stringifyJson(sanitizeAttachments(body.attachments ?? [])),
     metadata: stringifyJson(buildReturnMetadata(body)),
-    audit_log: stringifyJson(body.audit_log ?? []),
     is_active: typeof body.is_active === 'boolean' ? body.is_active : true,
   }
 }
@@ -570,28 +590,33 @@ export async function updateStockReturnNote(uuid: string, input: Record<string, 
   }
 
   if ('entry_date' in input) updateData.entry_date = parseDate(input.entry_date)
-  if ('attachments' in input) {
-    updateData.attachments = stringifyJson(sanitizeAttachments(input.attachments ?? []))
-  }
   let mergedMetadata: Record<string, unknown> | null = null
-  if ('metadata' in input || 'financial_breakdown' in input) {
+  if (
+    'metadata' in input ||
+    'financial_breakdown' in input ||
+    'item_total' in input ||
+    'charges_total' in input ||
+    'tax_total' in input
+  ) {
     mergedMetadata = {
       ...parseJson(existing.metadata, {}),
       ...buildReturnMetadata({ ...parseJson(existing.metadata, {}), ...input }),
     }
+    delete (mergedMetadata as any).financial_breakdown
     updateData.metadata = stringifyJson(mergedMetadata)
   }
-  if ('audit_log' in input) updateData.audit_log = stringifyJson(input.audit_log)
 
   const cleaned = Object.fromEntries(
     Object.entries(updateData).filter(([, v]) => v !== undefined),
   )
 
-  await prisma.stockReturnNote.update({ where: { uuid }, data: cleaned })
+  if (Object.keys(cleaned).length) {
+    await prisma.stockReturnNote.update({ where: { uuid }, data: cleaned })
+  }
 
-  const dualWrites: Promise<unknown>[] = []
+  const childWrites: Promise<unknown>[] = []
   if (mergedMetadata || 'financial_breakdown' in input) {
-    dualWrites.push(
+    childWrites.push(
       replaceReturnFinancialChildren(
         prisma,
         uuid,
@@ -601,7 +626,7 @@ export async function updateStockReturnNote(uuid: string, input: Record<string, 
     )
   }
   if ('attachments' in input) {
-    dualWrites.push(
+    childWrites.push(
       replaceReturnAttachments(
         prisma,
         uuid,
@@ -611,11 +636,11 @@ export async function updateStockReturnNote(uuid: string, input: Record<string, 
     )
   }
   if ('audit_log' in input) {
-    dualWrites.push(
+    childWrites.push(
       replaceReturnAuditEvents(prisma, uuid, existing.corporation_uuid, input.audit_log ?? []),
     )
   }
-  if (dualWrites.length) await Promise.all(dualWrites)
+  if (childWrites.length) await Promise.all(childWrites)
 
   if ('return_items' in input) {
     const items = filterReturnItems(input.return_items)

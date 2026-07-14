@@ -62,7 +62,6 @@ const VI_LIST_SELECT = {
   is_active: true,
   adjusted_against_vendor_invoice_uuid: true,
   adjusted_advance_payment_uuid: true,
-  removed_advance_payment_cost_codes: true,
   holdback_fully_paid: true,
   nimble_jeid: true,
   last_handled_approval_type: true,
@@ -214,12 +213,15 @@ function mapVendorInvoiceRow(row: any, extras: Record<string, unknown> = {}) {
   const financialBreakdown =
     extras.financial_breakdown !== undefined
       ? extras.financial_breakdown
-      : parseJson(row.financial_breakdown, {})
+      : null
   const attachments =
     extras.attachments !== undefined
       ? extras.attachments
-      : parseJson(row.attachments, [])
-  const removed = parseJson(row.removed_advance_payment_cost_codes, [])
+      : []
+  const removed =
+    extras.removed_advance_payment_cost_codes !== undefined
+      ? extras.removed_advance_payment_cost_codes
+      : []
 
   const record: Record<string, unknown> = {
     id: row.id != null ? String(row.id) : undefined,
@@ -255,34 +257,43 @@ function mapVendorInvoiceRow(row: any, extras: Record<string, unknown> = {}) {
 }
 
 async function loadViNormalizedExtras(uuid: string, row: any) {
-  const [chargeRows, taxRows, attachmentRows] = await Promise.all([
+  const [chargeRows, taxRows, attachmentRows, removedRows] = await Promise.all([
     prisma.viFinancialCharge.findMany({ where: { vendor_invoice_uuid: uuid } }),
     prisma.viFinancialTax.findMany({ where: { vendor_invoice_uuid: uuid } }),
     prisma.viAttachment.findMany({
       where: { vendor_invoice_uuid: uuid },
       orderBy: { sort_order: 'asc' },
     }),
+    prisma.advancePaymentCostCode.findMany({
+      where: { vendor_invoice_uuid: uuid, is_removed: true },
+      orderBy: { removed_at: 'asc' },
+    }),
   ])
 
   const financial_breakdown = resolveFinancialBreakdown({
     chargeRows,
     taxRows,
-    legacyJson: parseJson(row.financial_breakdown, null),
     headerTotals: {
-      item_total: (parseJson(row.financial_breakdown, {}) as any)?.totals?.item_total,
-      charges_total: (parseJson(row.financial_breakdown, {}) as any)?.totals?.charges_total,
-      tax_total: (parseJson(row.financial_breakdown, {}) as any)?.totals?.tax_total,
-      total_invoice_amount:
-        toNum(row.amount) ??
-        (parseJson(row.financial_breakdown, {}) as any)?.totals?.total_invoice_amount,
+      total_invoice_amount: toNum(row.amount),
     },
   })
 
-  const attachments = attachmentRows.length
-    ? attachmentsJsonFromRows(attachmentRows)
-    : parseJson(row.attachments, [])
+  const attachments = attachmentsJsonFromRows(attachmentRows)
+  const removed_advance_payment_cost_codes = removedRows.map((r) => ({
+    uuid: r.uuid,
+    cost_code_uuid: r.cost_code_uuid,
+    cost_code_label: r.cost_code_label,
+    cost_code_number: r.cost_code_number,
+    cost_code_name: r.cost_code_name,
+    gl_account_uuid: r.gl_account_uuid,
+    total_amount: toNum(r.total_amount),
+    advance_amount: toNum(r.advance_amount),
+    metadata: parseJson(r.metadata, {}),
+    removed_at: r.removed_at?.toISOString?.() ?? r.removed_at ?? null,
+    is_removed: true,
+  }))
 
-  return { financial_breakdown, attachments }
+  return { financial_breakdown, attachments, removed_advance_payment_cost_codes }
 }
 
 async function syncRemovedAdvancePaymentCostCodes(options: {
@@ -1307,7 +1318,6 @@ async function enrichListMetadata(rows: any[]) {
 }
 
 function buildInsertData(body: Record<string, any>, invoiceUuid: string, invoiceType: string) {
-  const financialBreakdown = buildVendorInvoiceFinancialBreakdown(body)
   return {
     uuid: invoiceUuid,
     corporation_uuid: body.corporation_uuid,
@@ -1326,11 +1336,6 @@ function buildInsertData(body: Record<string, any>, invoiceUuid: string, invoice
     status: body.status || 'Draft',
     is_active: true,
     adjusted_advance_payment_uuid: body.adjusted_advance_payment_uuid || null,
-    financial_breakdown: stringifyJson(financialBreakdown),
-    attachments: stringifyJson(sanitizeAttachments(body.attachments)),
-    removed_advance_payment_cost_codes: Array.isArray(body.removed_advance_payment_cost_codes)
-      ? stringifyJson(body.removed_advance_payment_cost_codes)
-      : stringifyJson([]),
   }
 }
 
@@ -1527,7 +1532,7 @@ export async function createVendorInvoice(body: Record<string, any>) {
   const insertData = buildInsertData(body, invoiceUuid, invoiceType)
   normalizeEmptyUuids(insertData)
 
-  const financialBreakdown = parseJson(insertData.financial_breakdown, {})
+  const financialBreakdown = buildVendorInvoiceFinancialBreakdown(body)
 
   if (invoiceType === 'AGAINST_ADVANCE_PAYMENT') {
     await assertAdvancePaymentAmountsNotBelowConsumed({
@@ -1639,20 +1644,6 @@ export async function updateVendorInvoice(uuid: string, body: Record<string, any
     } else updateData[f] = body[f]
   }
 
-  if (body.financial_breakdown !== undefined || hasFinancialFields(body)) {
-    updateData.financial_breakdown = stringifyJson(buildVendorInvoiceFinancialBreakdown(body))
-  }
-  if (body.attachments !== undefined) {
-    updateData.attachments = stringifyJson(sanitizeAttachments(body.attachments))
-  }
-  if (body.removed_advance_payment_cost_codes !== undefined) {
-    updateData.removed_advance_payment_cost_codes = stringifyJson(
-      Array.isArray(body.removed_advance_payment_cost_codes)
-        ? body.removed_advance_payment_cost_codes
-        : [],
-    )
-  }
-
   normalizeEmptyUuids(updateData)
 
   const currentPoUuid = existing.purchase_order_uuid
@@ -1687,10 +1678,12 @@ export async function updateVendorInvoice(uuid: string, body: Record<string, any
     })
   }
 
-  const financialBreakdown = parseJson(
-    updateData.financial_breakdown ?? row.financial_breakdown,
-    {},
-  )
+  const financialBreakdown =
+    body.financial_breakdown !== undefined || hasFinancialFields(body)
+      ? buildVendorInvoiceFinancialBreakdown(body)
+      : (
+          await loadViNormalizedExtras(row.uuid, row)
+        ).financial_breakdown
 
   // Type-switch cleanup and child persistence (mirrors reference PUT)
   if (newInvoiceType === 'ENTER_DIRECT_INVOICE') {
@@ -1719,7 +1712,7 @@ export async function updateVendorInvoice(uuid: string, body: Record<string, any
         advancePaymentCostCodes: body.advance_payment_cost_codes,
         financialBreakdown:
           body.financial_breakdown ??
-          parseJson(row.financial_breakdown, {}),
+          financialBreakdown,
       })
       await persistAdvancePaymentCostCodes({
         vendorInvoiceUuid: row.uuid,
@@ -1955,12 +1948,12 @@ export async function updateVendorInvoice(uuid: string, body: Record<string, any
     })
   }
 
-  const dualWrites: Promise<unknown>[] = []
+  const childWrites: Promise<unknown>[] = []
   if (body.financial_breakdown !== undefined || hasFinancialFields(body)) {
-    dualWrites.push(replaceViFinancialChildren(prisma, row.uuid, row.corporation_uuid, body))
+    childWrites.push(replaceViFinancialChildren(prisma, row.uuid, row.corporation_uuid, body))
   }
   if (body.attachments !== undefined) {
-    dualWrites.push(
+    childWrites.push(
       replaceViAttachments(
         prisma,
         row.uuid,
@@ -1969,7 +1962,7 @@ export async function updateVendorInvoice(uuid: string, body: Record<string, any
       ),
     )
   }
-  if (dualWrites.length) await Promise.all(dualWrites)
+  if (childWrites.length) await Promise.all(childWrites)
 
   if (body.removed_advance_payment_cost_codes !== undefined) {
     const wipedActive =

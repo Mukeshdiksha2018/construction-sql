@@ -25,6 +25,8 @@ const mockProjectFindMany = vi.fn()
 const mockEmptyFindMany = vi.fn()
 const mockEmptyDeleteMany = vi.fn()
 const mockEmptyCreateMany = vi.fn()
+const mockCoChargeFindMany = vi.fn()
+const mockCoTaxFindMany = vi.fn()
 
 function emptyChildDelegate() {
   return {
@@ -69,8 +71,16 @@ vi.mock('../../../server/utils/prisma', () => ({
       findFirst: (...a: unknown[]) => mockProjectFindFirst(...a),
       findMany: (...a: unknown[]) => mockProjectFindMany(...a),
     },
-    coFinancialCharge: emptyChildDelegate(),
-    coFinancialTax: emptyChildDelegate(),
+    coFinancialCharge: {
+      findMany: (...a: unknown[]) => mockCoChargeFindMany(...a),
+      deleteMany: (...a: unknown[]) => mockEmptyDeleteMany(...a),
+      createMany: (...a: unknown[]) => mockEmptyCreateMany(...a),
+    },
+    coFinancialTax: {
+      findMany: (...a: unknown[]) => mockCoTaxFindMany(...a),
+      deleteMany: (...a: unknown[]) => mockEmptyDeleteMany(...a),
+      createMany: (...a: unknown[]) => mockEmptyCreateMany(...a),
+    },
     coAttachment: emptyChildDelegate(),
     coAuditEvent: emptyChildDelegate(),
     coRemovedItem: emptyChildDelegate(),
@@ -139,10 +149,10 @@ function makeCORow(overrides: Record<string, unknown> = {}) {
     shipping_address_uuid: null,
     terms_and_conditions_uuid: null,
     special_instruction_uuid: null,
-    financial_breakdown: JSON.stringify(SAMPLE_BREAKDOWN),
-    attachments: '[]',
-    removed_co_items: '[]',
-    audit_log: '[]',
+    financial_breakdown: null,
+    attachments: null,
+    removed_co_items: null,
+    audit_log: null,
     prepared_by: 'Test User',
     status: 'Draft',
     print_include_approved_by_vendor: null,
@@ -178,6 +188,8 @@ describe('changeOrders server utils', () => {
     mockEmptyFindMany.mockResolvedValue([])
     mockEmptyDeleteMany.mockResolvedValue({ count: 0 })
     mockEmptyCreateMany.mockResolvedValue({ count: 0 })
+    mockCoChargeFindMany.mockResolvedValue([])
+    mockCoTaxFindMany.mockResolvedValue([])
   })
 
   describe('generateNextCoNumber', () => {
@@ -200,7 +212,7 @@ describe('changeOrders server utils', () => {
   })
 
   describe('createChangeOrder', () => {
-    it('stores ship_via and freight UUIDs and builds financial_breakdown', async () => {
+    it('stores ship_via and freight UUIDs and writes financial children', async () => {
       const row = makeCORow({ uuid: 'co-new' })
       mockCOFindMany.mockResolvedValue([])
       mockCOCreate.mockResolvedValue(row)
@@ -229,11 +241,10 @@ describe('changeOrders server utils', () => {
       const createArg = mockCOCreate.mock.calls[0][0].data
       expect(createArg.ship_via_uuid).toBe('sv-uuid-1')
       expect(createArg.freight_uuid).toBe('fr-uuid-1')
-      expect(JSON.parse(String(createArg.financial_breakdown))).toMatchObject({
-        totals: expect.objectContaining({ item_total: 500 }),
-      })
-      const audit = JSON.parse(String(createArg.audit_log))
-      expect(audit[0].action).toBe('created')
+      expect(createArg.financial_breakdown).toBeUndefined()
+      expect(createArg.audit_log).toBeUndefined()
+      expect(mockEmptyDeleteMany).toHaveBeenCalled()
+      expect(mockEmptyCreateMany).toHaveBeenCalled()
     })
 
     it('auto-generates co_number when requested', async () => {
@@ -260,6 +271,16 @@ describe('changeOrders server utils', () => {
     it('loads material line items and decorates financial fields', async () => {
       const row = makeCORow({ co_type: 'MATERIAL' })
       mockCOFindFirst.mockResolvedValue(row)
+      mockCoChargeFindMany.mockResolvedValue([
+        { charge_key: 'freight', percentage: 5, amount: 25, taxable: true },
+        { charge_key: 'packing', percentage: 0, amount: 0, taxable: false },
+        { charge_key: 'custom_duties', percentage: 0, amount: 0, taxable: false },
+        { charge_key: 'other', percentage: 0, amount: 0, taxable: false },
+      ])
+      mockCoTaxFindMany.mockResolvedValue([
+        { tax_key: 'sales_tax_1', percentage: 8, amount: 40 },
+        { tax_key: 'sales_tax_2', percentage: 0, amount: 0 },
+      ])
       mockCOItemFindMany.mockResolvedValue([
         {
           id: BigInt(1),
@@ -309,7 +330,10 @@ describe('changeOrders server utils', () => {
 
       expect(co?.co_items).toHaveLength(1)
       expect(co?.freight_charges_percentage).toBe(5)
-      expect(co?.total_co_amount).toBe(565)
+      // totals are assembled from children; without header scalars total_co_amount
+      // is derived once item + charges + tax are known
+      expect(co?.charges_total).toBe(25)
+      expect(co?.tax_total).toBe(40)
       expect(co?.project_name).toBe('Proj')
       expect(co?.po_number).toBe('PO-1')
     })
@@ -388,12 +412,14 @@ describe('changeOrders server utils', () => {
   })
 
   describe('attachments', () => {
-    it('uploadChangeOrderAttachments stores PDF as data URL in JSON', async () => {
+    it('uploadChangeOrderAttachments stores PDF as data URL via coAttachment children', async () => {
       mockCOFindFirst.mockResolvedValue({
         uuid: 'co-uuid-1',
-        attachments: '[]',
+        corporation_uuid: 'corp-1',
       })
-      mockCOUpdate.mockResolvedValue({})
+      mockEmptyFindMany.mockResolvedValue([])
+      mockEmptyDeleteMany.mockResolvedValue({ count: 0 })
+      mockEmptyCreateMany.mockResolvedValue({ count: 1 })
 
       const { uploadChangeOrderAttachments } = await importUtils()
       const pdfBase64 = Buffer.from('%PDF-1.4').toString('base64')
@@ -409,25 +435,29 @@ describe('changeOrders server utils', () => {
       expect(result?.success).toBe(true)
       expect(result?.attachments).toHaveLength(1)
       expect(result?.attachments[0].file_url).toMatch(/^data:application\/pdf;base64,/)
-      expect(mockCOUpdate).toHaveBeenCalled()
+      expect(mockEmptyCreateMany).toHaveBeenCalled()
+      expect(mockCOUpdate).not.toHaveBeenCalled()
     })
 
-    it('removeChangeOrderAttachment removes by uuid', async () => {
+    it('removeChangeOrderAttachment removes by uuid from child table', async () => {
       const existing = [
-        { uuid: 'att-1', document_name: 'a.pdf' },
-        { uuid: 'att-2', document_name: 'b.pdf' },
+        { uuid: 'att-row-1', source_uuid: 'att-1', document_name: 'a.pdf', sort_order: 0 },
+        { uuid: 'att-row-2', source_uuid: 'att-2', document_name: 'b.pdf', sort_order: 1 },
       ]
       mockCOFindFirst.mockResolvedValue({
         uuid: 'co-uuid-1',
-        attachments: JSON.stringify(existing),
+        corporation_uuid: 'corp-1',
       })
-      mockCOUpdate.mockResolvedValue({})
+      mockEmptyFindMany.mockResolvedValue(existing)
+      mockEmptyDeleteMany.mockResolvedValue({ count: 2 })
+      mockEmptyCreateMany.mockResolvedValue({ count: 1 })
 
       const { removeChangeOrderAttachment } = await importUtils()
       const result = await removeChangeOrderAttachment('co-uuid-1', 'att-1')
 
       expect(result?.attachments).toHaveLength(1)
       expect(result?.attachments[0].uuid).toBe('att-2')
+      expect(mockCOUpdate).not.toHaveBeenCalled()
     })
   })
 

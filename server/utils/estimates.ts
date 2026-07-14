@@ -161,9 +161,9 @@ function mapEstimateRow(row: any, project?: any, extras?: {
     discount_amount: toNum(row.discount_amount),
     final_amount: toNum(row.final_amount),
     notes: row.notes ?? null,
-    attachments: extras?.attachments ?? parseJson(row.attachments, []),
-    removed_cost_code_uuids: extras?.removed_cost_code_uuids ?? parseJson(row.removed_cost_code_uuids, []),
-    audit_log: extras?.audit_log ?? parseJson(row.audit_log, []),
+    attachments: extras?.attachments ?? [],
+    removed_cost_code_uuids: extras?.removed_cost_code_uuids ?? [],
+    audit_log: extras?.audit_log ?? [],
     created_by: row.created_by ?? null,
     approved_by: row.approved_by ?? null,
     approved_at: row.approved_at ? row.approved_at.toISOString() : null,
@@ -190,15 +190,9 @@ async function loadEstimateNormalizedExtras(uuid: string, row: any) {
     }),
   ])
   return {
-    attachments: attachmentRows.length
-      ? attachmentsJsonFromRows(attachmentRows)
-      : parseJson(row.attachments, []),
-    audit_log: auditRows.length
-      ? auditLogJsonFromRows(auditRows)
-      : parseJson(row.audit_log, []),
-    removed_cost_code_uuids: removedRows.length
-      ? removedRows.map((r) => r.cost_code_uuid)
-      : parseJson(row.removed_cost_code_uuids, []),
+    attachments: attachmentsJsonFromRows(attachmentRows),
+    audit_log: auditLogJsonFromRows(auditRows),
+    removed_cost_code_uuids: removedRows.map((r) => r.cost_code_uuid),
   }
 }
 
@@ -625,9 +619,6 @@ export async function createEstimate(input: CreateEstimateInput) {
       discount_amount: toNum(input.discount_amount),
       final_amount: toNum(input.final_amount),
       notes: input.notes ?? null,
-      attachments: stringifyJson(input.attachments ?? []),
-      removed_cost_code_uuids: stringifyJson(input.removed_cost_code_uuids ?? []),
-      audit_log: stringifyJson(auditEntry),
       is_active: true,
     },
   })
@@ -649,13 +640,17 @@ export async function createEstimate(input: CreateEstimateInput) {
     where: { uuid: estimate.project_uuid },
     select: { uuid: true, project_name: true, project_id: true },
   })
-  return mapEstimateRow(estimate, project)
+  return mapEstimateRow(estimate, project, {
+    attachments: input.attachments ?? [],
+    removed_cost_code_uuids: input.removed_cost_code_uuids ?? [],
+    audit_log: auditEntry,
+  })
 }
 
 export async function updateEstimate(input: UpdateEstimateInput) {
   const existing = await prisma.estimate.findFirst({
     where: { uuid: input.uuid, is_active: true },
-    select: { uuid: true, corporation_uuid: true, project_uuid: true, estimate_number: true, status: true, audit_log: true },
+    select: { uuid: true, corporation_uuid: true, project_uuid: true, estimate_number: true, status: true },
   })
   if (!existing) return null
 
@@ -667,8 +662,12 @@ export async function updateEstimate(input: UpdateEstimateInput) {
     if (dup) throw createError({ statusCode: 409, statusMessage: 'Estimate number already exists for this corporation' })
   }
 
-  // Build audit log entry
-  const existingLog = parseJson<any[]>(existing.audit_log as string, [])
+  // Build audit log entry — load prior events from child table only
+  const existingAuditRows = await prisma.estimateAuditEvent.findMany({
+    where: { estimate_uuid: input.uuid },
+    orderBy: { event_at: 'asc' },
+  })
+  const existingLog = auditLogJsonFromRows(existingAuditRows)
   const oldStatus = existing.status
   const newStatus = input.status ?? oldStatus
   let auditEntry: any = null
@@ -695,23 +694,22 @@ export async function updateEstimate(input: UpdateEstimateInput) {
   if (input.discount_amount !== undefined) updateData.discount_amount = toNum(input.discount_amount)
   if (input.final_amount !== undefined) updateData.final_amount = toNum(input.final_amount)
   if (input.notes !== undefined) updateData.notes = input.notes ?? null
-  if (input.attachments !== undefined) updateData.attachments = stringifyJson(input.attachments)
-  if (input.removed_cost_code_uuids !== undefined) updateData.removed_cost_code_uuids = stringifyJson(input.removed_cost_code_uuids)
-  if (auditEntry) updateData.audit_log = stringifyJson(mergedLog)
 
-  const updated = await prisma.estimate.update({ where: { uuid: input.uuid }, data: updateData })
+  const updated = Object.keys(updateData).length
+    ? await prisma.estimate.update({ where: { uuid: input.uuid }, data: updateData })
+    : await prisma.estimate.findFirst({ where: { uuid: input.uuid } })
 
-  const dualWrites: Promise<unknown>[] = []
+  const childWrites: Promise<unknown>[] = []
   if (input.attachments !== undefined) {
-    dualWrites.push(replaceEstimateAttachments(prisma, input.uuid, existing.corporation_uuid, input.attachments ?? []))
+    childWrites.push(replaceEstimateAttachments(prisma, input.uuid, existing.corporation_uuid, input.attachments ?? []))
   }
   if (input.removed_cost_code_uuids !== undefined) {
-    dualWrites.push(replaceEstimateRemovedCostCodes(prisma, input.uuid, existing.corporation_uuid, input.removed_cost_code_uuids ?? []))
+    childWrites.push(replaceEstimateRemovedCostCodes(prisma, input.uuid, existing.corporation_uuid, input.removed_cost_code_uuids ?? []))
   }
-  if (auditEntry || updateData.audit_log) {
-    dualWrites.push(replaceEstimateAuditEvents(prisma, input.uuid, existing.corporation_uuid, mergedLog))
+  if (auditEntry) {
+    childWrites.push(replaceEstimateAuditEvents(prisma, input.uuid, existing.corporation_uuid, mergedLog))
   }
-  if (dualWrites.length) await Promise.all(dualWrites)
+  if (childWrites.length) await Promise.all(childWrites)
 
   // Replace line items if provided
   if (Array.isArray(input.line_items)) {
@@ -757,10 +755,11 @@ export async function updateEstimate(input: UpdateEstimateInput) {
 
   // Return header without re-reading line items — avoids 4 extra DB round-trips.
   const project = await prisma.project.findFirst({
-    where: { uuid: updated.project_uuid },
+    where: { uuid: updated!.project_uuid },
     select: { uuid: true, project_name: true, project_id: true },
   })
-  return mapEstimateRow(updated, project)
+  const extras = await loadEstimateNormalizedExtras(input.uuid, updated)
+  return mapEstimateRow(updated, project, extras)
 }
 
 export async function deleteEstimate(uuid: string) {

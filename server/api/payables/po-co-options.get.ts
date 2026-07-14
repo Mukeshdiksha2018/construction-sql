@@ -22,27 +22,6 @@ const toNumericOrNull = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-const extractTotalFromBreakdown = (breakdown: unknown, keys: string[]): number => {
-  let parsed: unknown = breakdown
-  if (typeof parsed === 'string') {
-    try {
-      parsed = JSON.parse(parsed)
-    }
-    catch {
-      return 0
-    }
-  }
-  if (!parsed || typeof parsed !== 'object') return 0
-
-  const obj = parsed as Record<string, unknown>
-  const totals = (obj.totals ?? obj.total_breakdown ?? obj.totals_breakdown ?? {}) as Record<string, unknown>
-  for (const key of keys) {
-    const value = toNumericOrNull(totals[key])
-    if (value !== null) return value
-  }
-  return 0
-}
-
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
 
@@ -81,7 +60,7 @@ export default defineEventHandler(async (event) => {
               entry_date: true,
               created_at: true,
               vendor_uuid: true,
-              financial_breakdown: true,
+              total_po_amount: true,
               currency_conversion_enabled: true,
               currency_from: true,
               currency_to: true,
@@ -108,7 +87,6 @@ export default defineEventHandler(async (event) => {
               created_date: true,
               created_at: true,
               vendor_uuid: true,
-              financial_breakdown: true,
               currency_conversion_enabled: true,
               currency_from: true,
               currency_to: true,
@@ -123,6 +101,31 @@ export default defineEventHandler(async (event) => {
     const vendorNames = await fetchNimbleVendorNamesForUuids(event, corporationUuid, [vendorUuid])
     const vendorName = vendorNames.get(vendorUuid) || null
 
+    // CO totals live only in normalized charge/tax children (no header total column).
+    const coIds = coRows.map((r: { uuid: string }) => r.uuid)
+    const coTotals = new Map<string, number>()
+    if (coIds.length) {
+      const [charges, taxes] = await Promise.all([
+        prisma.coFinancialCharge.findMany({
+          where: { change_order_uuid: { in: coIds } },
+          select: { change_order_uuid: true, amount: true },
+        }),
+        prisma.coFinancialTax.findMany({
+          where: { change_order_uuid: { in: coIds } },
+          select: { change_order_uuid: true, amount: true },
+        }),
+      ])
+      for (const id of coIds) coTotals.set(id, 0)
+      for (const row of charges) {
+        const n = toNumericOrNull(row.amount) ?? 0
+        coTotals.set(row.change_order_uuid, (coTotals.get(row.change_order_uuid) ?? 0) + n)
+      }
+      for (const row of taxes) {
+        const n = toNumericOrNull(row.amount) ?? 0
+        coTotals.set(row.change_order_uuid, (coTotals.get(row.change_order_uuid) ?? 0) + n)
+      }
+    }
+
     const purchaseOrders = poRows.map(row => ({
       uuid: row.uuid,
       po_number: row.po_number,
@@ -132,12 +135,7 @@ export default defineEventHandler(async (event) => {
       created_at: row.created_at?.toISOString?.() ?? row.created_at,
       vendor_uuid: row.vendor_uuid,
       vendor_name: vendorName,
-      total_po_amount: extractTotalFromBreakdown(row.financial_breakdown, [
-        'total_po_amount',
-        'totalAmount',
-        'total_po',
-        'total',
-      ]),
+      total_po_amount: toNumericOrNull(row.total_po_amount) ?? 0,
       currency_conversion_enabled: row.currency_conversion_enabled === true,
       currency_from: row.currency_from ?? null,
       currency_to: row.currency_to ?? null,
@@ -153,12 +151,7 @@ export default defineEventHandler(async (event) => {
       created_at: row.created_at?.toISOString?.() ?? row.created_at,
       vendor_uuid: row.vendor_uuid,
       vendor_name: vendorName,
-      total_co_amount: extractTotalFromBreakdown(row.financial_breakdown, [
-        'total_co_amount',
-        'totalCoAmount',
-        'total_co',
-        'total',
-      ]),
+      total_co_amount: coTotals.get(row.uuid) ?? 0,
       currency_conversion_enabled: row.currency_conversion_enabled === true,
       currency_from: row.currency_from ?? null,
       currency_to: row.currency_to ?? null,

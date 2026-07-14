@@ -1,20 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { attachmentsJsonFromRows } from '../../../utils/normalizedChildren'
 import { getPrisma } from '../../../utils/prisma'
+import { replaceViAttachments } from '../../../utils/replaceNormalizedChildren'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png']
 const prisma = getPrisma()
-
-function parseJson<T>(val: string | null | undefined, fallback: T): T {
-  if (!val) return fallback
-  try {
-    return JSON.parse(val) as T
-  } catch {
-    return fallback
-  }
-}
 
 function decodeBase64File(data: string): Buffer {
   const matches = data.match(/^data:(.*?);base64,(.*)$/)
@@ -36,13 +29,17 @@ export default defineEventHandler(async (event) => {
 
   const invoice = await prisma.vendorInvoice.findFirst({
     where: { uuid: invoiceUuid, is_active: true },
-    select: { uuid: true, attachments: true },
+    select: { uuid: true, corporation_uuid: true },
   })
   if (!invoice) {
     throw createError({ statusCode: 404, statusMessage: 'Vendor invoice not found' })
   }
 
-  const existingAttachments: any[] = parseJson(invoice.attachments, [])
+  const existingRows = await prisma.viAttachment.findMany({
+    where: { vendor_invoice_uuid: invoiceUuid },
+    orderBy: { sort_order: 'asc' },
+  })
+  const existingAttachments = attachmentsJsonFromRows(existingRows)
   const uploadedAttachments: any[] = []
   const errors: Array<{ fileName: string; error: string }> = []
 
@@ -89,7 +86,8 @@ export default defineEventHandler(async (event) => {
         file_path: relativePath,
         uploaded_at: new Date().toISOString(),
       })
-    } catch (err: any) {
+    }
+    catch (err: any) {
       errors.push({ fileName: file?.name || 'Unknown', error: err?.message || 'Unknown error' })
     }
   }
@@ -99,15 +97,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const updatedAttachments = [...existingAttachments, ...uploadedAttachments]
-  const updated = await prisma.vendorInvoice.update({
-    where: { uuid: invoiceUuid },
-    data: { attachments: JSON.stringify(updatedAttachments) },
-    select: { attachments: true },
-  })
+  await replaceViAttachments(prisma, invoiceUuid, invoice.corporation_uuid, updatedAttachments)
 
   return {
     success: true,
-    attachments: parseJson(updated.attachments, []),
+    attachments: updatedAttachments,
     errors,
   }
 })

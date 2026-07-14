@@ -368,9 +368,6 @@ model Estimate {
   discount_amount         Decimal   @default(0) @db.Decimal(18, 2)
   final_amount            Decimal   @default(0) @db.Decimal(18, 2)
   notes                   String?   @db.NVarChar(Max)
-  attachments             String?   @db.NVarChar(Max)
-  removed_cost_code_uuids String?   @db.NVarChar(Max)
-  audit_log               String?   @db.NVarChar(Max)
   created_by              String?   @db.NVarChar(128)
   approved_by             String?   @db.NVarChar(128)
   approved_at                 DateTime? @db.DateTime2
@@ -544,10 +541,6 @@ model PurchaseOrderForm {
   billing_address_uuid              String?   @db.NVarChar(36)
   shipping_address_uuid             String?   @db.NVarChar(36)
   status                            String    @default("Draft") @db.NVarChar(50)
-  financial_breakdown               String?   @db.NVarChar(Max)
-  attachments                       String?   @db.NVarChar(Max)
-  removed_po_items                  String?   @db.NVarChar(Max)
-  audit_log                         String?   @db.NVarChar(Max)
   prepared_by                       String?   @db.NVarChar(255)
   approved_by                       String?   @db.NVarChar(255)
   approved_at                       DateTime? @db.DateTime2
@@ -725,9 +718,7 @@ model StockReceiptNote {
   notes                     String?   @db.NVarChar(Max)
   status                    String    @default("Shipment") @db.NVarChar(50)
   total_received_amount     Decimal?  @db.Decimal(18, 2)
-  attachments               String?   @db.NVarChar(Max)
   metadata                  String?   @db.NVarChar(Max)
-  audit_log                 String?   @db.NVarChar(Max)
   is_active                 Boolean   @default(true)
   created_at                DateTime  @default(now()) @db.DateTime2
   updated_at                DateTime  @updatedAt @db.DateTime2
@@ -814,9 +805,7 @@ model StockReturnNote {
   notes                      String?   @db.NVarChar(Max)
   status                     String    @default("Waiting") @db.NVarChar(50)
   total_return_amount        Decimal?  @db.Decimal(18, 2)
-  attachments                String?   @db.NVarChar(Max)
   metadata                   String?   @db.NVarChar(Max)
-  audit_log                  String?   @db.NVarChar(Max)
   is_active                  Boolean   @default(true)
   created_at                 DateTime  @default(now()) @db.DateTime2
   updated_at                 DateTime  @updatedAt @db.DateTime2
@@ -906,10 +895,6 @@ model ChangeOrder {
   shipping_address_uuid            String?   @db.NVarChar(36)
   terms_and_conditions_uuid        String?   @db.NVarChar(36)
   special_instruction_uuid         String?   @db.NVarChar(36)
-  financial_breakdown              String?   @db.NVarChar(Max)
-  attachments                      String?   @db.NVarChar(Max)
-  removed_co_items                 String?   @db.NVarChar(Max)
-  audit_log                        String?   @db.NVarChar(Max)
   prepared_by                      String?   @db.NVarChar(255)
   status                           String    @default("Draft") @db.NVarChar(50)
   print_include_approved_by_vendor Boolean?
@@ -1082,13 +1067,10 @@ model VendorInvoice {
   credit_days_id                      String?   @db.NVarChar(100)
   amount                              Decimal   @default(0) @db.Decimal(18, 2)
   holdback                            Decimal?  @db.Decimal(5, 2)
-  financial_breakdown                 String?   @db.NVarChar(Max)
-  attachments                         String?   @db.NVarChar(Max)
   status                              String    @default("Draft") @db.NVarChar(50)
   is_active                           Boolean   @default(true)
   adjusted_against_vendor_invoice_uuid String? @db.NVarChar(36)
   adjusted_advance_payment_uuid       String?   @db.NVarChar(36)
-  removed_advance_payment_cost_codes  String?   @db.NVarChar(Max)
   holdback_fully_paid                 Boolean?
   nimble_jeid                         String?   @db.NVarChar(100)
   last_handled_approval_type          Int?      @db.SmallInt

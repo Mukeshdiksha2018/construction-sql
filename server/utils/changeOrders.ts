@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto'
 import { normalizePoCurrencyConversionFields } from '../../app/utils/poCurrencyConversion'
 import { getPrisma } from './prisma'
 import {
-  buildFinancialBreakdown,
   hasFinancialPayload,
   sanitizeAttachments,
 } from './financialBreakdown'
@@ -391,7 +390,7 @@ function mapCORow(row: any, extras?: {
   const financialBreakdown =
     extras?.financialBreakdown !== undefined
       ? extras.financialBreakdown
-      : (parseJson(row.financial_breakdown, null) as any)
+      : null
   const savedCharges = financialBreakdown?.charges ?? {}
   const savedSalesTaxes = financialBreakdown?.sales_taxes ?? {}
   const totals = financialBreakdown?.totals ?? {}
@@ -426,9 +425,9 @@ function mapCORow(row: any, extras?: {
     total_co_amount: toNum(row.total_co_amount ?? totals.total_co_amount ?? totals.total_po_amount),
     status: row.status,
     financial_breakdown: financialBreakdown,
-    attachments: extras?.attachments ?? parseJson(row.attachments, []),
-    removed_co_items: extras?.removed_co_items ?? parseJson(row.removed_co_items, []),
-    audit_log: extras?.audit_log ?? parseJson(row.audit_log, []),
+    attachments: extras?.attachments ?? [],
+    removed_co_items: extras?.removed_co_items ?? [],
+    audit_log: extras?.audit_log ?? [],
     prepared_by: row.prepared_by ?? null,
     print_include_approved_by_vendor: row.print_include_approved_by_vendor ?? null,
     print_use_entity_name: row.print_use_entity_name ?? null,
@@ -486,43 +485,27 @@ async function loadCoNormalizedExtras(uuid: string, row: any) {
     }),
   ])
 
-  const legacyBreakdown = parseJson(row.financial_breakdown, null) as any
-  const legacyTotals = legacyBreakdown?.totals ?? {}
-
   const financialBreakdown = resolveFinancialBreakdown({
     chargeRows,
     taxRows,
-    legacyJson: legacyBreakdown,
     headerTotals: {
-      item_total: row.item_total ?? legacyTotals.item_total,
-      charges_total: row.charges_total ?? legacyTotals.charges_total,
-      tax_total: row.tax_total ?? legacyTotals.tax_total,
-      total_co_amount: row.total_co_amount ?? legacyTotals.total_co_amount ?? legacyTotals.total_po_amount,
+      item_total: row.item_total,
+      charges_total: row.charges_total,
+      tax_total: row.tax_total,
+      total_co_amount: row.total_co_amount,
     },
   })
 
-  const attachments = attachmentRows.length
-    ? attachmentsJsonFromRows(attachmentRows)
-    : parseJson(row.attachments, [])
-
-  const audit_log = auditRows.length
-    ? auditLogJsonFromRows(auditRows)
-    : parseJson(row.audit_log, [])
-
-  let removed_co_items: any[] = []
-  if (removedRows.length) {
-    removed_co_items = removedRows.map((r) => {
-      try {
-        return { ...JSON.parse(r.item_snapshot), removed_at: r.removed_at?.toISOString?.() ?? r.removed_at }
-      }
-      catch {
-        return { uuid: r.source_item_uuid, item_uuid: r.item_uuid, removed_at: r.removed_at }
-      }
-    })
-  }
-  else {
-    removed_co_items = parseJson(row.removed_co_items, [])
-  }
+  const attachments = attachmentsJsonFromRows(attachmentRows)
+  const audit_log = auditLogJsonFromRows(auditRows)
+  const removed_co_items = removedRows.map((r) => {
+    try {
+      return { ...JSON.parse(r.item_snapshot), removed_at: r.removed_at?.toISOString?.() ?? r.removed_at }
+    }
+    catch {
+      return { uuid: r.source_item_uuid, item_uuid: r.item_uuid, removed_at: r.removed_at }
+    }
+  })
 
   return { financialBreakdown, attachments, removed_co_items, audit_log }
 }
@@ -859,9 +842,6 @@ export async function createChangeOrder(input: any) {
     terms_and_conditions_uuid: input.terms_and_conditions_uuid ?? null,
     special_instruction_uuid: input.special_instruction_uuid ?? null,
     status: input.status ?? 'Draft',
-    financial_breakdown: stringifyJson(buildFinancialBreakdown(input)),
-    attachments: stringifyJson(sanitizeAttachments(input.attachments ?? [])),
-    removed_co_items: stringifyJson(Array.isArray(input.removed_co_items) ? input.removed_co_items : []),
     is_revised: input.is_revised ?? false,
     revision_number: input.revision_number ?? null,
     revision_notes: input.revision_notes ?? null,
@@ -878,7 +858,6 @@ export async function createChangeOrder(input: any) {
   const auditLogEntries = userInfo
     ? buildCreateAuditLogEntries(userInfo, resolvedCoNumber, String(insertData.status || 'Draft'))
     : []
-  insertData.audit_log = stringifyJson(auditLogEntries)
 
   const co = await prisma.changeOrder.create({ data: insertData as any })
 
@@ -945,10 +924,6 @@ export async function createChangeOrder(input: any) {
       }, 0)
 
       const laborFinancialBreakdown = buildLaborCOFinancialBreakdown(laborItemsTotal, input)
-      await prisma.changeOrder.update({
-        where: { uuid: co.uuid },
-        data: { financial_breakdown: stringifyJson(laborFinancialBreakdown) },
-      })
       await replaceCoFinancialChildren(prisma, co.uuid, co.corporation_uuid, {
         financial_breakdown: laborFinancialBreakdown,
       })
@@ -1018,23 +993,7 @@ export async function updateChangeOrder(uuid: string, input: any) {
     updateData.revision_date = input.revision_date ? parseDate(input.revision_date) : null
   }
 
-  if (input.removed_co_items !== undefined) {
-    updateData.removed_co_items = stringifyJson(
-      Array.isArray(input.removed_co_items) ? input.removed_co_items : [],
-    )
-  }
-
   normalizeFkFields(updateData)
-
-  if (
-    hasFinancialPayload(input) ||
-    (input.financial_breakdown && typeof input.financial_breakdown === 'object')
-  ) {
-    updateData.financial_breakdown = stringifyJson(buildFinancialBreakdown(input))
-  }
-  if (input.attachments !== undefined) {
-    updateData.attachments = stringifyJson(sanitizeAttachments(input.attachments))
-  }
 
   if ('print_include_approved_by_vendor' in input) {
     updateData.print_include_approved_by_vendor = normalizePrintBooleanFlag(
@@ -1056,13 +1015,18 @@ export async function updateChangeOrder(uuid: string, input: any) {
   }
 
   const userInfo = getUserInfoFromBody(input)
-  const existingAuditLog = parseJson(existing.audit_log, []) as any[]
+  const existingAuditRows = await prisma.coAuditEvent.findMany({
+    where: { change_order_uuid: uuid },
+    orderBy: { event_at: 'asc' },
+  })
+  const existingAuditLog = auditLogJsonFromRows(existingAuditRows)
   const oldStatus = normalizeStatus(existing.status)
   const newStatus =
     updateData.status !== undefined && updateData.status !== null
       ? normalizeStatus(updateData.status)
       : oldStatus
 
+  let nextAuditLog: any[] | undefined
   if (userInfo) {
     const statusEntry = buildStatusAuditEntry(
       userInfo,
@@ -1071,13 +1035,13 @@ export async function updateChangeOrder(uuid: string, input: any) {
       input.is_revised === true,
     )
     if (statusEntry) {
-      updateData.audit_log = stringifyJson([...existingAuditLog, statusEntry])
+      nextAuditLog = [...existingAuditLog, statusEntry]
     } else {
       const hasFieldChanges = Object.keys(updateData).some(
         (key) => key !== 'status' && key !== 'audit_log',
       )
       if (hasFieldChanges) {
-        updateData.audit_log = stringifyJson([
+        nextAuditLog = [
           ...existingAuditLog,
           {
             timestamp: new Date().toISOString(),
@@ -1087,7 +1051,7 @@ export async function updateChangeOrder(uuid: string, input: any) {
             action: 'updated',
             description: 'Change order updated',
           },
-        ])
+        ]
       }
     }
   }
@@ -1097,15 +1061,15 @@ export async function updateChangeOrder(uuid: string, input: any) {
   }
 
   const corp = existing.corporation_uuid
-  const dualWrites: Promise<unknown>[] = []
+  const childWrites: Promise<unknown>[] = []
   if (
     hasFinancialPayload(input) ||
     (input.financial_breakdown && typeof input.financial_breakdown === 'object')
   ) {
-    dualWrites.push(replaceCoFinancialChildren(prisma, uuid, corp, { ...existing, ...input }))
+    childWrites.push(replaceCoFinancialChildren(prisma, uuid, corp, { ...existing, ...input }))
   }
   if (input.removed_co_items !== undefined) {
-    dualWrites.push(
+    childWrites.push(
       replaceCoRemovedItems(
         prisma,
         uuid,
@@ -1115,16 +1079,14 @@ export async function updateChangeOrder(uuid: string, input: any) {
     )
   }
   if (input.attachments !== undefined) {
-    dualWrites.push(
+    childWrites.push(
       replaceCoAttachments(prisma, uuid, corp, sanitizeAttachments(input.attachments)),
     )
   }
-  if (updateData.audit_log !== undefined) {
-    dualWrites.push(
-      replaceCoAuditEvents(prisma, uuid, corp, parseJson(String(updateData.audit_log), [])),
-    )
+  if (nextAuditLog !== undefined) {
+    childWrites.push(replaceCoAuditEvents(prisma, uuid, corp, nextAuditLog))
   }
-  if (dualWrites.length) await Promise.all(dualWrites)
+  if (childWrites.length) await Promise.all(childWrites)
 
   const refreshed = await prisma.changeOrder.findFirst({ where: { uuid, is_active: true } })
   if (!refreshed) return null
@@ -1189,10 +1151,6 @@ export async function updateChangeOrder(uuid: string, input: any) {
           laborItemsTotal,
           laborFinancialPayload,
         )
-        await prisma.changeOrder.update({
-          where: { uuid },
-          data: { financial_breakdown: stringifyJson(laborFinancialBreakdown) },
-        })
         await replaceCoFinancialChildren(prisma, uuid, refreshed.corporation_uuid, {
           financial_breakdown: laborFinancialBreakdown,
         })
@@ -1213,10 +1171,6 @@ export async function updateChangeOrder(uuid: string, input: any) {
           laborItemsTotal,
           laborFinancialPayload,
         )
-        await prisma.changeOrder.update({
-          where: { uuid },
-          data: { financial_breakdown: stringifyJson(laborFinancialBreakdown) },
-        })
         await replaceCoFinancialChildren(prisma, uuid, refreshed.corporation_uuid, {
           financial_breakdown: laborFinancialBreakdown,
         })
@@ -1425,11 +1379,15 @@ function toDataUrl(fileData: string, mimeType: string): string {
 export async function uploadChangeOrderAttachments(changeOrderUuid: string, files: any[]) {
   const row = await prisma.changeOrder.findFirst({
     where: { uuid: changeOrderUuid, is_active: true },
-    select: { uuid: true, corporation_uuid: true, attachments: true },
+    select: { uuid: true, corporation_uuid: true },
   })
   if (!row) return null
 
-  const existingAttachments: any[] = parseJson(row.attachments, [])
+  const existingAttachmentRows = await prisma.coAttachment.findMany({
+    where: { change_order_uuid: changeOrderUuid },
+    orderBy: { sort_order: 'asc' },
+  })
+  const existingAttachments: any[] = attachmentsJsonFromRows(existingAttachmentRows)
   const uploadedAttachments: any[] = []
   const errors: Array<{ fileName: string, error: string }> = []
 
@@ -1481,10 +1439,6 @@ export async function uploadChangeOrderAttachments(changeOrderUuid: string, file
   }
 
   const updatedAttachments = [...existingAttachments, ...uploadedAttachments]
-  await prisma.changeOrder.update({
-    where: { uuid: changeOrderUuid },
-    data: { attachments: stringifyJson(updatedAttachments) },
-  })
   await replaceCoAttachments(prisma, changeOrderUuid, row.corporation_uuid, updatedAttachments)
 
   return {
@@ -1497,17 +1451,17 @@ export async function uploadChangeOrderAttachments(changeOrderUuid: string, file
 export async function removeChangeOrderAttachment(changeOrderUuid: string, attachmentUuid: string) {
   const row = await prisma.changeOrder.findFirst({
     where: { uuid: changeOrderUuid, is_active: true },
-    select: { uuid: true, corporation_uuid: true, attachments: true },
+    select: { uuid: true, corporation_uuid: true },
   })
   if (!row) return null
 
-  const existing: any[] = parseJson(row.attachments, [])
+  const existingAttachmentRows = await prisma.coAttachment.findMany({
+    where: { change_order_uuid: changeOrderUuid },
+    orderBy: { sort_order: 'asc' },
+  })
+  const existing: any[] = attachmentsJsonFromRows(existingAttachmentRows)
   const updatedAttachments = existing.filter((a) => a?.uuid !== attachmentUuid)
 
-  await prisma.changeOrder.update({
-    where: { uuid: changeOrderUuid },
-    data: { attachments: stringifyJson(updatedAttachments) },
-  })
   await replaceCoAttachments(prisma, changeOrderUuid, row.corporation_uuid, updatedAttachments)
 
   return {

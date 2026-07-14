@@ -81,19 +81,93 @@ export function assembleFinancialBreakdownFromRows(
     }
   }
 
+  const summedCharges = CHARGE_KEYS.reduce((sum, key) => sum + (toNum(charges[key]?.amount) ?? 0), 0)
+  const summedTaxes = TAX_KEYS.reduce((sum, key) => sum + (toNum(sales_taxes[key]?.amount) ?? 0), 0)
+
+  const itemTotal = toNum(totals?.item_total)
+  const chargesTotal = toNum(totals?.charges_total) ?? (chargeRows.length ? summedCharges : null)
+  const taxTotal = toNum(totals?.tax_total) ?? (taxRows.length ? summedTaxes : null)
+  const totalPo = toNum(totals?.total_po_amount ?? totals?.total_co_amount)
+  const totalCo = toNum(totals?.total_co_amount)
+  const totalInvoice = toNum(totals?.total_invoice_amount)
+
   const totalsOut: Record<string, number | null> = {
-    item_total: toNum(totals?.item_total),
-    charges_total: toNum(totals?.charges_total),
-    tax_total: toNum(totals?.tax_total),
-    total_po_amount: toNum(totals?.total_po_amount ?? totals?.total_co_amount),
+    item_total: itemTotal,
+    charges_total: chargesTotal,
+    tax_total: taxTotal,
+    total_po_amount:
+      totalPo
+      ?? (itemTotal != null && chargesTotal != null && taxTotal != null
+        ? itemTotal + chargesTotal + taxTotal
+        : null),
   }
-  if (totals?.total_co_amount != null) totalsOut.total_co_amount = toNum(totals.total_co_amount)
-  if (totals?.total_invoice_amount != null) totalsOut.total_invoice_amount = toNum(totals.total_invoice_amount)
+  if (totals?.total_co_amount != null || totalCo != null || totalsOut.total_po_amount != null) {
+    totalsOut.total_co_amount =
+      totalCo
+      ?? totalPo
+      ?? (itemTotal != null && chargesTotal != null && taxTotal != null
+        ? itemTotal + chargesTotal + taxTotal
+        : null)
+  }
+  if (totals?.total_invoice_amount != null || totalInvoice != null) {
+    totalsOut.total_invoice_amount =
+      totalInvoice
+      ?? (itemTotal != null && chargesTotal != null && taxTotal != null
+        ? itemTotal + chargesTotal + taxTotal
+        : null)
+  }
   if (totals?.grn_total_with_charges_taxes != null) {
     totalsOut.grn_total_with_charges_taxes = toNum(totals.grn_total_with_charges_taxes)
   }
 
   return { charges, sales_taxes, totals: totalsOut }
+}
+
+/** Batch-assemble financial_breakdown maps from charge/tax child rows. */
+export function assembleFinancialBreakdownMap(
+  chargeRows: Array<{
+    charge_key: string
+    percentage: unknown
+    amount: unknown
+    taxable: unknown
+  } & Record<string, unknown>>,
+  taxRows: Array<{
+    tax_key: string
+    percentage: unknown
+    amount: unknown
+  } & Record<string, unknown>>,
+  parentKey: string,
+  headerTotalsByUuid?: Map<string, Record<string, unknown>> | null,
+): Map<string, FinancialBreakdownShape> {
+  const chargesByParent = new Map<string, typeof chargeRows>()
+  const taxesByParent = new Map<string, typeof taxRows>()
+  for (const row of chargeRows) {
+    const uuid = String(row[parentKey] || '').trim()
+    if (!uuid) continue
+    const list = chargesByParent.get(uuid) ?? []
+    list.push(row)
+    chargesByParent.set(uuid, list)
+  }
+  for (const row of taxRows) {
+    const uuid = String(row[parentKey] || '').trim()
+    if (!uuid) continue
+    const list = taxesByParent.get(uuid) ?? []
+    list.push(row)
+    taxesByParent.set(uuid, list)
+  }
+  const uuids = new Set([...chargesByParent.keys(), ...taxesByParent.keys(), ...(headerTotalsByUuid?.keys() ?? [])])
+  const out = new Map<string, FinancialBreakdownShape>()
+  for (const uuid of uuids) {
+    out.set(
+      uuid,
+      assembleFinancialBreakdownFromRows(
+        chargesByParent.get(uuid) ?? [],
+        taxesByParent.get(uuid) ?? [],
+        headerTotalsByUuid?.get(uuid) ?? null,
+      ),
+    )
+  }
+  return out
 }
 
 /** Prefer child rows; fall back to legacy JSON blob / flat payload. */
