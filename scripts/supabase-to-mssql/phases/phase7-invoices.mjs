@@ -23,36 +23,76 @@ export async function runPhase7VendorInvoices(ctx) {
   log('=== Phase 7: vendor invoices ===')
 
   const headers = await pgQuery(pg, `select * from public.vendor_invoices ${corpWhere(ctx, 'corporation_uuid')}`)
+  const headerRows = headers.map((r) => ({
+    uuid: uuidStr(r.uuid),
+    corporation_uuid: remapCorp(lookups, r.corporation_uuid),
+    project_uuid: uuidStr(r.project_uuid),
+    vendor_uuid: remapVendor(lookups, r.vendor_uuid),
+    purchase_order_uuid: uuidStr(r.purchase_order_uuid),
+    change_order_uuid: uuidStr(r.change_order_uuid),
+    invoice_type: asStr(r.invoice_type, 50) || 'purchase_order',
+    number: asStr(r.number, 100),
+    bill_date: asDate(r.bill_date) || new Date(),
+    due_date: asDate(r.due_date),
+    credit_days: asStr(r.credit_days, 50),
+    credit_days_id: asStr(r.credit_days_id, 100),
+    amount: asNum(r.amount) ?? 0,
+    holdback: asNum(r.holdback),
+    status: asStr(r.status, 50) || 'Draft',
+    is_active: asBool(r.is_active, true),
+    // Self-FKs applied in a second pass after all invoice uuids exist
+    adjusted_against_vendor_invoice_uuid: null,
+    adjusted_advance_payment_uuid: null,
+    holdback_fully_paid: r.holdback_fully_paid == null ? null : asBool(r.holdback_fully_paid),
+    nimble_jeid: asStr(r.nimble_jeid, 100),
+    last_handled_approval_type: asNum(r.last_handled_approval_type) != null ? Math.trunc(asNum(r.last_handled_approval_type)) : null,
+    created_at: asDate(r.created_at),
+    updated_at: asDate(r.updated_at) || new Date(),
+    _adjusted_against: uuidStr(r.adjusted_against_vendor_invoice_uuid),
+    _adjusted_advance: uuidStr(r.adjusted_advance_payment_uuid),
+  }))
+
+  const invoiceCols = ['uuid', 'corporation_uuid', 'project_uuid', 'vendor_uuid', 'purchase_order_uuid', 'change_order_uuid', 'invoice_type', 'number', 'bill_date', 'due_date', 'credit_days', 'credit_days_id', 'amount', 'holdback', 'status', 'is_active', 'adjusted_against_vendor_invoice_uuid', 'adjusted_advance_payment_uuid', 'holdback_fully_paid', 'nimble_jeid', 'last_handled_approval_type', 'created_at', 'updated_at']
   await upsertByUuid(mssql, {
     table: 'vendor_invoices',
-    columns: ['uuid', 'corporation_uuid', 'project_uuid', 'vendor_uuid', 'purchase_order_uuid', 'change_order_uuid', 'invoice_type', 'number', 'bill_date', 'due_date', 'credit_days', 'credit_days_id', 'amount', 'holdback', 'status', 'is_active', 'adjusted_against_vendor_invoice_uuid', 'adjusted_advance_payment_uuid', 'holdback_fully_paid', 'nimble_jeid', 'last_handled_approval_type', 'created_at', 'updated_at'],
+    columns: invoiceCols,
     dryRun,
-    rows: headers.map((r) => ({
-      uuid: uuidStr(r.uuid),
-      corporation_uuid: remapCorp(lookups, r.corporation_uuid),
-      project_uuid: uuidStr(r.project_uuid),
-      vendor_uuid: remapVendor(lookups, r.vendor_uuid),
-      purchase_order_uuid: uuidStr(r.purchase_order_uuid),
-      change_order_uuid: uuidStr(r.change_order_uuid),
-      invoice_type: asStr(r.invoice_type, 50) || 'purchase_order',
-      number: asStr(r.number, 100),
-      bill_date: asDate(r.bill_date) || new Date(),
-      due_date: asDate(r.due_date),
-      credit_days: asStr(r.credit_days, 50),
-      credit_days_id: asStr(r.credit_days_id, 100),
-      amount: asNum(r.amount) ?? 0,
-      holdback: asNum(r.holdback),
-      status: asStr(r.status, 50) || 'Draft',
-      is_active: asBool(r.is_active, true),
-      adjusted_against_vendor_invoice_uuid: uuidStr(r.adjusted_against_vendor_invoice_uuid),
-      adjusted_advance_payment_uuid: uuidStr(r.adjusted_advance_payment_uuid),
-      holdback_fully_paid: r.holdback_fully_paid == null ? null : asBool(r.holdback_fully_paid),
-      nimble_jeid: asStr(r.nimble_jeid, 100),
-      last_handled_approval_type: asNum(r.last_handled_approval_type) != null ? Math.trunc(asNum(r.last_handled_approval_type)) : null,
-      created_at: asDate(r.created_at),
-      updated_at: asDate(r.updated_at) || new Date(),
-    })),
+    rows: headerRows.map(({ _adjusted_against, _adjusted_advance, ...row }) => row),
   })
+
+  // Apply self-referential FKs once every invoice uuid is present
+  const knownUuids = new Set(headerRows.map((r) => r.uuid).filter(Boolean).map((u) => String(u).toLowerCase()))
+  const linkRows = []
+  let droppedLinks = 0
+  for (const r of headerRows) {
+    if (!r.uuid) continue
+    let against = r._adjusted_against
+    let advance = r._adjusted_advance
+    if (against && !knownUuids.has(String(against).toLowerCase())) {
+      droppedLinks += 1
+      against = null
+    }
+    if (advance && !knownUuids.has(String(advance).toLowerCase())) {
+      droppedLinks += 1
+      advance = null
+    }
+    if (!against && !advance) continue
+    const { _adjusted_against, _adjusted_advance, ...base } = r
+    linkRows.push({
+      ...base,
+      adjusted_against_vendor_invoice_uuid: against,
+      adjusted_advance_payment_uuid: advance,
+    })
+  }
+  if (droppedLinks) log(`vendor_invoices: cleared ${droppedLinks} self-FK refs missing from source batch`)
+  if (linkRows.length) {
+    await upsertByUuid(mssql, {
+      table: 'vendor_invoices',
+      columns: invoiceCols,
+      dryRun,
+      rows: linkRows,
+    })
+  }
 
   const parentUuids = []
   const charges = []
