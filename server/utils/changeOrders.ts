@@ -7,6 +7,18 @@ import {
   sanitizeAttachments,
 } from './financialBreakdown'
 import {
+  attachmentsJsonFromRows,
+  auditLogJsonFromRows,
+  resolveFinancialBreakdown,
+} from './normalizedChildren'
+import {
+  replaceCoAttachments,
+  replaceCoAuditEvents,
+  replaceCoFinancialChildren,
+  replaceCoItemJunctions,
+  replaceCoRemovedItems,
+} from './replaceNormalizedChildren'
+import {
   decorateChangeOrderRecord,
   buildLaborCOFinancialBreakdown,
   sanitizeChangeOrderItem,
@@ -19,6 +31,49 @@ const prisma = getPrisma()
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
 const ALLOWED_ATTACHMENT_TYPES = ['application/pdf']
+
+/** List grids: never pull NVARCHAR(MAX) blobs or attachment payloads. */
+const CO_LIST_SELECT = {
+  id: true,
+  uuid: true,
+  corporation_uuid: true,
+  project_uuid: true,
+  vendor_uuid: true,
+  original_purchase_order_uuid: true,
+  co_number: true,
+  created_date: true,
+  credit_days: true,
+  credit_days_id: true,
+  estimated_delivery_date: true,
+  requested_by: true,
+  nimble_requested_by_user_id: true,
+  co_type: true,
+  ship_via_uuid: true,
+  freight_uuid: true,
+  shipping_instructions: true,
+  quote_reference: true,
+  reason: true,
+  reason_uuid: true,
+  shipping_address_uuid: true,
+  terms_and_conditions_uuid: true,
+  special_instruction_uuid: true,
+  prepared_by: true,
+  status: true,
+  print_include_approved_by_vendor: true,
+  print_use_entity_name: true,
+  is_revised: true,
+  revision_number: true,
+  revision_notes: true,
+  revision_date: true,
+  currency_conversion_enabled: true,
+  currency_from: true,
+  currency_to: true,
+  conversion_rate: true,
+  last_handled_approval_type: true,
+  is_active: true,
+  created_at: true,
+  updated_at: true,
+} as const
 
 const FK_FIELDS = [
   'project_uuid',
@@ -327,10 +382,19 @@ async function hydrateCoMetadata(mapped: any, row: { project_uuid?: string | nul
 
 // ─── Row Mappers ──────────────────────────────────────────────────────────────
 
-function mapCORow(row: any): any {
-  const financialBreakdown = parseJson(row.financial_breakdown, null) as any
+function mapCORow(row: any, extras?: {
+  financialBreakdown?: any
+  attachments?: any[]
+  removed_co_items?: any[]
+  audit_log?: any[]
+}): any {
+  const financialBreakdown =
+    extras?.financialBreakdown !== undefined
+      ? extras.financialBreakdown
+      : (parseJson(row.financial_breakdown, null) as any)
   const savedCharges = financialBreakdown?.charges ?? {}
   const savedSalesTaxes = financialBreakdown?.sales_taxes ?? {}
+  const totals = financialBreakdown?.totals ?? {}
 
   return {
     id: String(row.id),
@@ -356,15 +420,15 @@ function mapCORow(row: any): any {
     shipping_address_uuid: row.shipping_address_uuid ?? null,
     terms_and_conditions_uuid: row.terms_and_conditions_uuid ?? null,
     special_instruction_uuid: row.special_instruction_uuid ?? null,
-    item_total: toNum(row.item_total),
-    charges_total: toNum(row.charges_total),
-    tax_total: toNum(row.tax_total),
-    total_co_amount: toNum(row.total_co_amount),
+    item_total: toNum(row.item_total ?? totals.item_total),
+    charges_total: toNum(row.charges_total ?? totals.charges_total),
+    tax_total: toNum(row.tax_total ?? totals.tax_total),
+    total_co_amount: toNum(row.total_co_amount ?? totals.total_co_amount ?? totals.total_po_amount),
     status: row.status,
     financial_breakdown: financialBreakdown,
-    attachments: parseJson(row.attachments, []),
-    removed_co_items: parseJson(row.removed_co_items, []),
-    audit_log: parseJson(row.audit_log, []),
+    attachments: extras?.attachments ?? parseJson(row.attachments, []),
+    removed_co_items: extras?.removed_co_items ?? parseJson(row.removed_co_items, []),
+    audit_log: extras?.audit_log ?? parseJson(row.audit_log, []),
     prepared_by: row.prepared_by ?? null,
     print_include_approved_by_vendor: row.print_include_approved_by_vendor ?? null,
     print_use_entity_name: row.print_use_entity_name ?? null,
@@ -402,6 +466,65 @@ function mapCORow(row: any): any {
     sales_tax_2_percentage: savedSalesTaxes.sales_tax_2?.percentage ?? null,
     sales_tax_2_amount: savedSalesTaxes.sales_tax_2?.amount ?? null,
   }
+}
+
+async function loadCoNormalizedExtras(uuid: string, row: any) {
+  const [chargeRows, taxRows, attachmentRows, auditRows, removedRows] = await Promise.all([
+    prisma.coFinancialCharge.findMany({ where: { change_order_uuid: uuid } }),
+    prisma.coFinancialTax.findMany({ where: { change_order_uuid: uuid } }),
+    prisma.coAttachment.findMany({
+      where: { change_order_uuid: uuid },
+      orderBy: { sort_order: 'asc' },
+    }),
+    prisma.coAuditEvent.findMany({
+      where: { change_order_uuid: uuid },
+      orderBy: { event_at: 'asc' },
+    }),
+    prisma.coRemovedItem.findMany({
+      where: { change_order_uuid: uuid },
+      orderBy: { removed_at: 'asc' },
+    }),
+  ])
+
+  const legacyBreakdown = parseJson(row.financial_breakdown, null) as any
+  const legacyTotals = legacyBreakdown?.totals ?? {}
+
+  const financialBreakdown = resolveFinancialBreakdown({
+    chargeRows,
+    taxRows,
+    legacyJson: legacyBreakdown,
+    headerTotals: {
+      item_total: row.item_total ?? legacyTotals.item_total,
+      charges_total: row.charges_total ?? legacyTotals.charges_total,
+      tax_total: row.tax_total ?? legacyTotals.tax_total,
+      total_co_amount: row.total_co_amount ?? legacyTotals.total_co_amount ?? legacyTotals.total_po_amount,
+    },
+  })
+
+  const attachments = attachmentRows.length
+    ? attachmentsJsonFromRows(attachmentRows)
+    : parseJson(row.attachments, [])
+
+  const audit_log = auditRows.length
+    ? auditLogJsonFromRows(auditRows)
+    : parseJson(row.audit_log, [])
+
+  let removed_co_items: any[] = []
+  if (removedRows.length) {
+    removed_co_items = removedRows.map((r) => {
+      try {
+        return { ...JSON.parse(r.item_snapshot), removed_at: r.removed_at?.toISOString?.() ?? r.removed_at }
+      }
+      catch {
+        return { uuid: r.source_item_uuid, item_uuid: r.item_uuid, removed_at: r.removed_at }
+      }
+    })
+  }
+  else {
+    removed_co_items = parseJson(row.removed_co_items, [])
+  }
+
+  return { financialBreakdown, attachments, removed_co_items, audit_log }
 }
 
 function mapCOItem(row: any): any {
@@ -610,6 +733,7 @@ export async function listChangeOrders(
     prisma.changeOrder.count({ where }),
     prisma.changeOrder.findMany({
       where,
+      select: CO_LIST_SELECT,
       orderBy: { created_at: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -642,7 +766,12 @@ export async function listChangeOrders(
 
   const totalPages = Math.ceil(total / pageSize)
   const data = rows.map((r) => {
-    const mapped = decorateChangeOrderRecord(mapCORow(r) as any)
+    const mapped = decorateChangeOrderRecord(mapCORow(r, {
+      financialBreakdown: null,
+      attachments: [],
+      removed_co_items: [],
+      audit_log: [],
+    }) as any)
     const proj = projectMap[r.project_uuid ?? '']
     if (proj) {
       mapped.project_name = proj.project_name
@@ -669,7 +798,8 @@ export async function getChangeOrder(uuid: string) {
   const row = await prisma.changeOrder.findFirst({ where: { uuid, is_active: true } })
   if (!row) return null
 
-  const mapped = decorateChangeOrderRecord(mapCORow(row) as any)
+  const extras = await loadCoNormalizedExtras(uuid, row)
+  const mapped = decorateChangeOrderRecord(mapCORow(row, extras) as any)
   await hydrateCoMetadata(mapped, row)
 
   const normalizedType = (row.co_type || '').toUpperCase()
@@ -681,7 +811,7 @@ export async function getChangeOrder(uuid: string) {
     mapped.labor_co_items = laborItems.map(mapLaborCOItem)
   } else {
     const coItems = await prisma.changeOrderItem.findMany({
-      where: { change_order_uuid: uuid, is_active: true },
+      where: { change_order_uuid: uuid, is_active: true, is_removed: false },
       orderBy: { order_index: 'asc' },
     })
     mapped.co_items = coItems.map(mapCOItem)
@@ -752,6 +882,23 @@ export async function createChangeOrder(input: any) {
 
   const co = await prisma.changeOrder.create({ data: insertData as any })
 
+  await Promise.all([
+    replaceCoFinancialChildren(prisma, co.uuid, co.corporation_uuid, input),
+    replaceCoRemovedItems(
+      prisma,
+      co.uuid,
+      co.corporation_uuid,
+      Array.isArray(input.removed_co_items) ? input.removed_co_items : [],
+    ),
+    replaceCoAttachments(
+      prisma,
+      co.uuid,
+      co.corporation_uuid,
+      sanitizeAttachments(input.attachments ?? []),
+    ),
+    replaceCoAuditEvents(prisma, co.uuid, co.corporation_uuid, auditLogEntries),
+  ])
+
   let coItems = Array.isArray(input.co_items) ? input.co_items : []
   if (
     coItems.length === 0 &&
@@ -801,6 +948,9 @@ export async function createChangeOrder(input: any) {
       await prisma.changeOrder.update({
         where: { uuid: co.uuid },
         data: { financial_breakdown: stringifyJson(laborFinancialBreakdown) },
+      })
+      await replaceCoFinancialChildren(prisma, co.uuid, co.corporation_uuid, {
+        financial_breakdown: laborFinancialBreakdown,
       })
     }
   }
@@ -946,6 +1096,36 @@ export async function updateChangeOrder(uuid: string, input: any) {
     await prisma.changeOrder.update({ where: { uuid }, data: updateData as any })
   }
 
+  const corp = existing.corporation_uuid
+  const dualWrites: Promise<unknown>[] = []
+  if (
+    hasFinancialPayload(input) ||
+    (input.financial_breakdown && typeof input.financial_breakdown === 'object')
+  ) {
+    dualWrites.push(replaceCoFinancialChildren(prisma, uuid, corp, { ...existing, ...input }))
+  }
+  if (input.removed_co_items !== undefined) {
+    dualWrites.push(
+      replaceCoRemovedItems(
+        prisma,
+        uuid,
+        corp,
+        Array.isArray(input.removed_co_items) ? input.removed_co_items : [],
+      ),
+    )
+  }
+  if (input.attachments !== undefined) {
+    dualWrites.push(
+      replaceCoAttachments(prisma, uuid, corp, sanitizeAttachments(input.attachments)),
+    )
+  }
+  if (updateData.audit_log !== undefined) {
+    dualWrites.push(
+      replaceCoAuditEvents(prisma, uuid, corp, parseJson(String(updateData.audit_log), [])),
+    )
+  }
+  if (dualWrites.length) await Promise.all(dualWrites)
+
   const refreshed = await prisma.changeOrder.findFirst({ where: { uuid, is_active: true } })
   if (!refreshed) return null
 
@@ -1013,6 +1193,9 @@ export async function updateChangeOrder(uuid: string, input: any) {
           where: { uuid },
           data: { financial_breakdown: stringifyJson(laborFinancialBreakdown) },
         })
+        await replaceCoFinancialChildren(prisma, uuid, refreshed.corporation_uuid, {
+          financial_breakdown: laborFinancialBreakdown,
+        })
       } else {
         const existingLaborItems = await prisma.laborChangeOrderItem.findMany({
           where: { change_order_uuid: uuid, is_active: true },
@@ -1034,6 +1217,9 @@ export async function updateChangeOrder(uuid: string, input: any) {
           where: { uuid },
           data: { financial_breakdown: stringifyJson(laborFinancialBreakdown) },
         })
+        await replaceCoFinancialChildren(prisma, uuid, refreshed.corporation_uuid, {
+          financial_breakdown: laborFinancialBreakdown,
+        })
       }
     }
   }
@@ -1052,7 +1238,7 @@ export async function deleteChangeOrder(uuid: string) {
 
 export async function getChangeOrderItems(changeOrderUuid: string) {
   const rows = await prisma.changeOrderItem.findMany({
-    where: { change_order_uuid: changeOrderUuid, is_active: true },
+    where: { change_order_uuid: changeOrderUuid, is_active: true, is_removed: false },
     orderBy: { order_index: 'asc' },
   })
   return rows.map(mapCOItem)
@@ -1111,13 +1297,37 @@ async function replaceChangeOrderItems(
       co_total: sanitized.co_total,
       total: sanitized.total,
       approval_checks_uuids: stringifyJson(sanitized.approval_checks_uuids ?? []),
+      receipt_note_uuids: stringifyJson(
+        Array.isArray(item?.receipt_note_uuids) ? item.receipt_note_uuids : [],
+      ),
       configuration_name: sanitized.configuration_name,
       metadata: stringifyJson(sanitized.metadata ?? {}),
+      is_removed: false,
+      removed_at: null,
       is_active: true,
     }
   })
 
   await prisma.changeOrderItem.createMany({ data: rows })
+  const created = await prisma.changeOrderItem.findMany({
+    where: { change_order_uuid: changeOrderUuid, is_active: true, is_removed: false },
+    orderBy: { order_index: 'asc' },
+    select: { uuid: true, order_index: true },
+  })
+  await Promise.all(
+    created.map((row, index) => {
+      const item = enriched[index]
+      const checks = Array.isArray(item?.approval_checks) && item.approval_checks.length
+        ? item.approval_checks
+        : (Array.isArray(item?.approval_checks_uuids) ? item.approval_checks_uuids : [])
+      return replaceCoItemJunctions(
+        prisma,
+        row.uuid,
+        checks,
+        Array.isArray(item?.receipt_note_uuids) ? item.receipt_note_uuids : [],
+      )
+    }),
+  )
   return getChangeOrderItems(changeOrderUuid)
 }
 
@@ -1215,7 +1425,7 @@ function toDataUrl(fileData: string, mimeType: string): string {
 export async function uploadChangeOrderAttachments(changeOrderUuid: string, files: any[]) {
   const row = await prisma.changeOrder.findFirst({
     where: { uuid: changeOrderUuid, is_active: true },
-    select: { uuid: true, attachments: true },
+    select: { uuid: true, corporation_uuid: true, attachments: true },
   })
   if (!row) return null
 
@@ -1275,6 +1485,7 @@ export async function uploadChangeOrderAttachments(changeOrderUuid: string, file
     where: { uuid: changeOrderUuid },
     data: { attachments: stringifyJson(updatedAttachments) },
   })
+  await replaceCoAttachments(prisma, changeOrderUuid, row.corporation_uuid, updatedAttachments)
 
   return {
     success: true,
@@ -1286,7 +1497,7 @@ export async function uploadChangeOrderAttachments(changeOrderUuid: string, file
 export async function removeChangeOrderAttachment(changeOrderUuid: string, attachmentUuid: string) {
   const row = await prisma.changeOrder.findFirst({
     where: { uuid: changeOrderUuid, is_active: true },
-    select: { uuid: true, attachments: true },
+    select: { uuid: true, corporation_uuid: true, attachments: true },
   })
   if (!row) return null
 
@@ -1297,6 +1508,7 @@ export async function removeChangeOrderAttachment(changeOrderUuid: string, attac
     where: { uuid: changeOrderUuid },
     data: { attachments: stringifyJson(updatedAttachments) },
   })
+  await replaceCoAttachments(prisma, changeOrderUuid, row.corporation_uuid, updatedAttachments)
 
   return {
     success: true,

@@ -117,7 +117,19 @@ export async function getDocumentByUuid(uuid: string): Promise<ProjectDocumentAp
     `SELECT TOP 1 * FROM dbo.project_documents WHERE uuid = @uuid`,
     { uuid },
   )
-  return rows[0] ? toDocumentApiModel(rows[0]) : null
+  if (!rows[0]) return null
+  const model = toDocumentApiModel(rows[0])
+  try {
+    const tagRows = await mssqlQueryParams<{ tag: string }>(
+      `SELECT tag FROM dbo.project_document_tags WHERE project_document_uuid = @uuid ORDER BY tag`,
+      { uuid },
+    )
+    if (tagRows.length) model.tags = tagRows.map((t) => t.tag)
+  }
+  catch {
+    // Table may not exist until migration is applied — fall back to JSON tags
+  }
+  return model
 }
 
 export async function createProjectDocument(input: CreateDocumentInput): Promise<ProjectDocumentApiModel> {
@@ -155,6 +167,27 @@ export async function createProjectDocument(input: CreateDocumentInput): Promise
 
   const row = rows[0]
   if (!row) throw createError({ statusCode: 500, statusMessage: 'Failed to save document record' })
+
+  // Dual-write tags into project_document_tags (prefer junction for queries)
+  const tagList = Array.isArray(input.tags)
+    ? [...new Set(input.tags.map((t) => String(t).trim()).filter(Boolean).map((t) => t.slice(0, 100)))]
+    : []
+  if (tagList.length && row.uuid) {
+    for (const tag of tagList) {
+      await mssqlQueryParams(
+        `
+          IF NOT EXISTS (
+            SELECT 1 FROM dbo.project_document_tags
+            WHERE project_document_uuid = @docUuid AND tag = @tag
+          )
+          INSERT INTO dbo.project_document_tags (uuid, project_document_uuid, tag, created_at)
+          VALUES (LOWER(CONVERT(NVARCHAR(36), NEWID())), @docUuid, @tag, GETUTCDATE())
+        `,
+        { docUuid: row.uuid, tag },
+      )
+    }
+  }
+
   return toDocumentApiModel(row)
 }
 

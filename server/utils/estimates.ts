@@ -1,4 +1,13 @@
 import { getPrisma } from './prisma'
+import {
+  attachmentsJsonFromRows,
+  auditLogJsonFromRows,
+} from './normalizedChildren'
+import {
+  replaceEstimateAttachments,
+  replaceEstimateAuditEvents,
+  replaceEstimateRemovedCostCodes,
+} from './replaceNormalizedChildren'
 
 const prisma = getPrisma()
 
@@ -133,7 +142,11 @@ export interface UpdateEstimateInput {
 }
 
 // ─── Row mappers ──────────────────────────────────────────────────────────────
-function mapEstimateRow(row: any, project?: any) {
+function mapEstimateRow(row: any, project?: any, extras?: {
+  attachments?: any[]
+  removed_cost_code_uuids?: string[]
+  audit_log?: any[]
+}) {
   return {
     id: String(row.id),
     uuid: row.uuid,
@@ -148,9 +161,9 @@ function mapEstimateRow(row: any, project?: any) {
     discount_amount: toNum(row.discount_amount),
     final_amount: toNum(row.final_amount),
     notes: row.notes ?? null,
-    attachments: parseJson(row.attachments, []),
-    removed_cost_code_uuids: parseJson(row.removed_cost_code_uuids, []),
-    audit_log: parseJson(row.audit_log, []),
+    attachments: extras?.attachments ?? parseJson(row.attachments, []),
+    removed_cost_code_uuids: extras?.removed_cost_code_uuids ?? parseJson(row.removed_cost_code_uuids, []),
+    audit_log: extras?.audit_log ?? parseJson(row.audit_log, []),
     created_by: row.created_by ?? null,
     approved_by: row.approved_by ?? null,
     approved_at: row.approved_at ? row.approved_at.toISOString() : null,
@@ -159,6 +172,33 @@ function mapEstimateRow(row: any, project?: any) {
     updated_at: row.updated_at?.toISOString() ?? null,
     project: project ?? null,
     line_items: [],
+  }
+}
+
+async function loadEstimateNormalizedExtras(uuid: string, row: any) {
+  const [attachmentRows, auditRows, removedRows] = await Promise.all([
+    prisma.estimateAttachment.findMany({
+      where: { estimate_uuid: uuid },
+      orderBy: { sort_order: 'asc' },
+    }),
+    prisma.estimateAuditEvent.findMany({
+      where: { estimate_uuid: uuid },
+      orderBy: { event_at: 'asc' },
+    }),
+    prisma.estimateRemovedCostCode.findMany({
+      where: { estimate_uuid: uuid },
+    }),
+  ])
+  return {
+    attachments: attachmentRows.length
+      ? attachmentsJsonFromRows(attachmentRows)
+      : parseJson(row.attachments, []),
+    audit_log: auditRows.length
+      ? auditLogJsonFromRows(auditRows)
+      : parseJson(row.audit_log, []),
+    removed_cost_code_uuids: removedRows.length
+      ? removedRows.map((r) => r.cost_code_uuid)
+      : parseJson(row.removed_cost_code_uuids, []),
   }
 }
 
@@ -486,6 +526,27 @@ export async function listEstimates(
     prisma.estimate.count({ where }),
     prisma.estimate.findMany({
       where,
+      select: {
+        id: true,
+        uuid: true,
+        corporation_uuid: true,
+        project_uuid: true,
+        estimate_number: true,
+        estimate_date: true,
+        valid_until: true,
+        status: true,
+        total_amount: true,
+        tax_amount: true,
+        discount_amount: true,
+        final_amount: true,
+        notes: true,
+        created_by: true,
+        approved_by: true,
+        approved_at: true,
+        is_active: true,
+        created_at: true,
+        updated_at: true,
+      },
       orderBy: { created_at: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -503,7 +564,11 @@ export async function listEstimates(
 
   const totalPages = Math.ceil(total / pageSize)
   return {
-    data: rows.map(r => mapEstimateRow(r, projectMap[r.project_uuid] ?? null)),
+    data: rows.map(r => mapEstimateRow(r, projectMap[r.project_uuid] ?? null, {
+      attachments: [],
+      removed_cost_code_uuids: [],
+      audit_log: [],
+    })),
     pagination: { page, pageSize, totalRecords: total, totalPages, hasMore: page < totalPages },
   }
 }
@@ -517,9 +582,9 @@ export async function getEstimate(uuid: string) {
     select: { uuid: true, project_name: true, project_id: true },
   })
 
+  const extras = await loadEstimateNormalizedExtras(uuid, row)
+  const mapped = mapEstimateRow(row, project, extras)
   const { lineItems, materialItemsByLi, lwLaborByLi, lwMaterialByLi } = await loadLineItemsForEstimate(uuid)
-
-  const mapped = mapEstimateRow(row, project)
   mapped.line_items = lineItems.map(li => mapLineItemRow(li, materialItemsByLi, lwLaborByLi, lwMaterialByLi))
   return mapped
 }
@@ -570,6 +635,12 @@ export async function createEstimate(input: CreateEstimateInput) {
   if (Array.isArray(input.line_items) && input.line_items.length > 0) {
     await insertLineItems(input.line_items, estimate.uuid, input.corporation_uuid, input.project_uuid)
   }
+
+  await Promise.all([
+    replaceEstimateAttachments(prisma, estimate.uuid, estimate.corporation_uuid, input.attachments ?? []),
+    replaceEstimateRemovedCostCodes(prisma, estimate.uuid, estimate.corporation_uuid, input.removed_cost_code_uuids ?? []),
+    replaceEstimateAuditEvents(prisma, estimate.uuid, estimate.corporation_uuid, auditEntry),
+  ])
 
   // Return header without re-reading line items from the DB — the form always
   // re-fetches via GET /api/estimates/:uuid when opened for editing, so the
@@ -629,6 +700,18 @@ export async function updateEstimate(input: UpdateEstimateInput) {
   if (auditEntry) updateData.audit_log = stringifyJson(mergedLog)
 
   const updated = await prisma.estimate.update({ where: { uuid: input.uuid }, data: updateData })
+
+  const dualWrites: Promise<unknown>[] = []
+  if (input.attachments !== undefined) {
+    dualWrites.push(replaceEstimateAttachments(prisma, input.uuid, existing.corporation_uuid, input.attachments ?? []))
+  }
+  if (input.removed_cost_code_uuids !== undefined) {
+    dualWrites.push(replaceEstimateRemovedCostCodes(prisma, input.uuid, existing.corporation_uuid, input.removed_cost_code_uuids ?? []))
+  }
+  if (auditEntry || updateData.audit_log) {
+    dualWrites.push(replaceEstimateAuditEvents(prisma, input.uuid, existing.corporation_uuid, mergedLog))
+  }
+  if (dualWrites.length) await Promise.all(dualWrites)
 
   // Replace line items if provided
   if (Array.isArray(input.line_items)) {

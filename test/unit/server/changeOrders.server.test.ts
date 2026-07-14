@@ -22,6 +22,17 @@ const mockPOFormFindFirst = vi.fn()
 const mockPOFormFindMany = vi.fn()
 const mockProjectFindFirst = vi.fn()
 const mockProjectFindMany = vi.fn()
+const mockEmptyFindMany = vi.fn()
+const mockEmptyDeleteMany = vi.fn()
+const mockEmptyCreateMany = vi.fn()
+
+function emptyChildDelegate() {
+  return {
+    findMany: (...a: unknown[]) => mockEmptyFindMany(...a),
+    deleteMany: (...a: unknown[]) => mockEmptyDeleteMany(...a),
+    createMany: (...a: unknown[]) => mockEmptyCreateMany(...a),
+  }
+}
 
 vi.mock('../../../server/utils/prisma', () => ({
   getPrisma: () => ({
@@ -58,6 +69,13 @@ vi.mock('../../../server/utils/prisma', () => ({
       findFirst: (...a: unknown[]) => mockProjectFindFirst(...a),
       findMany: (...a: unknown[]) => mockProjectFindMany(...a),
     },
+    coFinancialCharge: emptyChildDelegate(),
+    coFinancialTax: emptyChildDelegate(),
+    coAttachment: emptyChildDelegate(),
+    coAuditEvent: emptyChildDelegate(),
+    coRemovedItem: emptyChildDelegate(),
+    coItemApprovalCheck: emptyChildDelegate(),
+    coItemReceiptNote: emptyChildDelegate(),
   }),
 }))
 
@@ -157,6 +175,9 @@ describe('changeOrders server utils', () => {
     mockLwDeleteMany.mockResolvedValue({ count: 0 })
     mockLwCreateMany.mockResolvedValue({ count: 0 })
     mockLwFindMany.mockResolvedValue([])
+    mockEmptyFindMany.mockResolvedValue([])
+    mockEmptyDeleteMany.mockResolvedValue({ count: 0 })
+    mockEmptyCreateMany.mockResolvedValue({ count: 0 })
   })
 
   describe('generateNextCoNumber', () => {
