@@ -498,8 +498,8 @@ export async function getPurchaseOrderDetailsInvoiceSummary(
     Array.from(vendorUuids),
   )
 
-  const invoiceUuids = collectNimblePaidInvoiceUuids(invoices)
-  const nimblePaidByInvoiceUuid = invoiceUuids.length
+  const nimblePaidInvoiceUuids = collectNimblePaidInvoiceUuids(invoices)
+  const nimblePaidByInvoiceUuid = nimblePaidInvoiceUuids.length
     ? buildNimblePaidByInvoiceUuid(invoices)
     : {}
 
