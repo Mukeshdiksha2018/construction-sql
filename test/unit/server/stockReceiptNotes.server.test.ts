@@ -14,6 +14,23 @@ const mockCoItemFindMany = vi.fn()
 const mockCoItemUpdate = vi.fn()
 const mockPoUpdate = vi.fn()
 const mockCoUpdate = vi.fn()
+const mockEmptyFindMany = vi.fn()
+const mockEmptyDeleteMany = vi.fn()
+const mockEmptyCreateMany = vi.fn()
+
+function emptyChildDelegate() {
+  return {
+    findMany: (...a: unknown[]) => mockEmptyFindMany(...a),
+    deleteMany: (...a: unknown[]) => mockEmptyDeleteMany(...a),
+    createMany: (...a: unknown[]) => mockEmptyCreateMany(...a),
+  }
+}
+
+function stubNormalizedChildren() {
+  mockEmptyFindMany.mockResolvedValue([])
+  mockEmptyDeleteMany.mockResolvedValue({ count: 0 })
+  mockEmptyCreateMany.mockResolvedValue({ count: 0 })
+}
 
 vi.mock('../../../server/utils/prisma', () => ({
   getPrisma: () => ({
@@ -49,12 +66,35 @@ vi.mock('../../../server/utils/prisma', () => ({
     returnNoteItem: {
       findMany: vi.fn().mockResolvedValue([]),
     },
+    grnFinancialCharge: emptyChildDelegate(),
+    grnFinancialTax: emptyChildDelegate(),
+    grnAttachment: emptyChildDelegate(),
+    grnAuditEvent: emptyChildDelegate(),
   }),
 }))
+
+function makeSrnRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1n,
+    uuid: 'srn-1',
+    corporation_uuid: 'corp-1',
+    purchase_order_uuid: null,
+    change_order_uuid: null,
+    receipt_type: 'purchase_order',
+    grn_number: 'GRN-6',
+    status: 'Shipment',
+    metadata: '{}',
+    is_active: true,
+    created_at: new Date(),
+    updated_at: new Date(),
+    ...overrides,
+  }
+}
 
 describe('stockReceiptNotes server utils', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren()
     mockSrnFindMany.mockResolvedValue([{ grn_number: 'GRN-5' }])
     mockSrnFindFirst.mockResolvedValue(null)
     mockPoUpdate.mockResolvedValue({})
@@ -71,30 +111,14 @@ describe('stockReceiptNotes server utils', () => {
   })
 
   it('createStockReceiptNote persists change_order header and receipt_items', async () => {
-    mockSrnCreate.mockResolvedValue({
-      id: 1n,
+    const created = makeSrnRow({
       uuid: 'srn-1',
-      corporation_uuid: 'corp-1',
-      purchase_order_uuid: null,
       change_order_uuid: 'co-1',
+      purchase_order_uuid: null,
       receipt_type: 'change_order',
-      grn_number: 'GRN-6',
-      status: 'Shipment',
-      metadata: '{}',
-      attachments: '[]',
-      audit_log: '[]',
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date(),
     })
-    mockSrnFindFirst.mockResolvedValue({
-      uuid: 'srn-1',
-      corporation_uuid: 'corp-1',
-      change_order_uuid: 'co-1',
-      purchase_order_uuid: null,
-      project_uuid: null,
-      is_active: true,
-    })
+    mockSrnCreate.mockResolvedValue(created)
+    mockSrnFindFirst.mockResolvedValue(created)
     mockRniFindFirst.mockResolvedValue(null)
     mockRniFindMany.mockResolvedValue([])
     mockCoItemFindMany
@@ -120,35 +144,23 @@ describe('stockReceiptNotes server utils', () => {
     const createArg = mockSrnCreate.mock.calls[0][0].data
     expect(createArg.change_order_uuid).toBe('co-1')
     expect(createArg.purchase_order_uuid).toBeNull()
+    expect(createArg.attachments).toBeUndefined()
+    expect(createArg.audit_log).toBeUndefined()
     expect(mockRniCreate).toHaveBeenCalled()
     expect(result.change_order_uuid).toBe('co-1')
   })
 
   it('createStockReceiptNote sets Partially_Received on PO when save_as_open_po', async () => {
     mockPoUpdate.mockImplementation(() => Promise.resolve({}))
-    mockSrnCreate.mockResolvedValue({
+    const created = makeSrnRow({
       id: 2n,
       uuid: 'rn-po',
-      corporation_uuid: 'corp-1',
       purchase_order_uuid: 'po-1',
-      change_order_uuid: null,
       receipt_type: 'purchase_order',
       grn_number: 'GRN-7',
-      status: 'Shipment',
-      metadata: '{}',
-      attachments: '[]',
-      audit_log: '[]',
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date(),
     })
-    mockSrnFindFirst.mockResolvedValue({
-      uuid: 'rn-po',
-      corporation_uuid: 'corp-1',
-      purchase_order_uuid: 'po-1',
-      change_order_uuid: null,
-      is_active: true,
-    })
+    mockSrnCreate.mockResolvedValue(created)
+    mockSrnFindFirst.mockResolvedValue(created)
 
     const { createStockReceiptNote } = await import('../../../server/utils/stockReceiptNotes')
     await createStockReceiptNote({
@@ -166,22 +178,14 @@ describe('stockReceiptNotes server utils', () => {
 
   it('listStockReceiptNotes filters by change_order_uuid', async () => {
     mockSrnFindMany.mockResolvedValue([
-      {
-        id: 1n,
+      makeSrnRow({
         uuid: 'rn-co',
-        corporation_uuid: 'corp-1',
         purchase_order_uuid: null,
         change_order_uuid: 'co-1',
         receipt_type: 'change_order',
         grn_number: 'GRN-1',
-        status: 'Shipment',
         metadata: null,
-        attachments: null,
-        audit_log: null,
-        is_active: true,
-        created_at: new Date(),
-        updated_at: new Date(),
-      },
+      }),
     ])
 
     const { listStockReceiptNotes } = await import('../../../server/utils/stockReceiptNotes')
@@ -192,18 +196,10 @@ describe('stockReceiptNotes server utils', () => {
   })
 
   it('deleteStockReceiptNote soft-deactivates header and lines', async () => {
-    mockSrnFindFirst.mockResolvedValue({
+    mockSrnFindFirst.mockResolvedValue(makeSrnRow({
       uuid: 'rn-del',
-      corporation_uuid: 'corp-1',
-      is_active: true,
-      metadata: '{}',
-      attachments: '[]',
-      audit_log: '[]',
       grn_number: 'GRN-1',
-      status: 'Shipment',
-      created_at: new Date(),
-      updated_at: new Date(),
-    })
+    }))
     mockSrnUpdate.mockResolvedValue({})
 
     const { deleteStockReceiptNote } = await import('../../../server/utils/stockReceiptNotes')
@@ -213,7 +209,7 @@ describe('stockReceiptNotes server utils', () => {
     expect(mockSrnUpdate).toHaveBeenCalled()
   })
 
-  it('stores financial breakdown fields in metadata', async () => {
+  it('stores scalar totals in metadata and financial rows in child tables', async () => {
     mockPoItemFindMany.mockResolvedValue([])
     mockRniFindMany.mockResolvedValue([])
     mockSrnFindMany.mockResolvedValue([])
@@ -221,22 +217,18 @@ describe('stockReceiptNotes server utils', () => {
       const meta = JSON.parse(data.metadata)
       expect(meta.item_total).toBe(100)
       expect(meta.grn_total_with_charges_taxes).toBe(118)
-      return Promise.resolve({
+      expect(meta.financial_breakdown).toBeUndefined()
+      expect(data.attachments).toBeUndefined()
+      expect(data.audit_log).toBeUndefined()
+      const row = makeSrnRow({
         id: 3n,
         uuid: 'rn-fin',
-        corporation_uuid: 'corp-1',
         purchase_order_uuid: 'po-1',
-        change_order_uuid: null,
-        receipt_type: 'purchase_order',
         grn_number: 'GRN-8',
-        status: 'Shipment',
         metadata: data.metadata,
-        attachments: '[]',
-        audit_log: '[]',
-        is_active: true,
-        created_at: new Date(),
-        updated_at: new Date(),
       })
+      mockSrnFindFirst.mockResolvedValue(row)
+      return Promise.resolve(row)
     })
 
     const { createStockReceiptNote } = await import('../../../server/utils/stockReceiptNotes')
@@ -248,6 +240,7 @@ describe('stockReceiptNotes server utils', () => {
       grn_total_with_charges_taxes: 118,
     })
 
+    expect(mockEmptyCreateMany).toHaveBeenCalled()
     expect(row.item_total).toBe(100)
     expect(row.grn_total_with_charges_taxes).toBe(118)
   })

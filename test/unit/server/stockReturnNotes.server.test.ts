@@ -14,6 +14,25 @@ const mockPoUpdate = vi.fn()
 const mockCoUpdate = vi.fn()
 const mockReceiptNoteFindMany = vi.fn()
 const mockReceiptItemFindMany = vi.fn()
+const mockEmptyFindMany = vi.fn()
+const mockEmptyDeleteMany = vi.fn()
+const mockEmptyCreateMany = vi.fn()
+const mockReturnChargeCreateMany = vi.fn()
+
+function emptyChildDelegate() {
+  return {
+    findMany: (...a: unknown[]) => mockEmptyFindMany(...a),
+    deleteMany: (...a: unknown[]) => mockEmptyDeleteMany(...a),
+    createMany: (...a: unknown[]) => mockEmptyCreateMany(...a),
+  }
+}
+
+function stubNormalizedChildren() {
+  mockEmptyFindMany.mockResolvedValue([])
+  mockEmptyDeleteMany.mockResolvedValue({ count: 0 })
+  mockEmptyCreateMany.mockResolvedValue({ count: 0 })
+  mockReturnChargeCreateMany.mockResolvedValue({ count: 0 })
+}
 
 vi.mock('../../../server/utils/prisma', () => ({
   getPrisma: () => ({
@@ -47,12 +66,40 @@ vi.mock('../../../server/utils/prisma', () => ({
     receiptNoteItem: {
       findMany: (...a: unknown[]) => mockReceiptItemFindMany(...a),
     },
+    returnFinancialCharge: {
+      findMany: (...a: unknown[]) => mockEmptyFindMany(...a),
+      deleteMany: (...a: unknown[]) => mockEmptyDeleteMany(...a),
+      createMany: (...a: unknown[]) => mockReturnChargeCreateMany(...a),
+    },
+    returnFinancialTax: emptyChildDelegate(),
+    returnAttachment: emptyChildDelegate(),
+    returnAuditEvent: emptyChildDelegate(),
   }),
 }))
+
+function makeReturnRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1n,
+    uuid: 'rtn-1',
+    corporation_uuid: 'corp-1',
+    project_uuid: null,
+    purchase_order_uuid: null,
+    change_order_uuid: null,
+    return_type: 'purchase_order',
+    return_note_number: 'RTN-6',
+    status: 'Returned',
+    metadata: '{}',
+    is_active: true,
+    created_at: new Date(),
+    updated_at: new Date(),
+    ...overrides,
+  }
+}
 
 describe('stockReturnNotes server utils', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren()
     mockSrnFindMany.mockResolvedValue([{ return_note_number: 'RTN-5' }])
     mockSrnFindFirst.mockResolvedValue(null)
     mockPoUpdate.mockResolvedValue({})
@@ -74,22 +121,12 @@ describe('stockReturnNotes server utils', () => {
   })
 
   it('createStockReturnNote persists return_items and change_order_uuid', async () => {
-    mockSrnCreate.mockResolvedValue({
-      id: 1n,
-      uuid: 'rtn-1',
-      corporation_uuid: 'corp-1',
-      purchase_order_uuid: null,
+    const created = makeReturnRow({
       change_order_uuid: 'co-1',
       return_type: 'change_order',
-      return_note_number: 'RTN-6',
-      status: 'Returned',
-      metadata: '{}',
-      attachments: '[]',
-      audit_log: '[]',
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date(),
     })
+    mockSrnCreate.mockResolvedValue(created)
+    mockSrnFindFirst.mockResolvedValue(created)
 
     const { createStockReturnNote } = await import('../../../server/utils/stockReturnNotes')
     const result = await createStockReturnNote({
@@ -104,29 +141,21 @@ describe('stockReturnNotes server utils', () => {
     })
 
     expect(mockSrnCreate).toHaveBeenCalled()
+    const createArg = mockSrnCreate.mock.calls[0][0].data
+    expect(createArg.attachments).toBeUndefined()
+    expect(createArg.audit_log).toBeUndefined()
     expect(mockRniCreateMany).toHaveBeenCalled()
     expect(result.change_order_uuid).toBe('co-1')
     expect(result.return_number).toBe('RTN-6')
   })
 
   it('mapReturnNoteRow exposes return_number alias', async () => {
-    mockSrnFindFirst.mockResolvedValue({
-      id: 1n,
+    mockSrnFindFirst.mockResolvedValue(makeReturnRow({
       uuid: 'rtn-2',
-      corporation_uuid: 'corp-1',
-      project_uuid: null,
       purchase_order_uuid: 'po-1',
-      change_order_uuid: null,
-      return_type: 'purchase_order',
       return_note_number: 'RTN-10',
-      status: 'Returned',
-      metadata: '{"financial_breakdown":{"totals":{}}}',
-      attachments: '[]',
-      audit_log: '[]',
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date(),
-    })
+      metadata: '{}',
+    }))
 
     const { getStockReturnNote } = await import('../../../server/utils/stockReturnNotes')
     const row = await getStockReturnNote('rtn-2')
@@ -136,22 +165,13 @@ describe('stockReturnNotes server utils', () => {
 
   it('listStockReturnNotes filters by change_order_uuid', async () => {
     mockSrnFindMany.mockResolvedValue([
-      {
-        id: 1n,
+      makeReturnRow({
         uuid: 'rtn-co',
-        corporation_uuid: 'corp-1',
-        purchase_order_uuid: null,
         change_order_uuid: 'co-1',
         return_type: 'change_order',
         return_note_number: 'RTN-1',
-        status: 'Returned',
         metadata: null,
-        attachments: null,
-        audit_log: null,
-        is_active: true,
-        created_at: new Date(),
-        updated_at: new Date(),
-      },
+      }),
     ])
 
     const { listStockReturnNotes } = await import('../../../server/utils/stockReturnNotes')
@@ -162,36 +182,13 @@ describe('stockReturnNotes server utils', () => {
   })
 
   it('updateStockReturnNote replaces return_items when provided', async () => {
-    mockSrnFindFirst.mockResolvedValue({
+    const existing = makeReturnRow({
       uuid: 'rtn-upd',
-      corporation_uuid: 'corp-1',
       purchase_order_uuid: 'po-1',
-      change_order_uuid: null,
-      return_type: 'purchase_order',
       return_note_number: 'RTN-2',
-      status: 'Returned',
-      metadata: '{}',
-      attachments: '[]',
-      audit_log: '[]',
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date(),
     })
-    mockSrnUpdate.mockResolvedValue({
-      uuid: 'rtn-upd',
-      corporation_uuid: 'corp-1',
-      purchase_order_uuid: 'po-1',
-      change_order_uuid: null,
-      return_type: 'purchase_order',
-      return_note_number: 'RTN-2',
-      status: 'Returned',
-      metadata: '{}',
-      attachments: '[]',
-      audit_log: '[]',
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date(),
-    })
+    mockSrnFindFirst.mockResolvedValue(existing)
+    mockSrnUpdate.mockResolvedValue(existing)
 
     const { updateStockReturnNote } = await import('../../../server/utils/stockReturnNotes')
     await updateStockReturnNote('rtn-upd', {
@@ -204,22 +201,14 @@ describe('stockReturnNotes server utils', () => {
   })
 
   it('filters out return_items without return_quantity on create', async () => {
-    mockSrnCreate.mockResolvedValue({
+    const created = makeReturnRow({
       id: 2n,
       uuid: 'rtn-empty',
-      corporation_uuid: 'corp-1',
       purchase_order_uuid: 'po-1',
-      change_order_uuid: null,
-      return_type: 'purchase_order',
       return_note_number: 'RTN-7',
-      status: 'Returned',
-      metadata: '{}',
-      attachments: '[]',
-      audit_log: '[]',
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date(),
     })
+    mockSrnCreate.mockResolvedValue(created)
+    mockSrnFindFirst.mockResolvedValue(created)
 
     const { createStockReturnNote } = await import('../../../server/utils/stockReturnNotes')
     await createStockReturnNote({
@@ -250,22 +239,14 @@ describe('stockReturnNotes server utils', () => {
     mockRniFindMany.mockResolvedValue([
       { item_uuid: 'poi-1', return_quantity: 4 },
     ])
-    mockSrnCreate.mockResolvedValue({
+    const created = makeReturnRow({
       id: 3n,
       uuid: 'rtn-comp',
-      corporation_uuid: 'corp-1',
       purchase_order_uuid: 'po-1',
-      change_order_uuid: null,
-      return_type: 'purchase_order',
       return_note_number: 'RTN-9',
-      status: 'Returned',
-      metadata: '{}',
-      attachments: '[]',
-      audit_log: '[]',
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date(),
     })
+    mockSrnCreate.mockResolvedValue(created)
+    mockSrnFindFirst.mockResolvedValue(created)
 
     const { createStockReturnNote } = await import('../../../server/utils/stockReturnNotes')
     await createStockReturnNote({
@@ -281,37 +262,34 @@ describe('stockReturnNotes server utils', () => {
     })
   })
 
-  it('stores financial_breakdown in metadata', async () => {
+  it('writes financial_breakdown to child tables (not metadata)', async () => {
     mockSrnCreate.mockImplementation(({ data }: any) => {
       const meta = JSON.parse(data.metadata)
-      expect(meta.financial_breakdown).toEqual({ totals: { item_total: 50 } })
-      return Promise.resolve({
+      expect(meta.financial_breakdown).toBeUndefined()
+      expect(data.attachments).toBeUndefined()
+      expect(data.audit_log).toBeUndefined()
+      const row = makeReturnRow({
         id: 4n,
         uuid: 'rtn-fin',
-        corporation_uuid: 'corp-1',
         purchase_order_uuid: 'po-1',
-        change_order_uuid: null,
-        return_type: 'purchase_order',
         return_note_number: 'RTN-11',
-        status: 'Returned',
         metadata: data.metadata,
-        attachments: '[]',
-        audit_log: '[]',
-        is_active: true,
-        created_at: new Date(),
-        updated_at: new Date(),
       })
+      mockSrnFindFirst.mockResolvedValue(row)
+      return Promise.resolve(row)
     })
 
     const { createStockReturnNote } = await import('../../../server/utils/stockReturnNotes')
-    const row = await createStockReturnNote({
+    await createStockReturnNote({
       corporation_uuid: 'corp-1',
       return_type: 'purchase_order',
       purchase_order_uuid: 'po-1',
       financial_breakdown: { totals: { item_total: 50 } },
     })
 
-    expect(row.financial_breakdown).toEqual({ totals: { item_total: 50 } })
+    expect(mockReturnChargeCreateMany).toHaveBeenCalled()
+    const chargeRows = mockReturnChargeCreateMany.mock.calls[0][0].data
+    expect(chargeRows).toHaveLength(4)
   })
 
   it('replaceReturnNoteItems maps line totals from return_quantity and unit_price', async () => {
@@ -339,18 +317,10 @@ describe('stockReturnNotes server utils', () => {
   })
 
   it('deleteStockReturnNote soft-deactivates header and lines', async () => {
-    mockSrnFindFirst.mockResolvedValue({
+    mockSrnFindFirst.mockResolvedValue(makeReturnRow({
       uuid: 'rtn-del',
-      corporation_uuid: 'corp-1',
-      is_active: true,
       return_note_number: 'RTN-1',
-      status: 'Returned',
-      metadata: '{}',
-      attachments: '[]',
-      audit_log: '[]',
-      created_at: new Date(),
-      updated_at: new Date(),
-    })
+    }))
     mockSrnUpdate.mockResolvedValue({})
 
     const { deleteStockReturnNote } = await import('../../../server/utils/stockReturnNotes')

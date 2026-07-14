@@ -31,6 +31,23 @@ const mockLwLaborCreateMany = vi.fn()
 const mockLwMaterialCreateMany = vi.fn()
 const mockLwLaborFindMany = vi.fn()
 const mockLwMaterialFindMany = vi.fn()
+const mockEmptyFindMany = vi.fn()
+const mockEmptyDeleteMany = vi.fn()
+const mockEmptyCreateMany = vi.fn()
+
+function emptyChildDelegate() {
+  return {
+    findMany: (...a: unknown[]) => mockEmptyFindMany(...a),
+    deleteMany: (...a: unknown[]) => mockEmptyDeleteMany(...a),
+    createMany: (...a: unknown[]) => mockEmptyCreateMany(...a),
+  }
+}
+
+function stubNormalizedChildren() {
+  mockEmptyFindMany.mockResolvedValue([])
+  mockEmptyDeleteMany.mockResolvedValue({ count: 0 })
+  mockEmptyCreateMany.mockResolvedValue({ count: 0 })
+}
 
 vi.mock('../../../server/utils/prisma', () => ({
   getPrisma: () => ({
@@ -62,6 +79,9 @@ vi.mock('../../../server/utils/prisma', () => ({
       createMany: (...a: unknown[]) => mockLwMaterialCreateMany(...a),
       findMany: (...a: unknown[]) => mockLwMaterialFindMany(...a),
     },
+    estimateAttachment: emptyChildDelegate(),
+    estimateRemovedCostCode: emptyChildDelegate(),
+    estimateAuditEvent: emptyChildDelegate(),
   }),
 }))
 
@@ -82,9 +102,6 @@ const makePrismaEstimateRow = (overrides: Record<string, unknown> = {}) => ({
   discount_amount: { toNumber: () => 0 },
   final_amount: { toNumber: () => 1000 },
   notes: null,
-  attachments: null,
-  removed_cost_code_uuids: null,
-  audit_log: null,
   created_by: null,
   approved_by: null,
   approved_at: null,
@@ -217,6 +234,7 @@ describe('createEstimate – sequence coercion fix', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren()
 
     // generateEstimateNumber → findMany for recent estimates
     mockEstimateFindMany.mockResolvedValue([])
@@ -377,6 +395,7 @@ describe('location-wise sequence coercion fix', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren()
 
     // generateEstimateNumber → findMany
     mockEstimateFindMany.mockResolvedValue([])

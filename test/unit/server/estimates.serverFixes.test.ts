@@ -44,6 +44,29 @@ const mockLwLaborDeleteMany = vi.fn()
 const mockLwMaterialCreateMany = vi.fn()
 const mockLwMaterialFindMany = vi.fn()
 const mockLwMaterialDeleteMany = vi.fn()
+const mockEmptyFindMany = vi.fn()
+const mockEmptyDeleteMany = vi.fn()
+const mockEmptyCreateMany = vi.fn()
+const mockEstimateAuditFindMany = vi.fn()
+const mockEstimateAuditDeleteMany = vi.fn()
+const mockEstimateAuditCreateMany = vi.fn()
+
+function emptyChildDelegate() {
+  return {
+    findMany: (...a: unknown[]) => mockEmptyFindMany(...a),
+    deleteMany: (...a: unknown[]) => mockEmptyDeleteMany(...a),
+    createMany: (...a: unknown[]) => mockEmptyCreateMany(...a),
+  }
+}
+
+function stubNormalizedChildren(auditRows: unknown[] = []) {
+  mockEmptyFindMany.mockResolvedValue([])
+  mockEmptyDeleteMany.mockResolvedValue({ count: 0 })
+  mockEmptyCreateMany.mockResolvedValue({ count: 0 })
+  mockEstimateAuditFindMany.mockResolvedValue(auditRows)
+  mockEstimateAuditDeleteMany.mockResolvedValue({ count: 0 })
+  mockEstimateAuditCreateMany.mockResolvedValue({ count: 0 })
+}
 
 vi.mock('../../../server/utils/prisma', () => ({
   getPrisma: () => ({
@@ -77,6 +100,13 @@ vi.mock('../../../server/utils/prisma', () => ({
       findMany: (...a: unknown[]) => mockLwMaterialFindMany(...a),
       deleteMany: (...a: unknown[]) => mockLwMaterialDeleteMany(...a),
     },
+    estimateAttachment: emptyChildDelegate(),
+    estimateRemovedCostCode: emptyChildDelegate(),
+    estimateAuditEvent: {
+      findMany: (...a: unknown[]) => mockEstimateAuditFindMany(...a),
+      deleteMany: (...a: unknown[]) => mockEstimateAuditDeleteMany(...a),
+      createMany: (...a: unknown[]) => mockEstimateAuditCreateMany(...a),
+    },
   }),
 }))
 
@@ -98,9 +128,6 @@ function makePrismaRow(overrides: Record<string, unknown> = {}) {
     discount_amount: { toNumber: () => 0 },
     final_amount: { toNumber: () => 1000 },
     notes: null,
-    attachments: null,
-    removed_cost_code_uuids: null,
-    audit_log: null,
     created_by: null,
     approved_by: null,
     approved_at: null,
@@ -122,8 +149,16 @@ function makeExistingRow(overrides: Record<string, unknown> = {}) {
     project_uuid: 'proj-1',
     estimate_number: 'EST-001',
     status: 'Draft',
-    audit_log: null,
     ...overrides,
+  }
+}
+
+function auditRowFromEntry(entry: Record<string, unknown>) {
+  return {
+    event_type: String(entry.action ?? 'event'),
+    payload: JSON.stringify(entry),
+    created_by: entry.user_uuid ? String(entry.user_uuid) : null,
+    event_at: new Date(String(entry.timestamp ?? '2026-01-01T00:00:00Z')),
   }
 }
 
@@ -147,6 +182,7 @@ const USER_INFO = { user_id: 'u-1', user_name: 'Alice', user_email: 'alice@examp
 describe('updateEstimate – core behaviour', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren()
     mockEstimateUpdate.mockResolvedValue(makePrismaRow())
     mockProjectFindFirst.mockResolvedValue(makeProject())
     mockLineItemDeleteMany.mockResolvedValue({ count: 0 })
@@ -202,7 +238,8 @@ describe('updateEstimate – core behaviour', () => {
     mockEstimateFindFirst.mockResolvedValue(makeExistingRow())
     mockEstimateUpdate.mockResolvedValue(makePrismaRow({ id: BigInt(99) }))
     const { updateEstimate } = await import('../../../server/utils/estimates')
-    const result = await updateEstimate({ uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1' })
+    // Include a header field so update() runs (empty updateData uses findFirst, which has no id)
+    const result = await updateEstimate({ uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1', notes: 'n' })
     expect(typeof result!.id).toBe('string')
     expect(result!.id).toBe('99')
   })
@@ -221,6 +258,7 @@ describe('updateEstimate – core behaviour', () => {
 describe('updateEstimate – line item replacement', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren()
     mockEstimateFindFirst.mockResolvedValue(makeExistingRow())
     mockEstimateUpdate.mockResolvedValue(makePrismaRow())
     mockProjectFindFirst.mockResolvedValue(makeProject())
@@ -283,8 +321,15 @@ describe('updateEstimate – line item replacement', () => {
 describe('updateEstimate – audit log entries', () => {
   let capturedUpdateData: any
 
+  function lastWrittenAuditLog(): any[] {
+    expect(mockEstimateAuditCreateMany).toHaveBeenCalled()
+    const rows = mockEstimateAuditCreateMany.mock.calls.at(-1)![0].data as Array<{ payload: string }>
+    return rows.map((r) => JSON.parse(r.payload))
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren()
     mockEstimateUpdate.mockImplementation(async (args: any) => {
       capturedUpdateData = args.data
       return makePrismaRow()
@@ -300,71 +345,74 @@ describe('updateEstimate – audit log entries', () => {
   })
 
   it('adds a marked_ready entry when status transitions Draft → Ready', async () => {
-    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Draft', audit_log: '[]' }))
+    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Draft' }))
     const { updateEstimate } = await import('../../../server/utils/estimates')
     await updateEstimate({ ...USER_INFO, uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1', status: 'Ready' })
-    const log = JSON.parse(capturedUpdateData.audit_log)
+    expect(capturedUpdateData.audit_log).toBeUndefined()
+    const log = lastWrittenAuditLog()
     expect(log).toHaveLength(1)
     expect(log[0].action).toBe('marked_ready')
     expect(log[0].user_uuid).toBe('u-1')
   })
 
   it('adds an approved entry when status transitions Draft → Approved', async () => {
-    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Draft', audit_log: '[]' }))
+    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Draft' }))
     const { updateEstimate } = await import('../../../server/utils/estimates')
     await updateEstimate({ ...USER_INFO, uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1', status: 'Approved' })
-    const log = JSON.parse(capturedUpdateData.audit_log)
+    const log = lastWrittenAuditLog()
     expect(log[0].action).toBe('approved')
   })
 
   it('adds an approved entry when status transitions Ready → Approved', async () => {
-    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Ready', audit_log: '[]' }))
+    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Ready' }))
     const { updateEstimate } = await import('../../../server/utils/estimates')
     await updateEstimate({ ...USER_INFO, uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1', status: 'Approved' })
-    const log = JSON.parse(capturedUpdateData.audit_log)
+    const log = lastWrittenAuditLog()
     expect(log[0].action).toBe('approved')
   })
 
   it('adds an unapproved entry when Approved → Draft (Revise action)', async () => {
-    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Approved', audit_log: '[]' }))
+    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Approved' }))
     const { updateEstimate } = await import('../../../server/utils/estimates')
     await updateEstimate({ ...USER_INFO, uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1', status: 'Draft' })
-    const log = JSON.parse(capturedUpdateData.audit_log)
+    const log = lastWrittenAuditLog()
     expect(log[0].action).toBe('unapproved')
   })
 
   it('adds an updated entry when non-status fields change with no status transition', async () => {
-    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Draft', audit_log: '[]' }))
+    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Draft' }))
     const { updateEstimate } = await import('../../../server/utils/estimates')
     await updateEstimate({ ...USER_INFO, uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1', notes: 'updated notes' })
-    const log = JSON.parse(capturedUpdateData.audit_log)
+    const log = lastWrittenAuditLog()
     expect(log[0].action).toBe('updated')
   })
 
   it('preserves prior audit entries and appends the new one', async () => {
     const prior = { action: 'created', timestamp: '2026-01-01T00:00:00Z', user_uuid: 'u-0', user_name: 'Bob', user_email: 'b@t.com', user_image_url: null }
-    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Draft', audit_log: JSON.stringify([prior]) }))
+    stubNormalizedChildren([auditRowFromEntry(prior)])
+    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Draft' }))
     const { updateEstimate } = await import('../../../server/utils/estimates')
     await updateEstimate({ ...USER_INFO, uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1', status: 'Ready' })
-    const log = JSON.parse(capturedUpdateData.audit_log)
+    const log = lastWrittenAuditLog()
     expect(log).toHaveLength(2)
     expect(log[0].action).toBe('created')
     expect(log[1].action).toBe('marked_ready')
   })
 
   it('does not add an entry when no user_id is provided', async () => {
-    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Draft', audit_log: '[]' }))
+    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Draft' }))
     const { updateEstimate } = await import('../../../server/utils/estimates')
     await updateEstimate({ uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1', status: 'Ready' })
-    // audit_log key should not appear in updateData when no entry was created
     expect(capturedUpdateData.audit_log).toBeUndefined()
+    expect(mockEstimateAuditCreateMany).not.toHaveBeenCalled()
   })
 
-  it('handles null audit_log in DB (treats as empty array)', async () => {
-    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Draft', audit_log: null }))
+  it('treats empty child audit table as empty prior log', async () => {
+    stubNormalizedChildren([])
+    mockEstimateFindFirst.mockResolvedValue(makeExistingRow({ status: 'Draft' }))
     const { updateEstimate } = await import('../../../server/utils/estimates')
     await updateEstimate({ ...USER_INFO, uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1', status: 'Ready' })
-    const log = JSON.parse(capturedUpdateData.audit_log)
+    const log = lastWrittenAuditLog()
     expect(Array.isArray(log)).toBe(true)
     expect(log).toHaveLength(1)
   })
@@ -376,6 +424,7 @@ describe('updateEstimate – audit log entries', () => {
 describe('insertLineItems – parallel batch (all children in 3 DB calls)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren()
     // No estimate_number → auto-generate path (uses findMany, NOT findFirst)
     mockEstimateFindMany.mockResolvedValue([])
     mockEstimateCreate.mockResolvedValue(makePrismaRow({ uuid: 'new-est' }))
@@ -540,6 +589,7 @@ describe('insertLineItems – parallel batch (all children in 3 DB calls)', () =
 describe('createEstimate – returns header without re-reading child tables', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren()
     mockEstimateFindMany.mockResolvedValue([])
     mockEstimateCreate.mockResolvedValue(makePrismaRow({ uuid: 'h-est', status: 'Draft' }))
     mockProjectFindFirst.mockResolvedValue(makeProject())
@@ -607,6 +657,7 @@ describe('createEstimate – returns header without re-reading child tables', ()
 describe('updateEstimate – returns header without re-reading child tables', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren()
     mockEstimateFindFirst.mockResolvedValue(makeExistingRow())
     mockEstimateUpdate.mockResolvedValue(makePrismaRow({ status: 'Ready' }))
     mockProjectFindFirst.mockResolvedValue(makeProject())
@@ -649,7 +700,12 @@ describe('updateEstimate – returns header without re-reading child tables', ()
 
   it('returns the updated status from the prisma.update result', async () => {
     const { updateEstimate } = await import('../../../server/utils/estimates')
-    const result = await updateEstimate({ uuid: 'est-uuid-1', corporation_uuid: 'corp-1', project_uuid: 'proj-1' })
+    const result = await updateEstimate({
+      uuid: 'est-uuid-1',
+      corporation_uuid: 'corp-1',
+      project_uuid: 'proj-1',
+      status: 'Ready',
+    })
     expect(result!.status).toBe('Ready')
   })
 
@@ -668,6 +724,7 @@ describe('updateEstimate – explicit child deletion', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren()
     mockEstimateFindFirst.mockResolvedValue(makeExistingRow())
     mockEstimateUpdate.mockResolvedValue(makePrismaRow())
     mockProjectFindFirst.mockResolvedValue(makeProject())
@@ -738,6 +795,7 @@ describe('updateEstimate – explicit child deletion', () => {
 describe('updateEstimate – material items carry-forward fallback', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    stubNormalizedChildren()
     mockEstimateFindFirst.mockResolvedValue(makeExistingRow())
     mockEstimateUpdate.mockResolvedValue(makePrismaRow())
     mockProjectFindFirst.mockResolvedValue(makeProject())
