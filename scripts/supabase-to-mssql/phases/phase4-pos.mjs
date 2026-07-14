@@ -64,12 +64,15 @@ export async function runPhase4PurchaseOrders(ctx) {
 
   const inPo = parentUuids.length ? `where purchase_order_uuid::text in (${parentUuids.map((u) => `'${u}'`).join(',')})` : (ctx.corpFilter ? 'where false' : '')
 
+  const headerCorpByUuid = new Map(
+    headers.map((h) => [uuidStr(h.uuid), remapCorp(lookups, h.corporation_uuid)]).filter(([u, c]) => u && c),
+  )
   const items = await pgQuery(pg, `select * from public.purchase_order_items_list ${inPo}`)
   await upsertByUuid(mssql, {
     table: 'purchase_order_items_list',
     columns: ['uuid', 'corporation_uuid', 'project_uuid', 'purchase_order_uuid', 'order_index', 'source', 'cost_code_uuid', 'cost_code_label', 'cost_code_number', 'cost_code_name', 'division_name', 'category', 'item_division_uuid', 'item_type_uuid', 'item_type_label', 'item_uuid', 'item_name', 'description', 'model_number', 'location_uuid', 'location_label', 'unit_uuid', 'unit_label', 'quantity', 'unit_price', 'po_quantity', 'po_unit_price', 'po_total', 'total', 'approval_checks_uuids', 'receipt_note_uuids', 'configuration_name', 'metadata', 'is_removed', 'removed_at', 'is_active', 'created_at', 'updated_at'],
     dryRun,
-    rows: items.map((r) => mapPoItem(r, lookups)),
+    rows: items.map((r) => mapPoItem(r, lookups, headerCorpByUuid.get(uuidStr(r.purchase_order_uuid)) || null)),
   })
 
   const appr = []
@@ -77,14 +80,13 @@ export async function runPhase4PurchaseOrders(ctx) {
   const itemParents = []
   for (const r of items) {
     const uuid = uuidStr(r.uuid)
-    const corp = remapCorp(lookups, r.corporation_uuid) || remapCorp(lookups, headers.find((h) => uuidStr(h.uuid) === uuidStr(r.purchase_order_uuid))?.corporation_uuid)
     if (!uuid) continue
     itemParents.push(uuid)
-    appr.push(...approvalCheckJunctionRows(r.approval_checks_uuids, corp || '', uuid, 'purchase_order_item_uuid', lookups))
-    rcpt.push(...receiptNoteJunctionRows(r.receipt_note_uuids, corp || '', uuid, 'purchase_order_item_uuid'))
+    appr.push(...approvalCheckJunctionRows(r.approval_checks_uuids, '', uuid, 'purchase_order_item_uuid', lookups))
+    rcpt.push(...receiptNoteJunctionRows(r.receipt_note_uuids, '', uuid, 'purchase_order_item_uuid'))
   }
-  await replaceChildren(mssql, { table: 'po_item_approval_checks', parentCol: 'purchase_order_item_uuid', parentUuids: itemParents, columns: ['corporation_uuid', 'purchase_order_item_uuid', 'approval_check_uuid'], rows: appr, dryRun })
-  await replaceChildren(mssql, { table: 'po_item_receipt_notes', parentCol: 'purchase_order_item_uuid', parentUuids: itemParents, columns: ['corporation_uuid', 'purchase_order_item_uuid', 'receipt_note_uuid'], rows: rcpt, dryRun })
+  await replaceChildren(mssql, { table: 'po_item_approval_checks', parentCol: 'purchase_order_item_uuid', parentUuids: itemParents, columns: ['purchase_order_item_uuid', 'approval_check_uuid'], rows: appr, dryRun })
+  await replaceChildren(mssql, { table: 'po_item_receipt_notes', parentCol: 'purchase_order_item_uuid', parentUuids: itemParents, columns: ['purchase_order_item_uuid', 'receipt_note_uuid'], rows: rcpt, dryRun })
 
   try {
     const labor = await pgQuery(pg, `select * from public.labor_purchase_order_items_list ${inPo}`)
@@ -92,7 +94,7 @@ export async function runPhase4PurchaseOrders(ctx) {
       table: 'labor_purchase_order_items_list',
       columns: ['uuid', 'corporation_uuid', 'project_uuid', 'purchase_order_uuid', 'order_index', 'cost_code_uuid', 'cost_code_label', 'cost_code_number', 'cost_code_name', 'division_name', 'location_uuid', 'location_label', 'labor_budgeted_amount', 'po_amount', 'prior_committed_po_amount', 'description', 'metadata', 'is_removed', 'removed_at', 'is_active', 'created_at', 'updated_at'],
       dryRun,
-      rows: labor.map((r) => mapLaborPo(r, lookups)),
+      rows: labor.map((r) => mapLaborPo(r, lookups, headerCorpByUuid.get(uuidStr(r.purchase_order_uuid)) || null)),
     })
   }
   catch (e) { log(`labor PO items: ${e.message}`) }
@@ -173,10 +175,10 @@ function mapPoHeader(r, lookups) {
   }
 }
 
-function mapPoItem(r, lookups) {
+function mapPoItem(r, lookups, headerCorp = null) {
   return {
     uuid: uuidStr(r.uuid),
-    corporation_uuid: remapCorp(lookups, r.corporation_uuid),
+    corporation_uuid: remapCorp(lookups, r.corporation_uuid) || headerCorp,
     project_uuid: uuidStr(r.project_uuid),
     purchase_order_uuid: uuidStr(r.purchase_order_uuid),
     order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
@@ -216,11 +218,11 @@ function mapPoItem(r, lookups) {
   }
 }
 
-function mapLaborPo(r, lookups) {
+function mapLaborPo(r, lookups, headerCorp = null) {
   const meta = parseJson(r.metadata, {}) || {}
   return {
     uuid: uuidStr(r.uuid),
-    corporation_uuid: remapCorp(lookups, r.corporation_uuid),
+    corporation_uuid: remapCorp(lookups, r.corporation_uuid) || headerCorp,
     project_uuid: uuidStr(r.project_uuid),
     purchase_order_uuid: uuidStr(r.purchase_order_uuid),
     order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,

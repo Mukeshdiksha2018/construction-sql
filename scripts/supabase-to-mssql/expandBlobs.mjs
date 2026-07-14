@@ -144,7 +144,7 @@ export function removedCostCodeRows(ids, corporationUuid, estimateUuid) {
  * @param {'purchase_order_item_uuid'|'change_order_item_uuid'|'labor_invoice_item_uuid'} itemKey
  * @param {'po_item_approval_checks'|'co_item_approval_checks'|'labor_invoice_approval_checks'} _table
  */
-export function approvalCheckJunctionRows(uuidsJson, corporationUuid, itemUuid, itemKey, lookups = null) {
+export function approvalCheckJunctionRows(uuidsJson, _corporationUuid, itemUuid, itemKey, lookups = null) {
   const arr = parseJson(uuidsJson, [])
   if (!Array.isArray(arr)) return []
   return [...new Set(arr.map((u) => uuidStr(u)).filter(Boolean))].map((raw) => {
@@ -152,7 +152,6 @@ export function approvalCheckJunctionRows(uuidsJson, corporationUuid, itemUuid, 
       ? (lookups.masterUuidAlias.get(raw) || raw)
       : raw
     return {
-      corporation_uuid: corporationUuid,
       [itemKey]: itemUuid,
       approval_check_uuid,
     }
@@ -161,15 +160,14 @@ export function approvalCheckJunctionRows(uuidsJson, corporationUuid, itemUuid, 
 
 /**
  * @param {unknown} uuidsJson
- * @param {string} corporationUuid
+ * @param {string} _corporationUuid unused — junction tables have no corporation_uuid column
  * @param {string} itemUuid
  * @param {'purchase_order_item_uuid'|'change_order_item_uuid'} itemKey
  */
-export function receiptNoteJunctionRows(uuidsJson, corporationUuid, itemUuid, itemKey) {
+export function receiptNoteJunctionRows(uuidsJson, _corporationUuid, itemUuid, itemKey) {
   const arr = parseJson(uuidsJson, [])
   if (!Array.isArray(arr)) return []
   return [...new Set(arr.map((u) => uuidStr(u)).filter(Boolean))].map((receipt_note_uuid) => ({
-    corporation_uuid: corporationUuid,
     [itemKey]: itemUuid,
     receipt_note_uuid,
   }))

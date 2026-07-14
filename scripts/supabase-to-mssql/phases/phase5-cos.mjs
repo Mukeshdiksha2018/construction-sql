@@ -9,7 +9,7 @@ import {
   removedItemRowsFromJson,
   taxRowsFromBreakdown,
 } from '../expandBlobs.mjs'
-import { remapCorp, remapShipVia, remapVendor, remapMasterUuid } from '../lookups.mjs'
+import { remapCorp, remapShipVia, remapUom, remapVendor, remapMasterUuid } from '../lookups.mjs'
 import { replaceChildren, upsertByUuid } from '../upsert.mjs'
 import { asBool, asDate, asNum, asStr, log, stringifyJson, uuidStr } from '../utils.mjs'
 
@@ -101,6 +101,9 @@ export async function runPhase5ChangeOrders(ctx) {
 
   const inCo = parentUuids.length ? `where change_order_uuid::text in (${parentUuids.map((u) => `'${u}'`).join(',')})` : (ctx.corpFilter ? 'where false' : '')
 
+  const headerCorpByUuid = new Map(
+    headers.map((h) => [uuidStr(h.uuid), remapCorp(lookups, h.corporation_uuid)]).filter(([u, c]) => u && c),
+  )
   const items = await pgQuery(pg, `select * from public.change_order_items_list ${inCo}`)
   await upsertByUuid(mssql, {
     table: 'change_order_items_list',
@@ -108,7 +111,7 @@ export async function runPhase5ChangeOrders(ctx) {
     dryRun,
     rows: items.map((r) => ({
       uuid: uuidStr(r.uuid),
-      corporation_uuid: remapCorp(lookups, r.corporation_uuid),
+      corporation_uuid: remapCorp(lookups, r.corporation_uuid) || headerCorpByUuid.get(uuidStr(r.change_order_uuid)) || null,
       project_uuid: uuidStr(r.project_uuid),
       change_order_uuid: uuidStr(r.change_order_uuid),
       order_index: asNum(r.order_index) != null ? Math.trunc(asNum(r.order_index)) : 0,
@@ -153,14 +156,13 @@ export async function runPhase5ChangeOrders(ctx) {
   const itemParents = []
   for (const r of items) {
     const uuid = uuidStr(r.uuid)
-    const corp = remapCorp(lookups, r.corporation_uuid) || ''
     if (!uuid) continue
     itemParents.push(uuid)
-    appr.push(...approvalCheckJunctionRows(r.approval_checks_uuids, corp, uuid, 'change_order_item_uuid', lookups))
-    rcpt.push(...receiptNoteJunctionRows(r.receipt_note_uuids, corp, uuid, 'change_order_item_uuid'))
+    appr.push(...approvalCheckJunctionRows(r.approval_checks_uuids, '', uuid, 'change_order_item_uuid', lookups))
+    rcpt.push(...receiptNoteJunctionRows(r.receipt_note_uuids, '', uuid, 'change_order_item_uuid'))
   }
-  await replaceChildren(mssql, { table: 'co_item_approval_checks', parentCol: 'change_order_item_uuid', parentUuids: itemParents, columns: ['corporation_uuid', 'change_order_item_uuid', 'approval_check_uuid'], rows: appr, dryRun })
-  await replaceChildren(mssql, { table: 'co_item_receipt_notes', parentCol: 'change_order_item_uuid', parentUuids: itemParents, columns: ['corporation_uuid', 'change_order_item_uuid', 'receipt_note_uuid'], rows: rcpt, dryRun })
+  await replaceChildren(mssql, { table: 'co_item_approval_checks', parentCol: 'change_order_item_uuid', parentUuids: itemParents, columns: ['change_order_item_uuid', 'approval_check_uuid'], rows: appr, dryRun })
+  await replaceChildren(mssql, { table: 'co_item_receipt_notes', parentCol: 'change_order_item_uuid', parentUuids: itemParents, columns: ['change_order_item_uuid', 'receipt_note_uuid'], rows: rcpt, dryRun })
 
   try {
     const labor = await pgQuery(pg, `select * from public.labor_change_order_items_list ${inCo}`)

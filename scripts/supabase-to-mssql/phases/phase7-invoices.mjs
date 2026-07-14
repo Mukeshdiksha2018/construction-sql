@@ -264,7 +264,7 @@ export async function runPhase7VendorInvoices(ctx) {
       table: 'labor_invoice_approval_checks',
       parentCol: 'labor_invoice_item_uuid',
       parentUuids: parents,
-      columns: ['corporation_uuid', 'labor_invoice_item_uuid', 'approval_check_uuid'],
+      columns: ['labor_invoice_item_uuid', 'approval_check_uuid'],
       rows: appr,
       dryRun,
     })

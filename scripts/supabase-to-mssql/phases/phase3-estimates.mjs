@@ -76,6 +76,7 @@ export async function runPhase3Estimates(ctx) {
 
   const estList = parentUuids.length ? `where estimate_uuid::text in (${parentUuids.map((u) => `'${u}'`).join(',')})` : (ctx.corpFilter ? 'where false' : '')
 
+  const lineItemCostCodeByUuid = new Map()
   {
     const rows = await pgQuery(pg, `
       select uuid::text as uuid, corporation_uuid::text as corporation_uuid,
@@ -90,32 +91,37 @@ export async function runPhase3Estimates(ctx) {
       table: 'estimate_line_items',
       columns: ['uuid', 'corporation_uuid', 'project_uuid', 'estimate_uuid', 'cost_code_uuid', 'cost_code_number', 'cost_code_name', 'division_name', 'description', 'is_sub_cost_code', 'labor_estimation_type', 'labor_amount', 'labor_amount_per_room', 'labor_rooms_count', 'labor_amount_per_sqft', 'labor_sq_ft_count', 'labor_number_of_hours', 'labor_hourly_wage', 'material_amount', 'contingency_amount', 'total_amount', 'metadata', 'created_at', 'updated_at'],
       dryRun,
-      rows: rows.map((r) => ({
-        uuid: uuidStr(r.uuid),
-        corporation_uuid: remapCorp(lookups, r.corporation_uuid),
-        project_uuid: uuidStr(r.project_uuid),
-        estimate_uuid: uuidStr(r.estimate_uuid),
-        cost_code_uuid: remapMasterUuid(lookups, r.cost_code_uuid),
-        cost_code_number: asStr(r.cost_code_number, 100),
-        cost_code_name: asStr(r.cost_code_name, 255),
-        division_name: asStr(r.division_name, 255),
-        description: asStr(r.description),
-        is_sub_cost_code: asBool(r.is_sub_cost_code, false),
-        labor_estimation_type: asStr(r.labor_estimation_type, 50),
-        labor_amount: asNum(r.labor_amount) ?? 0,
-        labor_amount_per_room: asNum(r.labor_amount_per_room) ?? 0,
-        labor_rooms_count: asNum(r.labor_rooms_count) != null ? Math.trunc(asNum(r.labor_rooms_count)) : 0,
-        labor_amount_per_sqft: asNum(r.labor_amount_per_sqft) ?? 0,
-        labor_sq_ft_count: asNum(r.labor_sq_ft_count) != null ? Math.trunc(asNum(r.labor_sq_ft_count)) : 0,
-        labor_number_of_hours: asNum(r.labor_number_of_hours) ?? 0,
-        labor_hourly_wage: asNum(r.labor_hourly_wage) ?? 0,
-        material_amount: asNum(r.material_amount) ?? 0,
-        contingency_amount: asNum(r.contingency_amount) ?? 0,
-        total_amount: asNum(r.total_amount) ?? 0,
-        metadata: stringifyJson(r.metadata),
-        created_at: asDate(r.created_at),
-        updated_at: asDate(r.updated_at) || new Date(),
-      })),
+      rows: rows.map((r) => {
+        const uuid = uuidStr(r.uuid)
+        const cost_code_uuid = remapMasterUuid(lookups, r.cost_code_uuid)
+        if (uuid && cost_code_uuid) lineItemCostCodeByUuid.set(uuid, cost_code_uuid)
+        return {
+          uuid,
+          corporation_uuid: remapCorp(lookups, r.corporation_uuid),
+          project_uuid: uuidStr(r.project_uuid),
+          estimate_uuid: uuidStr(r.estimate_uuid),
+          cost_code_uuid,
+          cost_code_number: asStr(r.cost_code_number, 100),
+          cost_code_name: asStr(r.cost_code_name, 255),
+          division_name: asStr(r.division_name, 255),
+          description: asStr(r.description),
+          is_sub_cost_code: asBool(r.is_sub_cost_code, false),
+          labor_estimation_type: asStr(r.labor_estimation_type, 50),
+          labor_amount: asNum(r.labor_amount) ?? 0,
+          labor_amount_per_room: asNum(r.labor_amount_per_room) ?? 0,
+          labor_rooms_count: asNum(r.labor_rooms_count) != null ? Math.trunc(asNum(r.labor_rooms_count)) : 0,
+          labor_amount_per_sqft: asNum(r.labor_amount_per_sqft) ?? 0,
+          labor_sq_ft_count: asNum(r.labor_sq_ft_count) != null ? Math.trunc(asNum(r.labor_sq_ft_count)) : 0,
+          labor_number_of_hours: asNum(r.labor_number_of_hours) ?? 0,
+          labor_hourly_wage: asNum(r.labor_hourly_wage) ?? 0,
+          material_amount: asNum(r.material_amount) ?? 0,
+          contingency_amount: asNum(r.contingency_amount) ?? 0,
+          total_amount: asNum(r.total_amount) ?? 0,
+          metadata: stringifyJson(r.metadata),
+          created_at: asDate(r.created_at),
+          updated_at: asDate(r.updated_at) || new Date(),
+        }
+      }),
     })
   }
 
@@ -172,32 +178,43 @@ export async function runPhase3Estimates(ctx) {
       const rows = await pgQuery(pg, `
         select uuid::text as uuid, corporation_uuid::text as corporation_uuid,
                project_uuid::text as project_uuid, estimate_uuid::text as estimate_uuid,
+               cost_code_uuid::text as cost_code_uuid,
                estimate_line_item_uuid::text as estimate_line_item_uuid,
                location_uuid::text as location_uuid, ${extra}, created_at, updated_at
         from public.${src} ${estList}`)
-      const cols = Object.keys(rows[0] || { uuid: 1, corporation_uuid: 1, project_uuid: 1, estimate_uuid: 1, estimate_line_item_uuid: 1, location_uuid: 1, created_at: 1, updated_at: 1 }).filter((k) => k !== 'id')
+      const mapped = []
+      let skippedNullCc = 0
+      for (const r of rows) {
+        const lineUuid = uuidStr(r.estimate_line_item_uuid)
+        const cost_code_uuid = remapMasterUuid(lookups, r.cost_code_uuid)
+          || (lineUuid ? lineItemCostCodeByUuid.get(lineUuid) : null)
+        if (!cost_code_uuid) {
+          skippedNullCc += 1
+          continue
+        }
+        const out = {
+          uuid: uuidStr(r.uuid),
+          corporation_uuid: remapCorp(lookups, r.corporation_uuid),
+          project_uuid: uuidStr(r.project_uuid),
+          estimate_uuid: uuidStr(r.estimate_uuid),
+          cost_code_uuid,
+          estimate_line_item_uuid: lineUuid,
+          location_uuid: remapMasterUuid(lookups, r.location_uuid),
+          created_at: asDate(r.created_at),
+          updated_at: asDate(r.updated_at) || new Date(),
+        }
+        for (const c of extra.split(',').map((s) => s.trim())) {
+          out[c] = asNum(r[c])
+          if (c === 'sequence' || c === 'no_of_rooms') out[c] = asNum(r[c]) != null ? Math.trunc(asNum(r[c])) : (c === 'sequence' ? 1 : null)
+        }
+        mapped.push(out)
+      }
+      if (skippedNullCc) log(`${src}: skipped ${skippedNullCc} rows without cost_code_uuid`)
       await upsertByUuid(mssql, {
         table: dest,
-        columns: [...new Set(['uuid', 'corporation_uuid', 'project_uuid', 'estimate_uuid', 'estimate_line_item_uuid', 'location_uuid', ...extra.split(',').map((s) => s.trim()), 'created_at', 'updated_at'])],
+        columns: ['uuid', 'corporation_uuid', 'project_uuid', 'estimate_uuid', 'cost_code_uuid', 'estimate_line_item_uuid', 'location_uuid', ...extra.split(',').map((s) => s.trim()), 'created_at', 'updated_at'],
         dryRun,
-        rows: rows.map((r) => {
-          const out = {
-            uuid: uuidStr(r.uuid),
-            corporation_uuid: remapCorp(lookups, r.corporation_uuid),
-            project_uuid: uuidStr(r.project_uuid),
-            estimate_uuid: uuidStr(r.estimate_uuid),
-            estimate_line_item_uuid: uuidStr(r.estimate_line_item_uuid),
-            location_uuid: remapMasterUuid(lookups, r.location_uuid),
-            created_at: asDate(r.created_at),
-            updated_at: asDate(r.updated_at) || new Date(),
-          }
-          for (const c of extra.split(',').map((s) => s.trim())) {
-            out[c] = typeof r[c] === 'number' || r[c] == null ? asNum(r[c]) : asNum(r[c])
-            if (c === 'sequence' || c === 'no_of_rooms') out[c] = asNum(r[c]) != null ? Math.trunc(asNum(r[c])) : (c === 'sequence' ? 1 : null)
-          }
-          void cols
-          return out
-        }),
+        rows: mapped,
       })
     }
     catch (e) {
