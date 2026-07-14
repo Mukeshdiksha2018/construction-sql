@@ -72,6 +72,11 @@ async function fetchAll(base, key, table, select, filterQs = []) {
     })
     if (!res.ok) {
       const body = await res.text()
+      // Column mismatch on explicit select — retry once with *
+      if (select !== '*' && res.status === 400 && body.includes('42703')) {
+        warn(`REST ${table}: column missing in select; retrying with select=*`)
+        return fetchAll(base, key, table, '*', filterQs)
+      }
       throw new Error(`REST ${table} HTTP ${res.status}: ${body.slice(0, 300)}`)
     }
     const chunk = await res.json()
@@ -157,21 +162,9 @@ async function restQuerySql(base, key, text) {
   }
   const table = fromM[1]
 
-  let select = '*'
-  const selM = sql.match(/^select\s+(.+?)\s+from\s+/i)
-  if (selM && !/^\*$/.test(selM[1].trim()) && !/^count\s*\(/i.test(selM[1].trim())) {
-    const cols = selM[1].split(',').map((part) => {
-      const p = part.trim()
-      const asM = p.match(/^(?:\w+\.)?(\w+)(?:::[\w\s]+)?(?:\s+as\s+(\w+))?$/i)
-      if (!asM) return null
-      return asM[2] || asM[1]
-    })
-    if (cols.every(Boolean)) select = cols.join(',')
-    else {
-      warn(`REST: complex select on ${table}; using select=*`)
-      select = '*'
-    }
-  }
+  // Always select * — source schemas often differ from MS SQL (e.g. no created_by on project_types).
+  // Phase mappers already null-coalesce missing fields.
+  const select = '*'
 
   /** @type {string[]} */
   const filterQs = []

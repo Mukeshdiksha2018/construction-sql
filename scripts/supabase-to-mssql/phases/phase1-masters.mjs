@@ -4,7 +4,7 @@ import { upsertByUuid } from '../upsert.mjs'
 import { asBool, asDate, asNum, asStr, log, uuidStr } from '../utils.mjs'
 
 /**
- * @param {{ pg: import('pg').Pool, mssql: import('mssql').ConnectionPool, lookups: any, dryRun: boolean, corpFilter: null|{localUuids:string[]} }} ctx
+ * @param {{ pg: any, mssql: import('mssql').ConnectionPool, lookups: any, dryRun: boolean, corpFilter: null|{localUuids:string[]} }} ctx
  */
 export async function runPhase1Masters(ctx) {
   const { pg, mssql, lookups, dryRun } = ctx
@@ -12,7 +12,7 @@ export async function runPhase1Masters(ctx) {
 
   // freight
   {
-    const rows = await pgQuery(pg, `select uuid::text as uuid, ship_via, description, active, created_at, updated_at, created_by, updated_by from public.freight`)
+    const rows = await pgQuery(pg, `select * from public.freight`)
     await upsertByUuid(mssql, {
       table: 'freight',
       columns: ['uuid', 'ship_via', 'description', 'active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
@@ -32,7 +32,7 @@ export async function runPhase1Masters(ctx) {
 
   // approval_checks
   {
-    const rows = await pgQuery(pg, `select uuid::text as uuid, approval_check, description, active, created_at, updated_at, created_by, updated_by from public.approval_checks`)
+    const rows = await pgQuery(pg, `select * from public.approval_checks`)
     await upsertByUuid(mssql, {
       table: 'approval_checks',
       columns: ['uuid', 'approval_check', 'description', 'active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
@@ -52,7 +52,7 @@ export async function runPhase1Masters(ctx) {
 
   // location (no corp in MSSQL)
   {
-    const rows = await pgQuery(pg, `select uuid::text as uuid, location_name, location_code, description, active, created_at, updated_at, created_by, updated_by from public.location`)
+    const rows = await pgQuery(pg, `select * from public.location`)
     await upsertByUuid(mssql, {
       table: 'location',
       columns: ['uuid', 'location_name', 'location_code', 'description', 'active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
@@ -73,11 +73,7 @@ export async function runPhase1Masters(ctx) {
 
   // po_instructions
   {
-    const rows = await pgQuery(pg, `
-      select uuid::text as uuid, corporation_uuid::text as corporation_uuid,
-             po_instruction_name, instruction, status, created_at, updated_at, created_by, updated_by
-      from public.po_instructions
-      ${corpWhere(ctx, 'corporation_uuid')}`)
+    const rows = await pgQuery(pg, `select * from public.po_instructions ${corpWhere(ctx, 'corporation_uuid')}`)
     await upsertByUuid(mssql, {
       table: 'po_instructions',
       columns: ['uuid', 'corporation_uuid', 'po_instruction_name', 'instruction', 'status', 'created_at', 'updated_at', 'created_by', 'updated_by'],
@@ -98,7 +94,7 @@ export async function runPhase1Masters(ctx) {
 
   // reasons
   {
-    const rows = await pgQuery(pg, `select uuid::text as uuid, reason, active, created_at, updated_at, created_by, updated_by from public.reasons`)
+    const rows = await pgQuery(pg, `select * from public.reasons`)
     await upsertByUuid(mssql, {
       table: 'reasons',
       columns: ['uuid', 'reason', 'active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
@@ -117,7 +113,7 @@ export async function runPhase1Masters(ctx) {
 
   // project_types
   {
-    const rows = await pgQuery(pg, `select uuid::text as uuid, name, description, color, is_active, created_at, updated_at, created_by, updated_by from public.project_types`)
+    const rows = await pgQuery(pg, `select * from public.project_types`)
     await upsertByUuid(mssql, {
       table: 'project_types',
       columns: ['uuid', 'name', 'description', 'color', 'is_active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
@@ -138,7 +134,7 @@ export async function runPhase1Masters(ctx) {
 
   // service_types
   {
-    const rows = await pgQuery(pg, `select uuid::text as uuid, name, description, color, is_active, created_at, updated_at, created_by, updated_by from public.service_types`)
+    const rows = await pgQuery(pg, `select * from public.service_types`)
     await upsertByUuid(mssql, {
       table: 'service_types',
       columns: ['uuid', 'name', 'description', 'color', 'is_active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
@@ -159,7 +155,7 @@ export async function runPhase1Masters(ctx) {
 
   // terms_and_conditions
   {
-    const rows = await pgQuery(pg, `select uuid::text as uuid, name, content, is_active, created_at, updated_at, created_by, updated_by from public.terms_and_conditions`)
+    const rows = await pgQuery(pg, `select * from public.terms_and_conditions`)
     await upsertByUuid(mssql, {
       table: 'terms_and_conditions',
       columns: ['uuid', 'name', 'content', 'is_active', 'created_at', 'updated_at', 'created_by', 'updated_by'],
@@ -179,12 +175,7 @@ export async function runPhase1Masters(ctx) {
 
   // cost_code_divisions
   {
-    const rows = await pgQuery(pg, `
-      select uuid::text as uuid, corporation_uuid::text as corporation_uuid,
-             division_number, division_name, division_order, description, is_active,
-             exclude_in_estimates_and_reports, created_at, updated_at
-      from public.cost_code_divisions
-      ${corpWhere(ctx, 'corporation_uuid')}`)
+    const rows = await pgQuery(pg, `select * from public.cost_code_divisions ${corpWhere(ctx, 'corporation_uuid')}`)
     await upsertByUuid(mssql, {
       table: 'cost_code_divisions',
       columns: ['uuid', 'corporation_uuid', 'division_number', 'division_name', 'division_order', 'description', 'is_active', 'exclude_in_estimates_and_reports', 'created_at', 'updated_at'],
@@ -206,14 +197,7 @@ export async function runPhase1Masters(ctx) {
 
   // cost_code_configurations
   {
-    const rows = await pgQuery(pg, `
-      select uuid::text as uuid, corporation_uuid::text as corporation_uuid,
-             division_uuid::text as division_uuid, cost_code_number, cost_code_name,
-             parent_cost_code_uuid::text as parent_cost_code_uuid, order_number,
-             gl_account_uuid::text as gl_account_uuid, effective_from, description,
-             update_previous_transactions, is_active, created_at, updated_at
-      from public.cost_code_configurations
-      ${corpWhere(ctx, 'corporation_uuid')}`)
+    const rows = await pgQuery(pg, `select * from public.cost_code_configurations ${corpWhere(ctx, 'corporation_uuid')}`)
     await upsertByUuid(mssql, {
       table: 'cost_code_configurations',
       columns: ['uuid', 'corporation_uuid', 'division_uuid', 'cost_code_number', 'cost_code_name', 'parent_cost_code_uuid', 'order_number', 'gl_account_uuid', 'effective_from', 'description', 'update_previous_transactions', 'is_active', 'created_at', 'updated_at'],
@@ -239,12 +223,7 @@ export async function runPhase1Masters(ctx) {
 
   // item_types
   {
-    const rows = await pgQuery(pg, `
-      select uuid::text as uuid, corporation_uuid::text as corporation_uuid,
-             category, spec_type, item_division_uuid::text as item_division_uuid,
-             item_type, description, is_active, created_at, updated_at
-      from public.item_types
-      ${corpWhereNullable(ctx, 'corporation_uuid')}`)
+    const rows = await pgQuery(pg, `select * from public.item_types ${corpWhereNullable(ctx, 'corporation_uuid')}`)
     await upsertByUuid(mssql, {
       table: 'item_types',
       columns: ['uuid', 'corporation_uuid', 'category', 'spec_type', 'item_division_uuid', 'item_type', 'description', 'is_active', 'created_at', 'updated_at'],
@@ -266,18 +245,7 @@ export async function runPhase1Masters(ctx) {
 
   // cost_code_preferred_items
   {
-    const rows = await pgQuery(pg, `
-      select uuid::text as uuid, corporation_uuid::text as corporation_uuid,
-             project_uuid::text as project_uuid,
-             cost_code_configuration_uuid::text as cost_code_configuration_uuid,
-             item_type_uuid::text as item_type_uuid, category, item_name, item_sequence,
-             model_number, unit_price, uom_uuid::text as uom_uuid,
-             location_uuid::text as location_uuid,
-             preferred_vendor_uuid::text as preferred_vendor_uuid,
-             initial_quantity, as_of_date, reorder_point, maximum_limit,
-             description, status, is_active, created_at, updated_at
-      from public.cost_code_preferred_items
-      ${corpWhere(ctx, 'corporation_uuid')}`)
+    const rows = await pgQuery(pg, `select * from public.cost_code_preferred_items ${corpWhere(ctx, 'corporation_uuid')}`)
     await upsertByUuid(mssql, {
       table: 'cost_code_preferred_items',
       columns: ['uuid', 'corporation_uuid', 'project_uuid', 'cost_code_configuration_uuid', 'item_type_uuid', 'category', 'item_name', 'item_sequence', 'model_number', 'unit_price', 'uom_uuid', 'location_uuid', 'preferred_vendor_uuid', 'initial_quantity', 'as_of_date', 'reorder_point', 'maximum_limit', 'description', 'status', 'is_active', 'created_at', 'updated_at'],
@@ -311,14 +279,7 @@ export async function runPhase1Masters(ctx) {
 
   // customers
   {
-    const rows = await pgQuery(pg, `
-      select uuid::text as uuid, corporation_uuid::text as corporation_uuid,
-             project_uuid::text as project_uuid, customer_address, customer_city, customer_state,
-             customer_country, customer_zip, customer_phone, customer_email, company_name,
-             salutation, first_name, middle_name, last_name, profile_image_url, is_active,
-             nimble_customer_id, created_at, updated_at, created_by, updated_by
-      from public.customers
-      ${corpWhere(ctx, 'corporation_uuid')}`)
+    const rows = await pgQuery(pg, `select * from public.customers ${corpWhere(ctx, 'corporation_uuid')}`)
     await upsertByUuid(mssql, {
       table: 'customers',
       columns: ['uuid', 'corporation_uuid', 'project_uuid', 'customer_address', 'customer_city', 'customer_state', 'customer_country', 'customer_zip', 'customer_phone', 'customer_email', 'company_name', 'salutation', 'first_name', 'middle_name', 'last_name', 'profile_image_url', 'is_active', 'nimble_customer_id', 'created_at', 'updated_at', 'created_by', 'updated_by'],
