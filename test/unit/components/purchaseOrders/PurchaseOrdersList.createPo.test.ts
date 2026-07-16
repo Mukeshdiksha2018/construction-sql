@@ -21,8 +21,14 @@ vi.mock('~/composables/useProjectItemsSummary', () => ({
 
 const capturedItemsTables: Array<Record<string, unknown>> = []
 
+const purchaseOrderFormStub = vi.hoisted(() => ({
+  name: 'PurchaseOrderForm',
+  template: '<div />',
+  props: ['form', 'loading', 'readonly', 'allowRevise'],
+}))
+
 vi.mock('~/components/purchaseOrders/PurchaseOrderForm.vue', () => ({
-  default: { name: 'PurchaseOrderForm', template: '<div />', props: ['form'] },
+  default: purchaseOrderFormStub,
 }))
 
 vi.mock('~/components/purchaseOrders/POBreakdown.vue', () => ({
@@ -242,7 +248,14 @@ describe('PurchaseOrdersList Create PO screen', () => {
 
   async function mountList() {
     const component = (await import('~/components/purchaseOrders/PurchaseOrdersList.vue')).default
-    return mount(component, { global: { stubs: uiStubs } })
+    return mount(component, {
+      global: {
+        stubs: {
+          ...uiStubs,
+          PurchaseOrderForm: purchaseOrderFormStub,
+        },
+      },
+    })
   }
 
   async function openCreatePoScreen(vm: any) {

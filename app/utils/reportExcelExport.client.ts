@@ -155,5 +155,7 @@ export async function downloadReportExcelFile(
   if (typeof document === 'undefined' || tableRows.length === 0) return
 
   const { data, columns } = buildReportExcelSheetData(metadata, tableRows)
+  // Lazy-load excel writer so report pages don't pay for it until export
+  const { default: writeXlsxFile } = await import('write-excel-file/browser')
   await writeXlsxFile(data, { columns }).toFile(filename)
 }
