@@ -11,7 +11,7 @@ export type ConfigurationsTabName =
   | 'terms-and-conditions'
   | 'special-instructions'
 export type PurchaseOrdersTabName = 'purchase-orders' | 'stock-receipt-note'
-export type PayablesTabName = 'vendor-invoices' | 'bill-entry-payment' | 'print-checks'
+export type PayablesTabName = 'vendor-invoices' | 'print-checks'
 export type CorporationTabName =
   | 'manage-corporation'
   | 'profit-center'
@@ -92,12 +92,6 @@ export const PAYABLES_TABS: TabConfig[] = [
     label: 'Vendor Invoices',
     icon: 'i-heroicons-document-text',
     value: 'vendor-invoices',
-  },
-  {
-    name: 'bill-entry-payment',
-    label: 'Bill Entry & Payment',
-    icon: 'i-heroicons-document-plus',
-    value: 'bill-entry-payment',
   },
   {
     name: 'print-checks',

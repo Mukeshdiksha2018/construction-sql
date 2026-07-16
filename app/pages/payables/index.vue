@@ -3,7 +3,6 @@
     <ClientOnly>
       <section v-if="nimbleIntegrations && visibleTabs.length === 1">
         <VendorInvoicesList v-if="activeTab === 'vendor-invoices'" />
-        <PayablesBillEntry v-else-if="activeTab === 'bill-entry-payment'" />
         <PayablesPrintChecks v-else-if="activeTab === 'print-checks'" />
       </section>
       <UTabs
@@ -21,9 +20,6 @@
         <template #content="{ item }">
           <section v-if="item.label === 'Vendor Invoices'">
             <VendorInvoicesList />
-          </section>
-          <section v-else-if="item.label === 'Bill Entry & Payment'">
-            <PayablesBillEntry />
           </section>
           <section v-else-if="item.label === 'Print Checks'">
             <PayablesPrintChecks />
@@ -47,7 +43,6 @@
 
 <script setup lang="ts">
 import type { TabsItem } from "@nuxt/ui";
-import PayablesBillEntry from '~/components/payables/BillEntry.vue'
 import PayablesPrintChecks from '~/components/payables/PrintChecks.vue'
 import VendorInvoicesList from '~/components/payables/VendorInvoicesList.vue'
 import { useTabRouting, PAYABLES_TABS, type PayablesTabName } from "~/composables/useTabRouting";
