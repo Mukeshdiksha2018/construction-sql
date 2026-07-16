@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3'
 import { getPrisma } from '../prisma'
-import { APPROVED_PO_CO_STATUSES, parseJson, toNum } from './reportHelpers'
+import { APPROVED_PO_CO_STATUSES, toNum } from './reportHelpers'
 import { fetchNimbleVendorNamesForUuids } from './nimbleVendorsForReport'
 import { normalizePoCurrencyConversionFields } from '../../../app/utils/poCurrencyConversion'
 import {
@@ -17,43 +17,48 @@ import {
   appendInvoiceToTaxBucket,
   buildTaxRoundingNotesForVendor,
   createInvoiceTaxBucketMap,
-  parseFinancialBreakdown,
   resolveTaxFromFinancialBreakdown,
 } from '../vendorApSummaryTaxRounding'
+import {
+  assembleFinancialBreakdownMap,
+  type FinancialBreakdownShape,
+} from '../normalizedChildren'
 
 const prisma = getPrisma()
 
 function parseInvoiceFinancialAmount(invoice: {
   amount?: unknown
-  financial_breakdown?: unknown
+  financial_breakdown?: FinancialBreakdownShape | null
 }): number {
-  const breakdown = parseFinancialBreakdown(invoice.financial_breakdown)
-  const totals = (breakdown?.totals || {}) as Record<string, unknown>
+  const totals = (invoice.financial_breakdown?.totals || {}) as Record<string, unknown>
   const raw =
     totals.total_invoice_amount ?? totals.totalInvoiceAmount ?? invoice.amount ?? 0
   return parseFloat(String(raw)) || 0
 }
 
 function extractContractAmountFromBreakdown(
-  financialBreakdown: unknown,
+  financialBreakdown: FinancialBreakdownShape | null | undefined,
   kind: 'po' | 'co',
+  fallbackAmount?: unknown,
 ): number {
-  const breakdown = parseFinancialBreakdown(financialBreakdown)
-  const totals = breakdown?.totals || {}
+  const totals = financialBreakdown?.totals || {}
   const raw =
     kind === 'po'
-      ? totals.total_po_amount ?? totals.totalAmount ?? totals.total
-      : totals.total_co_amount ?? totals.totalAmount ?? totals.total
+      ? totals.total_po_amount ?? totals.totalAmount ?? totals.total ?? fallbackAmount
+      : totals.total_co_amount ?? totals.totalAmount ?? totals.total ?? fallbackAmount
   return parseFloat(String(raw ?? 0)) || 0
 }
 
 function buildContractCurrencySource(
   record: Record<string, unknown>,
   kind: 'po' | 'co',
+  financialBreakdown: FinancialBreakdownShape | null | undefined,
 ) {
   const currency = normalizePoCurrencyConversionFields(record)
+  const fallback =
+    kind === 'po' ? record.total_po_amount : record.total_co_amount
   return {
-    amount: extractContractAmountFromBreakdown(record.financial_breakdown, kind),
+    amount: extractContractAmountFromBreakdown(financialBreakdown, kind, fallback),
     currency_conversion_enabled: currency.currency_conversion_enabled,
     currency_from: currency.currency_from,
     currency_to: currency.currency_to,
@@ -98,7 +103,10 @@ export async function getVendorAccountsPayableSummary(
         uuid: true,
         vendor_uuid: true,
         po_number: true,
-        financial_breakdown: true,
+        item_total: true,
+        charges_total: true,
+        tax_total: true,
+        total_po_amount: true,
         currency_conversion_enabled: true,
         currency_from: true,
         currency_to: true,
@@ -116,7 +124,6 @@ export async function getVendorAccountsPayableSummary(
         uuid: true,
         vendor_uuid: true,
         co_number: true,
-        financial_breakdown: true,
         currency_conversion_enabled: true,
         currency_from: true,
         currency_to: true,
@@ -140,10 +147,67 @@ export async function getVendorAccountsPayableSummary(
         status: true,
         amount: true,
         holdback: true,
-        financial_breakdown: true,
       },
     }),
   ])
+
+  const poUuids = purchaseOrders.map((r) => r.uuid)
+  const coUuids = changeOrders.map((r) => r.uuid)
+  const invoiceUuids = invoices.map((r) => r.uuid)
+
+  const [poChargeRows, poTaxRows, coChargeRows, coTaxRows, viChargeRows, viTaxRows] =
+    await Promise.all([
+      poUuids.length
+        ? prisma.poFinancialCharge.findMany({ where: { purchase_order_uuid: { in: poUuids } } })
+        : Promise.resolve([]),
+      poUuids.length
+        ? prisma.poFinancialTax.findMany({ where: { purchase_order_uuid: { in: poUuids } } })
+        : Promise.resolve([]),
+      coUuids.length
+        ? prisma.coFinancialCharge.findMany({ where: { change_order_uuid: { in: coUuids } } })
+        : Promise.resolve([]),
+      coUuids.length
+        ? prisma.coFinancialTax.findMany({ where: { change_order_uuid: { in: coUuids } } })
+        : Promise.resolve([]),
+      invoiceUuids.length
+        ? prisma.viFinancialCharge.findMany({ where: { vendor_invoice_uuid: { in: invoiceUuids } } })
+        : Promise.resolve([]),
+      invoiceUuids.length
+        ? prisma.viFinancialTax.findMany({ where: { vendor_invoice_uuid: { in: invoiceUuids } } })
+        : Promise.resolve([]),
+    ])
+
+  const poHeaderTotals = new Map(
+    purchaseOrders.map((r) => [
+      r.uuid,
+      {
+        item_total: r.item_total,
+        charges_total: r.charges_total,
+        tax_total: r.tax_total,
+        total_po_amount: r.total_po_amount,
+      },
+    ]),
+  )
+  const poFbByUuid = assembleFinancialBreakdownMap(
+    poChargeRows,
+    poTaxRows,
+    'purchase_order_uuid',
+    poHeaderTotals,
+  )
+  const coFbByUuid = assembleFinancialBreakdownMap(
+    coChargeRows,
+    coTaxRows,
+    'change_order_uuid',
+  )
+  const viHeaderTotals = new Map(
+    invoices.map((r) => [r.uuid, { total_invoice_amount: r.amount }]),
+  )
+  const viFbByUuid = assembleFinancialBreakdownMap(
+    viChargeRows,
+    viTaxRows,
+    'vendor_invoice_uuid',
+    viHeaderTotals,
+  )
 
   const eligibleInvoices = invoices.filter((invoice) =>
     isReportEligibleVendorInvoiceStatus(invoice.status),
@@ -223,17 +287,17 @@ export async function getVendorAccountsPayableSummary(
   for (const po of purchaseOrders) {
     const poUuid = String(po.uuid || '').trim()
     if (!poUuid) continue
-    const breakdown = parseFinancialBreakdown(po.financial_breakdown)
+    const breakdown = poFbByUuid.get(poUuid) ?? null
     poTaxByUuid.set(poUuid, {
       documentNumber: po.po_number ?? null,
       vendorUuid: po.vendor_uuid ?? null,
-      tax: resolveTaxFromFinancialBreakdown(breakdown),
+      tax: resolveTaxFromFinancialBreakdown(breakdown ?? {}),
     })
     if (po.vendor_uuid) {
       const vendorData = ensureVendorData(po.vendor_uuid)
       if (vendorData) {
         vendorData._poSources.push(
-          buildContractCurrencySource(po as unknown as Record<string, unknown>, 'po'),
+          buildContractCurrencySource(po as unknown as Record<string, unknown>, 'po', breakdown),
         )
       }
     }
@@ -242,17 +306,17 @@ export async function getVendorAccountsPayableSummary(
   for (const co of changeOrders) {
     const coUuid = String(co.uuid || '').trim()
     if (!coUuid) continue
-    const breakdown = parseFinancialBreakdown(co.financial_breakdown)
+    const breakdown = coFbByUuid.get(coUuid) ?? null
     coTaxByUuid.set(coUuid, {
       documentNumber: co.co_number ?? null,
       vendorUuid: co.vendor_uuid ?? null,
-      tax: resolveTaxFromFinancialBreakdown(breakdown),
+      tax: resolveTaxFromFinancialBreakdown(breakdown ?? {}),
     })
     if (co.vendor_uuid) {
       const vendorData = ensureVendorData(co.vendor_uuid)
       if (vendorData) {
         vendorData._coSources.push(
-          buildContractCurrencySource(co as unknown as Record<string, unknown>, 'co'),
+          buildContractCurrencySource(co as unknown as Record<string, unknown>, 'co', breakdown),
         )
       }
     }
@@ -263,9 +327,12 @@ export async function getVendorAccountsPayableSummary(
     const vendorData = ensureVendorData(invoice.vendor_uuid)
     if (!vendorData) continue
 
-    const financialBreakdown = parseFinancialBreakdown(invoice.financial_breakdown)
-    const invoiceAmount = parseInvoiceFinancialAmount(invoice)
-    const taxBreakdown = resolveTaxFromFinancialBreakdown(financialBreakdown)
+    const financialBreakdown = viFbByUuid.get(invoice.uuid) ?? null
+    const invoiceAmount = parseInvoiceFinancialAmount({
+      amount: invoice.amount,
+      financial_breakdown: financialBreakdown,
+    })
+    const taxBreakdown = resolveTaxFromFinancialBreakdown(financialBreakdown ?? {})
     const taxAmount = taxBreakdown.taxAmount
     const itemTotal = taxBreakdown.itemTotal
     const chargesTotal = taxBreakdown.chargesTotal
@@ -316,7 +383,10 @@ export async function getVendorAccountsPayableSummary(
 
     let paidAmount = 0
     if (isFullyPaidInvoiceStatus(invoice.status)) {
-      paidAmount = parseInvoiceFinancialAmount(invoice)
+      paidAmount = parseInvoiceFinancialAmount({
+        amount: invoice.amount,
+        financial_breakdown: viFbByUuid.get(invoice.uuid) ?? null,
+      })
     }
     vendorData.paidToDate += paidAmount
   }

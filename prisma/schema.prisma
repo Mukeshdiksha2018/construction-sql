@@ -243,6 +243,7 @@ model ProjectDocument {
   updated_at    DateTime @updatedAt @db.DateTime2
 
   project Project @relation(fields: [project_uuid], references: [uuid], onDelete: Cascade)
+  tagRows ProjectDocumentTag[]
 
   @@index([project_uuid])
   @@index([is_active])
@@ -367,9 +368,6 @@ model Estimate {
   discount_amount         Decimal   @default(0) @db.Decimal(18, 2)
   final_amount            Decimal   @default(0) @db.Decimal(18, 2)
   notes                   String?   @db.NVarChar(Max)
-  attachments             String?   @db.NVarChar(Max)
-  removed_cost_code_uuids String?   @db.NVarChar(Max)
-  audit_log               String?   @db.NVarChar(Max)
   created_by              String?   @db.NVarChar(128)
   approved_by             String?   @db.NVarChar(128)
   approved_at                 DateTime? @db.DateTime2
@@ -379,6 +377,9 @@ model Estimate {
   updated_at                  DateTime  @updatedAt @db.DateTime2
 
   lineItems             EstimateLineItem[]
+  documentAttachments   EstimateAttachment[]
+  auditEvents           EstimateAuditEvent[]
+  removedCostCodes      EstimateRemovedCostCode[]
 
   @@index([corporation_uuid])
   @@index([project_uuid])
@@ -540,10 +541,6 @@ model PurchaseOrderForm {
   billing_address_uuid              String?   @db.NVarChar(36)
   shipping_address_uuid             String?   @db.NVarChar(36)
   status                            String    @default("Draft") @db.NVarChar(50)
-  financial_breakdown               String?   @db.NVarChar(Max)
-  attachments                       String?   @db.NVarChar(Max)
-  removed_po_items                  String?   @db.NVarChar(Max)
-  audit_log                         String?   @db.NVarChar(Max)
   prepared_by                       String?   @db.NVarChar(255)
   approved_by                       String?   @db.NVarChar(255)
   approved_at                       DateTime? @db.DateTime2
@@ -566,6 +563,11 @@ model PurchaseOrderForm {
   returnNotes          StockReturnNote[]
   changeOrders         ChangeOrder[]
   vendorInvoices       VendorInvoice[]
+  financialCharges     PoFinancialCharge[]
+  financialTaxes       PoFinancialTax[]
+  removedItems         PoRemovedItem[]
+  documentAttachments  PoAttachment[]
+  auditEvents          PoAuditEvent[]
 
   @@index([corporation_uuid])
   @@index([project_uuid])
@@ -612,15 +614,20 @@ model PurchaseOrderItem {
   receipt_note_uuids    String?  @db.NVarChar(Max)
   configuration_name    String?  @db.NVarChar(255)
   metadata              String?  @db.NVarChar(Max)
+  is_removed            Boolean  @default(false)
+  removed_at            DateTime? @db.DateTime2
   is_active             Boolean  @default(true)
   created_at            DateTime @default(now()) @db.DateTime2
   updated_at            DateTime @updatedAt @db.DateTime2
 
-  purchaseOrder PurchaseOrderForm @relation(fields: [purchase_order_uuid], references: [uuid], onDelete: Cascade)
+  purchaseOrder  PurchaseOrderForm     @relation(fields: [purchase_order_uuid], references: [uuid], onDelete: Cascade)
+  approvalChecks PoItemApprovalCheck[]
+  receiptNotes   PoItemReceiptNote[]
 
   @@index([purchase_order_uuid])
   @@index([corporation_uuid])
   @@index([project_uuid])
+  @@index([purchase_order_uuid, is_removed, order_index])
   @@map("purchase_order_items_list")
 }
 
@@ -639,18 +646,22 @@ model LaborPurchaseOrderItem {
   division_name           String?  @db.NVarChar(255)
   location_uuid           String?  @db.NVarChar(36)
   location_label          String?  @db.NVarChar(255)
-  labor_budgeted_amount   Decimal? @db.Decimal(18, 2)
-  po_amount               Decimal  @default(0) @db.Decimal(18, 2)
-  description             String?  @db.NVarChar(Max)
-  metadata                String?  @db.NVarChar(Max)
-  is_active               Boolean  @default(true)
-  created_at              DateTime @default(now()) @db.DateTime2
-  updated_at              DateTime @updatedAt @db.DateTime2
+  labor_budgeted_amount       Decimal? @db.Decimal(18, 2)
+  po_amount                   Decimal  @default(0) @db.Decimal(18, 2)
+  prior_committed_po_amount   Decimal? @db.Decimal(18, 2)
+  description                 String?  @db.NVarChar(Max)
+  metadata                    String?  @db.NVarChar(Max)
+  is_removed                  Boolean  @default(false)
+  removed_at                  DateTime? @db.DateTime2
+  is_active                   Boolean  @default(true)
+  created_at                  DateTime @default(now()) @db.DateTime2
+  updated_at                  DateTime @updatedAt @db.DateTime2
 
   purchaseOrder PurchaseOrderForm @relation(fields: [purchase_order_uuid], references: [uuid], onDelete: Cascade)
 
   @@index([purchase_order_uuid])
   @@index([corporation_uuid])
+  @@index([purchase_order_uuid, is_removed, order_index])
   @@map("labor_purchase_order_items_list")
 }
 
@@ -673,6 +684,8 @@ model POLocationWiseMaterialItem {
   po_amount                 Decimal  @default(0) @db.Decimal(18, 2)
   description               String?  @db.NVarChar(Max)
   metadata                  String?  @db.NVarChar(Max)
+  is_removed                Boolean  @default(false)
+  removed_at                DateTime? @db.DateTime2
   is_active                 Boolean  @default(true)
   created_at                DateTime @default(now()) @db.DateTime2
   updated_at                DateTime @updatedAt @db.DateTime2
@@ -681,6 +694,7 @@ model POLocationWiseMaterialItem {
 
   @@index([purchase_order_uuid])
   @@index([corporation_uuid])
+  @@index([purchase_order_uuid, is_removed, order_index])
   @@map("po_location_wise_material")
 }
 
@@ -704,9 +718,7 @@ model StockReceiptNote {
   notes                     String?   @db.NVarChar(Max)
   status                    String    @default("Shipment") @db.NVarChar(50)
   total_received_amount     Decimal?  @db.Decimal(18, 2)
-  attachments               String?   @db.NVarChar(Max)
   metadata                  String?   @db.NVarChar(Max)
-  audit_log                 String?   @db.NVarChar(Max)
   is_active                 Boolean   @default(true)
   created_at                DateTime  @default(now()) @db.DateTime2
   updated_at                DateTime  @updatedAt @db.DateTime2
@@ -714,6 +726,10 @@ model StockReceiptNote {
   purchaseOrder PurchaseOrderForm? @relation(fields: [purchase_order_uuid], references: [uuid])
   changeOrder   ChangeOrder?       @relation(fields: [change_order_uuid], references: [uuid], onDelete: NoAction, onUpdate: NoAction)
   items         ReceiptNoteItem[]
+  financialCharges GrnFinancialCharge[]
+  financialTaxes   GrnFinancialTax[]
+  documentAttachments GrnAttachment[]
+  auditEvents   GrnAuditEvent[]
 
   @@index([corporation_uuid])
   @@index([project_uuid])
@@ -789,9 +805,7 @@ model StockReturnNote {
   notes                      String?   @db.NVarChar(Max)
   status                     String    @default("Waiting") @db.NVarChar(50)
   total_return_amount        Decimal?  @db.Decimal(18, 2)
-  attachments                String?   @db.NVarChar(Max)
   metadata                   String?   @db.NVarChar(Max)
-  audit_log                  String?   @db.NVarChar(Max)
   is_active                  Boolean   @default(true)
   created_at                 DateTime  @default(now()) @db.DateTime2
   updated_at                 DateTime  @updatedAt @db.DateTime2
@@ -799,6 +813,10 @@ model StockReturnNote {
   purchaseOrder PurchaseOrderForm? @relation(fields: [purchase_order_uuid], references: [uuid])
   changeOrder   ChangeOrder?       @relation(fields: [change_order_uuid], references: [uuid])
   items         ReturnNoteItem[]
+  financialCharges ReturnFinancialCharge[]
+  financialTaxes   ReturnFinancialTax[]
+  documentAttachments ReturnAttachment[]
+  auditEvents   ReturnAuditEvent[]
 
   @@index([corporation_uuid])
   @@index([project_uuid])
@@ -877,10 +895,6 @@ model ChangeOrder {
   shipping_address_uuid            String?   @db.NVarChar(36)
   terms_and_conditions_uuid        String?   @db.NVarChar(36)
   special_instruction_uuid         String?   @db.NVarChar(36)
-  financial_breakdown              String?   @db.NVarChar(Max)
-  attachments                      String?   @db.NVarChar(Max)
-  removed_co_items                 String?   @db.NVarChar(Max)
-  audit_log                        String?   @db.NVarChar(Max)
   prepared_by                      String?   @db.NVarChar(255)
   status                           String    @default("Draft") @db.NVarChar(50)
   print_include_approved_by_vendor Boolean?
@@ -905,6 +919,11 @@ model ChangeOrder {
   returnNotes          StockReturnNote[]
   vendorInvoices       VendorInvoice[]
   originalPurchaseOrder PurchaseOrderForm? @relation(fields: [original_purchase_order_uuid], references: [uuid], onDelete: NoAction, onUpdate: NoAction)
+  financialCharges     CoFinancialCharge[]
+  financialTaxes       CoFinancialTax[]
+  removedItems         CoRemovedItem[]
+  documentAttachments  CoAttachment[]
+  auditEvents          CoAuditEvent[]
 
   @@index([corporation_uuid])
   @@index([project_uuid])
@@ -953,14 +972,19 @@ model ChangeOrderItem {
   receipt_note_uuids     String?  @db.NVarChar(Max)
   configuration_name     String?  @db.NVarChar(255)
   metadata               String?  @db.NVarChar(Max)
+  is_removed             Boolean  @default(false)
+  removed_at             DateTime? @db.DateTime2
   is_active              Boolean  @default(true)
   created_at             DateTime @default(now()) @db.DateTime2
   updated_at             DateTime @updatedAt @db.DateTime2
 
-  changeOrder ChangeOrder @relation(fields: [change_order_uuid], references: [uuid], onDelete: Cascade)
+  changeOrder    ChangeOrder           @relation(fields: [change_order_uuid], references: [uuid], onDelete: Cascade)
+  approvalChecks CoItemApprovalCheck[]
+  receiptNotes   CoItemReceiptNote[]
 
   @@index([change_order_uuid])
   @@index([corporation_uuid])
+  @@index([change_order_uuid, is_removed, order_index])
   @@map("change_order_items_list")
 }
 
@@ -1043,13 +1067,10 @@ model VendorInvoice {
   credit_days_id                      String?   @db.NVarChar(100)
   amount                              Decimal   @default(0) @db.Decimal(18, 2)
   holdback                            Decimal?  @db.Decimal(5, 2)
-  financial_breakdown                 String?   @db.NVarChar(Max)
-  attachments                         String?   @db.NVarChar(Max)
   status                              String    @default("Draft") @db.NVarChar(50)
   is_active                           Boolean   @default(true)
   adjusted_against_vendor_invoice_uuid String? @db.NVarChar(36)
   adjusted_advance_payment_uuid       String?   @db.NVarChar(36)
-  removed_advance_payment_cost_codes  String?   @db.NVarChar(Max)
   holdback_fully_paid                 Boolean?
   nimble_jeid                         String?   @db.NVarChar(100)
   last_handled_approval_type          Int?      @db.SmallInt
@@ -1070,6 +1091,9 @@ model VendorInvoice {
   adjustedAdvancePaymentCostCodes AdjustedAdvancePaymentCostCode[]
   holdbackCoaBreakdown         VendorInvoiceHoldbackCoaBreakdown[]
   coaAssignments               VendorInvoiceCoaAssignment[]
+  financialCharges             ViFinancialCharge[]
+  financialTaxes               ViFinancialTax[]
+  documentAttachments          ViAttachment[]
 
   @@index([corporation_uuid])
   @@index([project_uuid])
@@ -1287,7 +1311,8 @@ model LaborInvoiceItem {
   created_at          DateTime @default(now()) @db.DateTime2
   updated_at          DateTime @updatedAt @db.DateTime2
 
-  vendorInvoice VendorInvoice @relation(fields: [vendor_invoice_uuid], references: [uuid], onDelete: Cascade)
+  vendorInvoice  VendorInvoice              @relation(fields: [vendor_invoice_uuid], references: [uuid], onDelete: Cascade)
+  approvalChecks LaborInvoiceApprovalCheck[]
 
   @@index([vendor_invoice_uuid])
   @@index([gl_account_uuid])
@@ -1311,6 +1336,8 @@ model AdvancePaymentCostCode {
   total_amount        Decimal? @db.Decimal(18, 2)
   advance_amount      Decimal  @default(0) @db.Decimal(18, 2)
   metadata            String?  @db.NVarChar(Max)
+  is_removed          Boolean  @default(false)
+  removed_at          DateTime? @db.DateTime2
   is_active           Boolean  @default(true)
   created_at          DateTime @default(now()) @db.DateTime2
   updated_at          DateTime @updatedAt @db.DateTime2
@@ -1318,6 +1345,7 @@ model AdvancePaymentCostCode {
   vendorInvoice VendorInvoice @relation(fields: [vendor_invoice_uuid], references: [uuid], onDelete: Cascade)
 
   @@index([vendor_invoice_uuid])
+  @@index([vendor_invoice_uuid, is_removed])
   @@map("advance_payment_cost_codes")
 }
 
@@ -1488,4 +1516,576 @@ model SpecialInstruction {
   @@index([project_uuid])
   @@index([is_active])
   @@map("special_instructions")
+}
+
+// ─── Normalized child tables (JSON blob replacement) ─────────────────────────
+
+model PoFinancialCharge {
+  id                  BigInt   @id @default(autoincrement())
+  uuid                String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid    String   @db.NVarChar(36)
+  purchase_order_uuid String   @db.NVarChar(36)
+  charge_key          String   @db.NVarChar(50)
+  percentage          Decimal? @db.Decimal(18, 6)
+  amount              Decimal? @db.Decimal(18, 2)
+  taxable             Boolean  @default(false)
+  created_at          DateTime @default(now()) @db.DateTime2
+  updated_at          DateTime @updatedAt @db.DateTime2
+
+  purchaseOrder PurchaseOrderForm @relation(fields: [purchase_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([purchase_order_uuid, charge_key])
+  @@index([corporation_uuid])
+  @@index([purchase_order_uuid])
+  @@map("po_financial_charges")
+}
+
+model PoFinancialTax {
+  id                  BigInt   @id @default(autoincrement())
+  uuid                String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid    String   @db.NVarChar(36)
+  purchase_order_uuid String   @db.NVarChar(36)
+  tax_key             String   @db.NVarChar(50)
+  percentage          Decimal? @db.Decimal(18, 6)
+  amount              Decimal? @db.Decimal(18, 2)
+  created_at          DateTime @default(now()) @db.DateTime2
+  updated_at          DateTime @updatedAt @db.DateTime2
+
+  purchaseOrder PurchaseOrderForm @relation(fields: [purchase_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([purchase_order_uuid, tax_key])
+  @@index([corporation_uuid])
+  @@index([purchase_order_uuid])
+  @@map("po_financial_taxes")
+}
+
+model PoRemovedItem {
+  id                  BigInt    @id @default(autoincrement())
+  uuid                String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid    String    @db.NVarChar(36)
+  purchase_order_uuid String    @db.NVarChar(36)
+  item_uuid           String?   @db.NVarChar(36)
+  cost_code_uuid      String?   @db.NVarChar(36)
+  location_uuid       String?   @db.NVarChar(36)
+  source_item_uuid    String?   @db.NVarChar(36)
+  item_snapshot       String    @db.NVarChar(Max)
+  removed_at          DateTime  @default(now()) @db.DateTime2
+  created_at          DateTime  @default(now()) @db.DateTime2
+  updated_at          DateTime  @updatedAt @db.DateTime2
+
+  purchaseOrder PurchaseOrderForm @relation(fields: [purchase_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([purchase_order_uuid, removed_at])
+  @@index([corporation_uuid])
+  @@index([item_uuid])
+  @@map("po_removed_items")
+}
+
+model PoAttachment {
+  id                  BigInt    @id @default(autoincrement())
+  uuid                String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid    String    @db.NVarChar(36)
+  purchase_order_uuid String    @db.NVarChar(36)
+  source_uuid         String?   @db.NVarChar(36)
+  document_name       String    @db.NVarChar(255)
+  mime_type           String?   @db.NVarChar(100)
+  file_size           BigInt?
+  file_url            String?   @db.NVarChar(Max)
+  uploaded_at         DateTime? @db.DateTime2
+  uploaded_by         String?   @db.NVarChar(128)
+  sort_order          Int       @default(0)
+  created_at          DateTime  @default(now()) @db.DateTime2
+  updated_at          DateTime  @updatedAt @db.DateTime2
+
+  purchaseOrder PurchaseOrderForm @relation(fields: [purchase_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([purchase_order_uuid, sort_order])
+  @@index([corporation_uuid])
+  @@map("po_attachments")
+}
+
+model PoAuditEvent {
+  id                  BigInt   @id @default(autoincrement())
+  uuid                String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid    String   @db.NVarChar(36)
+  purchase_order_uuid String   @db.NVarChar(36)
+  event_type          String   @db.NVarChar(100)
+  payload             String?  @db.NVarChar(Max)
+  created_by          String?  @db.NVarChar(128)
+  event_at            DateTime @default(now()) @db.DateTime2
+  created_at          DateTime @default(now()) @db.DateTime2
+
+  purchaseOrder PurchaseOrderForm @relation(fields: [purchase_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([purchase_order_uuid, event_at])
+  @@index([corporation_uuid])
+  @@map("po_audit_events")
+}
+
+model PoItemApprovalCheck {
+  id                  BigInt   @id @default(autoincrement())
+  uuid                String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  purchase_order_item_uuid String @db.NVarChar(36)
+  approval_check_uuid String   @db.NVarChar(36)
+  created_at          DateTime @default(now()) @db.DateTime2
+
+  item PurchaseOrderItem @relation(fields: [purchase_order_item_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([purchase_order_item_uuid, approval_check_uuid])
+  @@index([purchase_order_item_uuid])
+  @@index([approval_check_uuid])
+  @@map("po_item_approval_checks")
+}
+
+model PoItemReceiptNote {
+  id                       BigInt   @id @default(autoincrement())
+  uuid                     String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  purchase_order_item_uuid String   @db.NVarChar(36)
+  receipt_note_uuid        String   @db.NVarChar(36)
+  created_at               DateTime @default(now()) @db.DateTime2
+
+  item PurchaseOrderItem @relation(fields: [purchase_order_item_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([purchase_order_item_uuid, receipt_note_uuid])
+  @@index([purchase_order_item_uuid])
+  @@index([receipt_note_uuid])
+  @@map("po_item_receipt_notes")
+}
+
+model CoFinancialCharge {
+  id                BigInt   @id @default(autoincrement())
+  uuid              String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid  String   @db.NVarChar(36)
+  change_order_uuid String   @db.NVarChar(36)
+  charge_key        String   @db.NVarChar(50)
+  percentage        Decimal? @db.Decimal(18, 6)
+  amount            Decimal? @db.Decimal(18, 2)
+  taxable           Boolean  @default(false)
+  created_at        DateTime @default(now()) @db.DateTime2
+  updated_at        DateTime @updatedAt @db.DateTime2
+
+  changeOrder ChangeOrder @relation(fields: [change_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([change_order_uuid, charge_key])
+  @@index([corporation_uuid])
+  @@index([change_order_uuid])
+  @@map("co_financial_charges")
+}
+
+model CoFinancialTax {
+  id                BigInt   @id @default(autoincrement())
+  uuid              String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid  String   @db.NVarChar(36)
+  change_order_uuid String   @db.NVarChar(36)
+  tax_key           String   @db.NVarChar(50)
+  percentage        Decimal? @db.Decimal(18, 6)
+  amount            Decimal? @db.Decimal(18, 2)
+  created_at        DateTime @default(now()) @db.DateTime2
+  updated_at        DateTime @updatedAt @db.DateTime2
+
+  changeOrder ChangeOrder @relation(fields: [change_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([change_order_uuid, tax_key])
+  @@index([corporation_uuid])
+  @@index([change_order_uuid])
+  @@map("co_financial_taxes")
+}
+
+model CoRemovedItem {
+  id                BigInt   @id @default(autoincrement())
+  uuid              String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid  String   @db.NVarChar(36)
+  change_order_uuid String   @db.NVarChar(36)
+  item_uuid         String?  @db.NVarChar(36)
+  cost_code_uuid    String?  @db.NVarChar(36)
+  location_uuid     String?  @db.NVarChar(36)
+  source_item_uuid  String?  @db.NVarChar(36)
+  item_snapshot     String   @db.NVarChar(Max)
+  removed_at        DateTime @default(now()) @db.DateTime2
+  created_at        DateTime @default(now()) @db.DateTime2
+  updated_at        DateTime @updatedAt @db.DateTime2
+
+  changeOrder ChangeOrder @relation(fields: [change_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([change_order_uuid, removed_at])
+  @@index([corporation_uuid])
+  @@map("co_removed_items")
+}
+
+model CoAttachment {
+  id                BigInt    @id @default(autoincrement())
+  uuid              String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid  String    @db.NVarChar(36)
+  change_order_uuid String    @db.NVarChar(36)
+  source_uuid       String?   @db.NVarChar(36)
+  document_name     String    @db.NVarChar(255)
+  mime_type         String?   @db.NVarChar(100)
+  file_size         BigInt?
+  file_url          String?   @db.NVarChar(Max)
+  uploaded_at       DateTime? @db.DateTime2
+  uploaded_by       String?   @db.NVarChar(128)
+  sort_order        Int       @default(0)
+  created_at        DateTime  @default(now()) @db.DateTime2
+  updated_at        DateTime  @updatedAt @db.DateTime2
+
+  changeOrder ChangeOrder @relation(fields: [change_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([change_order_uuid, sort_order])
+  @@index([corporation_uuid])
+  @@map("co_attachments")
+}
+
+model CoAuditEvent {
+  id                BigInt   @id @default(autoincrement())
+  uuid              String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid  String   @db.NVarChar(36)
+  change_order_uuid String   @db.NVarChar(36)
+  event_type        String   @db.NVarChar(100)
+  payload           String?  @db.NVarChar(Max)
+  created_by        String?  @db.NVarChar(128)
+  event_at          DateTime @default(now()) @db.DateTime2
+  created_at        DateTime @default(now()) @db.DateTime2
+
+  changeOrder ChangeOrder @relation(fields: [change_order_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([change_order_uuid, event_at])
+  @@index([corporation_uuid])
+  @@map("co_audit_events")
+}
+
+model CoItemApprovalCheck {
+  id                     BigInt   @id @default(autoincrement())
+  uuid                   String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  change_order_item_uuid String   @db.NVarChar(36)
+  approval_check_uuid    String   @db.NVarChar(36)
+  created_at             DateTime @default(now()) @db.DateTime2
+
+  item ChangeOrderItem @relation(fields: [change_order_item_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([change_order_item_uuid, approval_check_uuid])
+  @@index([change_order_item_uuid])
+  @@index([approval_check_uuid])
+  @@map("co_item_approval_checks")
+}
+
+model CoItemReceiptNote {
+  id                     BigInt   @id @default(autoincrement())
+  uuid                   String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  change_order_item_uuid String   @db.NVarChar(36)
+  receipt_note_uuid      String   @db.NVarChar(36)
+  created_at             DateTime @default(now()) @db.DateTime2
+
+  item ChangeOrderItem @relation(fields: [change_order_item_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([change_order_item_uuid, receipt_note_uuid])
+  @@index([change_order_item_uuid])
+  @@index([receipt_note_uuid])
+  @@map("co_item_receipt_notes")
+}
+
+model ViFinancialCharge {
+  id                  BigInt   @id @default(autoincrement())
+  uuid                String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid    String   @db.NVarChar(36)
+  vendor_invoice_uuid String   @db.NVarChar(36)
+  charge_key          String   @db.NVarChar(50)
+  percentage          Decimal? @db.Decimal(18, 6)
+  amount              Decimal? @db.Decimal(18, 2)
+  taxable             Boolean  @default(false)
+  created_at          DateTime @default(now()) @db.DateTime2
+  updated_at          DateTime @updatedAt @db.DateTime2
+
+  vendorInvoice VendorInvoice @relation(fields: [vendor_invoice_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([vendor_invoice_uuid, charge_key])
+  @@index([corporation_uuid])
+  @@index([vendor_invoice_uuid])
+  @@map("vi_financial_charges")
+}
+
+model ViFinancialTax {
+  id                  BigInt   @id @default(autoincrement())
+  uuid                String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid    String   @db.NVarChar(36)
+  vendor_invoice_uuid String   @db.NVarChar(36)
+  tax_key             String   @db.NVarChar(50)
+  percentage          Decimal? @db.Decimal(18, 6)
+  amount              Decimal? @db.Decimal(18, 2)
+  created_at          DateTime @default(now()) @db.DateTime2
+  updated_at          DateTime @updatedAt @db.DateTime2
+
+  vendorInvoice VendorInvoice @relation(fields: [vendor_invoice_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([vendor_invoice_uuid, tax_key])
+  @@index([corporation_uuid])
+  @@index([vendor_invoice_uuid])
+  @@map("vi_financial_taxes")
+}
+
+model ViAttachment {
+  id                  BigInt    @id @default(autoincrement())
+  uuid                String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid    String    @db.NVarChar(36)
+  vendor_invoice_uuid String    @db.NVarChar(36)
+  source_uuid         String?   @db.NVarChar(36)
+  document_name       String    @db.NVarChar(255)
+  mime_type           String?   @db.NVarChar(100)
+  file_size           BigInt?
+  file_url            String?   @db.NVarChar(Max)
+  uploaded_at         DateTime? @db.DateTime2
+  uploaded_by         String?   @db.NVarChar(128)
+  sort_order          Int       @default(0)
+  created_at          DateTime  @default(now()) @db.DateTime2
+  updated_at          DateTime  @updatedAt @db.DateTime2
+
+  vendorInvoice VendorInvoice @relation(fields: [vendor_invoice_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([vendor_invoice_uuid, sort_order])
+  @@index([corporation_uuid])
+  @@map("vi_attachments")
+}
+
+model LaborInvoiceApprovalCheck {
+  id                      BigInt   @id @default(autoincrement())
+  uuid                    String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  labor_invoice_item_uuid String   @db.NVarChar(36)
+  approval_check_uuid     String   @db.NVarChar(36)
+  created_at              DateTime @default(now()) @db.DateTime2
+
+  item LaborInvoiceItem @relation(fields: [labor_invoice_item_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([labor_invoice_item_uuid, approval_check_uuid])
+  @@index([labor_invoice_item_uuid])
+  @@map("labor_invoice_approval_checks")
+}
+
+model GrnFinancialCharge {
+  id                 BigInt   @id @default(autoincrement())
+  uuid               String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid   String   @db.NVarChar(36)
+  receipt_note_uuid  String   @db.NVarChar(36)
+  charge_key         String   @db.NVarChar(50)
+  percentage         Decimal? @db.Decimal(18, 6)
+  amount             Decimal? @db.Decimal(18, 2)
+  taxable            Boolean  @default(false)
+  created_at         DateTime @default(now()) @db.DateTime2
+  updated_at         DateTime @updatedAt @db.DateTime2
+
+  receiptNote StockReceiptNote @relation(fields: [receipt_note_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([receipt_note_uuid, charge_key])
+  @@index([corporation_uuid])
+  @@index([receipt_note_uuid])
+  @@map("grn_financial_charges")
+}
+
+model GrnFinancialTax {
+  id                BigInt   @id @default(autoincrement())
+  uuid              String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid  String   @db.NVarChar(36)
+  receipt_note_uuid String   @db.NVarChar(36)
+  tax_key           String   @db.NVarChar(50)
+  percentage        Decimal? @db.Decimal(18, 6)
+  amount            Decimal? @db.Decimal(18, 2)
+  created_at        DateTime @default(now()) @db.DateTime2
+  updated_at        DateTime @updatedAt @db.DateTime2
+
+  receiptNote StockReceiptNote @relation(fields: [receipt_note_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([receipt_note_uuid, tax_key])
+  @@index([corporation_uuid])
+  @@index([receipt_note_uuid])
+  @@map("grn_financial_taxes")
+}
+
+model GrnAttachment {
+  id                BigInt    @id @default(autoincrement())
+  uuid              String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid  String    @db.NVarChar(36)
+  receipt_note_uuid String    @db.NVarChar(36)
+  source_uuid       String?   @db.NVarChar(36)
+  document_name     String    @db.NVarChar(255)
+  mime_type         String?   @db.NVarChar(100)
+  file_size         BigInt?
+  file_url          String?   @db.NVarChar(Max)
+  uploaded_at       DateTime? @db.DateTime2
+  uploaded_by       String?   @db.NVarChar(128)
+  sort_order        Int       @default(0)
+  created_at        DateTime  @default(now()) @db.DateTime2
+  updated_at        DateTime  @updatedAt @db.DateTime2
+
+  receiptNote StockReceiptNote @relation(fields: [receipt_note_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([receipt_note_uuid, sort_order])
+  @@index([corporation_uuid])
+  @@map("grn_attachments")
+}
+
+model GrnAuditEvent {
+  id                BigInt   @id @default(autoincrement())
+  uuid              String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid  String   @db.NVarChar(36)
+  receipt_note_uuid String   @db.NVarChar(36)
+  event_type        String   @db.NVarChar(100)
+  payload           String?  @db.NVarChar(Max)
+  created_by        String?  @db.NVarChar(128)
+  event_at          DateTime @default(now()) @db.DateTime2
+  created_at        DateTime @default(now()) @db.DateTime2
+
+  receiptNote StockReceiptNote @relation(fields: [receipt_note_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([receipt_note_uuid, event_at])
+  @@index([corporation_uuid])
+  @@map("grn_audit_events")
+}
+
+model ReturnFinancialCharge {
+  id               BigInt   @id @default(autoincrement())
+  uuid             String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid String   @db.NVarChar(36)
+  return_note_uuid String   @db.NVarChar(36)
+  charge_key       String   @db.NVarChar(50)
+  percentage       Decimal? @db.Decimal(18, 6)
+  amount           Decimal? @db.Decimal(18, 2)
+  taxable          Boolean  @default(false)
+  created_at       DateTime @default(now()) @db.DateTime2
+  updated_at       DateTime @updatedAt @db.DateTime2
+
+  returnNote StockReturnNote @relation(fields: [return_note_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([return_note_uuid, charge_key])
+  @@index([corporation_uuid])
+  @@index([return_note_uuid])
+  @@map("return_financial_charges")
+}
+
+model ReturnFinancialTax {
+  id               BigInt   @id @default(autoincrement())
+  uuid             String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid String   @db.NVarChar(36)
+  return_note_uuid String   @db.NVarChar(36)
+  tax_key          String   @db.NVarChar(50)
+  percentage       Decimal? @db.Decimal(18, 6)
+  amount           Decimal? @db.Decimal(18, 2)
+  created_at       DateTime @default(now()) @db.DateTime2
+  updated_at       DateTime @updatedAt @db.DateTime2
+
+  returnNote StockReturnNote @relation(fields: [return_note_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([return_note_uuid, tax_key])
+  @@index([corporation_uuid])
+  @@index([return_note_uuid])
+  @@map("return_financial_taxes")
+}
+
+model ReturnAttachment {
+  id               BigInt    @id @default(autoincrement())
+  uuid             String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid String    @db.NVarChar(36)
+  return_note_uuid String    @db.NVarChar(36)
+  source_uuid      String?   @db.NVarChar(36)
+  document_name    String    @db.NVarChar(255)
+  mime_type        String?   @db.NVarChar(100)
+  file_size        BigInt?
+  file_url         String?   @db.NVarChar(Max)
+  uploaded_at      DateTime? @db.DateTime2
+  uploaded_by      String?   @db.NVarChar(128)
+  sort_order       Int       @default(0)
+  created_at       DateTime  @default(now()) @db.DateTime2
+  updated_at       DateTime  @updatedAt @db.DateTime2
+
+  returnNote StockReturnNote @relation(fields: [return_note_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([return_note_uuid, sort_order])
+  @@index([corporation_uuid])
+  @@map("return_attachments")
+}
+
+model ReturnAuditEvent {
+  id               BigInt   @id @default(autoincrement())
+  uuid             String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid String   @db.NVarChar(36)
+  return_note_uuid String   @db.NVarChar(36)
+  event_type       String   @db.NVarChar(100)
+  payload          String?  @db.NVarChar(Max)
+  created_by       String?  @db.NVarChar(128)
+  event_at         DateTime @default(now()) @db.DateTime2
+  created_at       DateTime @default(now()) @db.DateTime2
+
+  returnNote StockReturnNote @relation(fields: [return_note_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([return_note_uuid, event_at])
+  @@index([corporation_uuid])
+  @@map("return_audit_events")
+}
+
+model EstimateAttachment {
+  id               BigInt    @id @default(autoincrement())
+  uuid             String    @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid String    @db.NVarChar(36)
+  estimate_uuid    String    @db.NVarChar(36)
+  source_uuid      String?   @db.NVarChar(36)
+  document_name    String    @db.NVarChar(255)
+  mime_type        String?   @db.NVarChar(100)
+  file_size        BigInt?
+  uploaded_at      DateTime? @db.DateTime2
+  uploaded_by      String?   @db.NVarChar(128)
+  file_url         String?   @db.NVarChar(Max)
+  sort_order       Int       @default(0)
+  created_at       DateTime  @default(now()) @db.DateTime2
+  updated_at       DateTime  @updatedAt @db.DateTime2
+
+  estimate Estimate @relation(fields: [estimate_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([estimate_uuid, sort_order])
+  @@index([corporation_uuid])
+  @@map("estimate_attachments")
+}
+
+model EstimateAuditEvent {
+  id               BigInt   @id @default(autoincrement())
+  uuid             String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid String   @db.NVarChar(36)
+  estimate_uuid    String   @db.NVarChar(36)
+  event_type       String   @db.NVarChar(100)
+  payload          String?  @db.NVarChar(Max)
+  created_by       String?  @db.NVarChar(128)
+  event_at         DateTime @default(now()) @db.DateTime2
+  created_at       DateTime @default(now()) @db.DateTime2
+
+  estimate Estimate @relation(fields: [estimate_uuid], references: [uuid], onDelete: Cascade)
+
+  @@index([estimate_uuid, event_at])
+  @@index([corporation_uuid])
+  @@map("estimate_audit_events")
+}
+
+model EstimateRemovedCostCode {
+  id               BigInt   @id @default(autoincrement())
+  uuid             String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  corporation_uuid String   @db.NVarChar(36)
+  estimate_uuid    String   @db.NVarChar(36)
+  cost_code_uuid   String   @db.NVarChar(36)
+  created_at       DateTime @default(now()) @db.DateTime2
+
+  estimate Estimate @relation(fields: [estimate_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([estimate_uuid, cost_code_uuid])
+  @@index([estimate_uuid])
+  @@index([corporation_uuid])
+  @@map("estimate_removed_cost_codes")
+}
+
+model ProjectDocumentTag {
+  id                   BigInt   @id @default(autoincrement())
+  uuid                 String   @unique @default(dbgenerated("LOWER(CONVERT(NVARCHAR(36),NEWID()))")) @db.NVarChar(36)
+  project_document_uuid String  @db.NVarChar(36)
+  tag                  String   @db.NVarChar(100)
+  created_at           DateTime @default(now()) @db.DateTime2
+
+  document ProjectDocument @relation(fields: [project_document_uuid], references: [uuid], onDelete: Cascade)
+
+  @@unique([project_document_uuid, tag])
+  @@index([project_document_uuid])
+  @@map("project_document_tags")
 }

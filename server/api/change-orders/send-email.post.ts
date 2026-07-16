@@ -1,11 +1,12 @@
 import nodemailer from "nodemailer";
 import { readMultipartFormData } from "h3";
-import { getPrisma } from '../../utils/prisma'
 import {
   appendSkippedAttachmentsNotice,
   filterCoAttachmentsExcludingUuids,
   loadChangeOrderEmailStorageAttachments,
 } from '../../utils/changeOrderEmailAttachments'
+import { attachmentsJsonFromRows } from '../../utils/normalizedChildren'
+import { getPrisma } from '../../utils/prisma'
 
 function parseEmailList(raw: string): string[] {
   if (!raw || !String(raw).trim()) return [];
@@ -96,9 +97,10 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const coRow = await getPrisma().changeOrder.findFirst({
+  const prisma = getPrisma()
+  const coRow = await prisma.changeOrder.findFirst({
     where: { uuid: coUuid, is_active: true },
-    select: { uuid: true, co_number: true, attachments: true },
+    select: { uuid: true, co_number: true, corporation_uuid: true },
   })
 
   if (!coRow) {
@@ -149,12 +151,11 @@ export default defineEventHandler(async (event) => {
     ? String(coNumber).replace(/[^\w.-]+/g, "_")
     : coUuid;
 
-  let attachmentsForEmail: unknown = []
-  try {
-    attachmentsForEmail = coRow.attachments ? JSON.parse(coRow.attachments) : []
-  } catch {
-    attachmentsForEmail = []
-  }
+  const attachmentRows = await prisma.coAttachment.findMany({
+    where: { change_order_uuid: coUuid },
+    orderBy: { sort_order: 'asc' },
+  })
+  let attachmentsForEmail: unknown = attachmentsJsonFromRows(attachmentRows)
   attachmentsForEmail = filterCoAttachmentsExcludingUuids(
     attachmentsForEmail,
     excludeAttachmentUuids,

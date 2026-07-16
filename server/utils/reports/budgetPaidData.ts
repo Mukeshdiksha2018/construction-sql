@@ -4,6 +4,7 @@ import {
   isFullyPaidInvoiceStatus,
   isPartiallyPaidInvoiceStatus,
 } from '../../../app/utils/invoiceReportPaymentTotals'
+import { assembleFinancialBreakdownMap } from '../normalizedChildren'
 
 const prisma = getPrisma()
 
@@ -55,7 +56,6 @@ export async function getBudgetPaidData(options: {
       bill_date: true,
       purchase_order_uuid: true,
       change_order_uuid: true,
-      financial_breakdown: true,
       holdback: true,
     },
   })
@@ -74,7 +74,7 @@ export async function getBudgetPaidData(options: {
     }
   }
 
-  const [poItems, coItems, laborItems, directItems, advanceCodes, holdbackCodes] =
+  const [poItems, coItems, laborItems, directItems, advanceCodes, holdbackCodes, chargeRows, taxRows] =
     await Promise.all([
       prisma.purchaseOrderInvoiceItem.findMany({
         where: { vendor_invoice_uuid: { in: invoiceUuids }, is_active: true },
@@ -100,7 +100,24 @@ export async function getBudgetPaidData(options: {
         where: { vendor_invoice_uuid: { in: invoiceUuids }, is_active: true },
         orderBy: { created_at: 'asc' },
       }),
+      prisma.viFinancialCharge.findMany({
+        where: { vendor_invoice_uuid: { in: invoiceUuids } },
+      }),
+      prisma.viFinancialTax.findMany({
+        where: { vendor_invoice_uuid: { in: invoiceUuids } },
+      }),
     ])
+
+  const headerTotals = new Map<string, Record<string, unknown>>()
+  for (const inv of invoices) {
+    headerTotals.set(inv.uuid, { total_invoice_amount: inv.amount })
+  }
+  const fbByUuid = assembleFinancialBreakdownMap(
+    chargeRows,
+    taxRows,
+    'vendor_invoice_uuid',
+    headerTotals,
+  )
 
   const nimblePaidByInvoiceUuid: Record<string, number> = {}
   for (const invoice of invoices) {
@@ -118,9 +135,7 @@ export async function getBudgetPaidData(options: {
       ...inv,
       amount: inv.amount != null ? Number(inv.amount) : null,
       bill_date: inv.bill_date?.toISOString?.() ?? inv.bill_date,
-      financial_breakdown: inv.financial_breakdown
-        ? mapChildRow({ financial_breakdown: inv.financial_breakdown }).financial_breakdown
-        : null,
+      financial_breakdown: fbByUuid.get(inv.uuid) ?? null,
     })),
     po_invoice_items: poItems.map((r) => mapChildRow(r as unknown as Record<string, unknown>)),
     co_invoice_items: coItems.map((r) => mapChildRow(r as unknown as Record<string, unknown>)),

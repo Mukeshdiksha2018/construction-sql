@@ -7,6 +7,14 @@ import {
 } from '../../app/utils/adjustedAdvancePaymentAggregates'
 import { sanitizeAttachments } from './financialBreakdown'
 import {
+  attachmentsJsonFromRows,
+  resolveFinancialBreakdown,
+} from './normalizedChildren'
+import {
+  replaceViAttachments,
+  replaceViFinancialChildren,
+} from './replaceNormalizedChildren'
+import {
   buildVendorInvoiceFinancialBreakdown,
   buildVendorInvoiceCoaAssignmentRows,
   decorateVendorInvoiceRecord,
@@ -32,6 +40,34 @@ import {
 
 const prisma = getPrisma()
 const VENDOR_INVOICE_UUID_CHUNK = 200
+
+/** List grids: never pull financial_breakdown / attachments blobs. */
+const VI_LIST_SELECT = {
+  id: true,
+  uuid: true,
+  corporation_uuid: true,
+  project_uuid: true,
+  vendor_uuid: true,
+  purchase_order_uuid: true,
+  change_order_uuid: true,
+  invoice_type: true,
+  number: true,
+  bill_date: true,
+  due_date: true,
+  credit_days: true,
+  credit_days_id: true,
+  amount: true,
+  holdback: true,
+  status: true,
+  is_active: true,
+  adjusted_against_vendor_invoice_uuid: true,
+  adjusted_advance_payment_uuid: true,
+  holdback_fully_paid: true,
+  nimble_jeid: true,
+  last_handled_approval_type: true,
+  created_at: true,
+  updated_at: true,
+} as const
 
 export type VendorInvoiceListQuery = {
   corporation_uuid: string
@@ -174,9 +210,18 @@ function mapChildRow<T extends Record<string, unknown>>(row: T): T {
 }
 
 function mapVendorInvoiceRow(row: any, extras: Record<string, unknown> = {}) {
-  const financialBreakdown = parseJson(row.financial_breakdown, {})
-  const attachments = parseJson(row.attachments, [])
-  const removed = parseJson(row.removed_advance_payment_cost_codes, [])
+  const financialBreakdown =
+    extras.financial_breakdown !== undefined
+      ? extras.financial_breakdown
+      : null
+  const attachments =
+    extras.attachments !== undefined
+      ? extras.attachments
+      : []
+  const removed =
+    extras.removed_advance_payment_cost_codes !== undefined
+      ? extras.removed_advance_payment_cost_codes
+      : []
 
   const record: Record<string, unknown> = {
     id: row.id != null ? String(row.id) : undefined,
@@ -209,6 +254,112 @@ function mapVendorInvoiceRow(row: any, extras: Record<string, unknown> = {}) {
   }
 
   return decorateVendorInvoiceRecord(record as Record<string, any>)
+}
+
+async function loadViNormalizedExtras(uuid: string, row: any) {
+  const [chargeRows, taxRows, attachmentRows, removedRows] = await Promise.all([
+    prisma.viFinancialCharge.findMany({ where: { vendor_invoice_uuid: uuid } }),
+    prisma.viFinancialTax.findMany({ where: { vendor_invoice_uuid: uuid } }),
+    prisma.viAttachment.findMany({
+      where: { vendor_invoice_uuid: uuid },
+      orderBy: { sort_order: 'asc' },
+    }),
+    prisma.advancePaymentCostCode.findMany({
+      where: { vendor_invoice_uuid: uuid, is_removed: true },
+      orderBy: { removed_at: 'asc' },
+    }),
+  ])
+
+  const financial_breakdown = resolveFinancialBreakdown({
+    chargeRows,
+    taxRows,
+    headerTotals: {
+      total_invoice_amount: toNum(row.amount),
+    },
+  })
+
+  const attachments = attachmentsJsonFromRows(attachmentRows)
+  const removed_advance_payment_cost_codes = removedRows.map((r) => ({
+    uuid: r.uuid,
+    cost_code_uuid: r.cost_code_uuid,
+    cost_code_label: r.cost_code_label,
+    cost_code_number: r.cost_code_number,
+    cost_code_name: r.cost_code_name,
+    gl_account_uuid: r.gl_account_uuid,
+    total_amount: toNum(r.total_amount),
+    advance_amount: toNum(r.advance_amount),
+    metadata: parseJson(r.metadata, {}),
+    removed_at: r.removed_at?.toISOString?.() ?? r.removed_at ?? null,
+    is_removed: true,
+  }))
+
+  return { financial_breakdown, attachments, removed_advance_payment_cost_codes }
+}
+
+async function syncRemovedAdvancePaymentCostCodes(options: {
+  vendorInvoiceUuid: string
+  corporationUuid: string | null
+  projectUuid?: string | null
+  vendorUuid?: string | null
+  purchaseOrderUuid?: string | null
+  changeOrderUuid?: string | null
+  removedItems: unknown
+  /** When true, soft-create rows after active wipe+recreate. */
+  recreateSoftRemoved?: boolean
+}) {
+  const removed = Array.isArray(options.removedItems) ? options.removedItems : []
+  if (!removed.length) return
+
+  const now = new Date()
+  if (options.recreateSoftRemoved && options.corporationUuid) {
+    const prepared = removed
+      .filter((item: any) => item?.cost_code_uuid || item?.uuid)
+      .map((item: any) => {
+        const sanitized = sanitizeAdvancePaymentCostCode(item)
+        return {
+          uuid: item?.uuid && typeof item.uuid === 'string' ? item.uuid : randomUUID(),
+          ...sanitized,
+          corporation_uuid: options.corporationUuid!,
+          project_uuid: options.projectUuid ?? null,
+          vendor_uuid: options.vendorUuid ?? null,
+          purchase_order_uuid: options.purchaseOrderUuid ?? null,
+          change_order_uuid: options.changeOrderUuid ?? null,
+          vendor_invoice_uuid: options.vendorInvoiceUuid,
+          metadata: stringifyJson(sanitized.metadata),
+          is_removed: true,
+          removed_at: item?.removed_at ? new Date(item.removed_at) : now,
+          is_active: true,
+        }
+      })
+    if (prepared.length) {
+      await prisma.advancePaymentCostCode.createMany({ data: prepared })
+    }
+    return
+  }
+
+  const uuids = removed
+    .map((item: any) => item?.uuid)
+    .filter((id: unknown): id is string => typeof id === 'string' && id.trim() !== '')
+  const costCodeUuids = removed
+    .map((item: any) => item?.cost_code_uuid)
+    .filter((id: unknown): id is string => typeof id === 'string' && id.trim() !== '')
+
+  if (uuids.length) {
+    await prisma.advancePaymentCostCode.updateMany({
+      where: { vendor_invoice_uuid: options.vendorInvoiceUuid, uuid: { in: uuids } },
+      data: { is_removed: true, removed_at: now },
+    })
+  }
+  if (costCodeUuids.length) {
+    await prisma.advancePaymentCostCode.updateMany({
+      where: {
+        vendor_invoice_uuid: options.vendorInvoiceUuid,
+        cost_code_uuid: { in: costCodeUuids },
+        is_removed: false,
+      },
+      data: { is_removed: true, removed_at: now },
+    })
+  }
 }
 
 async function fetchVendorInvoiceCoaAssignments(vendorInvoiceUuid: string) {
@@ -365,6 +516,8 @@ async function persistAdvancePaymentCostCodes(options: {
         change_order_uuid: changeOrderUuid,
         vendor_invoice_uuid: vendorInvoiceUuid,
         metadata: stringifyJson(sanitized.metadata),
+        is_removed: false,
+        removed_at: null,
       }
     })
 
@@ -1083,7 +1236,7 @@ async function loadInvoiceChildren(uuid: string, invoiceType: string) {
 
   if (invoiceType === 'AGAINST_ADVANCE_PAYMENT') {
     const apcc = await prisma.advancePaymentCostCode.findMany({
-      where: { vendor_invoice_uuid: uuid, is_active: true },
+      where: { vendor_invoice_uuid: uuid, is_active: true, is_removed: false },
       orderBy: { created_at: 'asc' },
     })
     extras.advance_payment_cost_codes = apcc.map((r) => ({
@@ -1165,7 +1318,6 @@ async function enrichListMetadata(rows: any[]) {
 }
 
 function buildInsertData(body: Record<string, any>, invoiceUuid: string, invoiceType: string) {
-  const financialBreakdown = buildVendorInvoiceFinancialBreakdown(body)
   return {
     uuid: invoiceUuid,
     corporation_uuid: body.corporation_uuid,
@@ -1184,11 +1336,6 @@ function buildInsertData(body: Record<string, any>, invoiceUuid: string, invoice
     status: body.status || 'Draft',
     is_active: true,
     adjusted_advance_payment_uuid: body.adjusted_advance_payment_uuid || null,
-    financial_breakdown: stringifyJson(financialBreakdown),
-    attachments: stringifyJson(sanitizeAttachments(body.attachments)),
-    removed_advance_payment_cost_codes: Array.isArray(body.removed_advance_payment_cost_codes)
-      ? stringifyJson(body.removed_advance_payment_cost_codes)
-      : stringifyJson([]),
   }
 }
 
@@ -1276,9 +1423,12 @@ export async function getVendorInvoice(uuid: string) {
   if (!row) return null
 
   const invoiceType = String(row.invoice_type || '')
-  const children = await loadInvoiceChildren(uuid, invoiceType)
+  const [children, normalized] = await Promise.all([
+    loadInvoiceChildren(uuid, invoiceType),
+    loadViNormalizedExtras(uuid, row),
+  ])
   const [decorated] = await enrichListMetadata([row])
-  return { ...decorated, ...children }
+  return { ...decorated, ...children, ...normalized }
 }
 
 export async function listVendorInvoices(query: VendorInvoiceListQuery) {
@@ -1326,6 +1476,7 @@ export async function listVendorInvoices(query: VendorInvoiceListQuery) {
     prisma.vendorInvoice.count({ where }),
     prisma.vendorInvoice.findMany({
       where,
+      select: VI_LIST_SELECT,
       orderBy: { created_at: 'desc' },
       skip,
       take: pageSize,
@@ -1333,7 +1484,17 @@ export async function listVendorInvoices(query: VendorInvoiceListQuery) {
   ])
 
   const totalPages = Math.ceil(totalRecords / pageSize)
-  const data = await enrichListMetadata(rows)
+  const data = await enrichListMetadata(
+    rows.map((r) => ({
+      ...r,
+      financial_breakdown: null,
+      attachments: null,
+    })),
+  )
+  for (const item of data) {
+    item.financial_breakdown = null
+    item.attachments = []
+  }
 
   return {
     data,
@@ -1371,7 +1532,7 @@ export async function createVendorInvoice(body: Record<string, any>) {
   const insertData = buildInsertData(body, invoiceUuid, invoiceType)
   normalizeEmptyUuids(insertData)
 
-  const financialBreakdown = parseJson(insertData.financial_breakdown, {})
+  const financialBreakdown = buildVendorInvoiceFinancialBreakdown(body)
 
   if (invoiceType === 'AGAINST_ADVANCE_PAYMENT') {
     await assertAdvancePaymentAmountsNotBelowConsumed({
@@ -1406,9 +1567,33 @@ export async function createVendorInvoice(body: Record<string, any>) {
     financialBreakdown,
   )
 
+  await Promise.all([
+    replaceViFinancialChildren(prisma, row.uuid, row.corporation_uuid, body),
+    replaceViAttachments(
+      prisma,
+      row.uuid,
+      row.corporation_uuid,
+      sanitizeAttachments(body.attachments),
+    ),
+  ])
+
+  if (Array.isArray(body.removed_advance_payment_cost_codes)) {
+    await syncRemovedAdvancePaymentCostCodes({
+      vendorInvoiceUuid: row.uuid,
+      corporationUuid: row.corporation_uuid,
+      projectUuid: row.project_uuid,
+      vendorUuid: row.vendor_uuid,
+      purchaseOrderUuid: row.purchase_order_uuid,
+      changeOrderUuid: row.change_order_uuid,
+      removedItems: body.removed_advance_payment_cost_codes,
+      recreateSoftRemoved: true,
+    })
+  }
+
   const children = await loadInvoiceChildren(row.uuid, invoiceType)
+  const normalized = await loadViNormalizedExtras(row.uuid, row)
   const [decorated] = await enrichListMetadata([row])
-  return { data: { ...decorated, ...children } }
+  return { data: { ...decorated, ...children, ...normalized } }
 }
 
 export async function updateVendorInvoice(uuid: string, body: Record<string, any>) {
@@ -1459,20 +1644,6 @@ export async function updateVendorInvoice(uuid: string, body: Record<string, any
     } else updateData[f] = body[f]
   }
 
-  if (body.financial_breakdown !== undefined || hasFinancialFields(body)) {
-    updateData.financial_breakdown = stringifyJson(buildVendorInvoiceFinancialBreakdown(body))
-  }
-  if (body.attachments !== undefined) {
-    updateData.attachments = stringifyJson(sanitizeAttachments(body.attachments))
-  }
-  if (body.removed_advance_payment_cost_codes !== undefined) {
-    updateData.removed_advance_payment_cost_codes = stringifyJson(
-      Array.isArray(body.removed_advance_payment_cost_codes)
-        ? body.removed_advance_payment_cost_codes
-        : [],
-    )
-  }
-
   normalizeEmptyUuids(updateData)
 
   const currentPoUuid = existing.purchase_order_uuid
@@ -1507,10 +1678,12 @@ export async function updateVendorInvoice(uuid: string, body: Record<string, any
     })
   }
 
-  const financialBreakdown = parseJson(
-    updateData.financial_breakdown ?? row.financial_breakdown,
-    {},
-  )
+  const financialBreakdown =
+    body.financial_breakdown !== undefined || hasFinancialFields(body)
+      ? buildVendorInvoiceFinancialBreakdown(body)
+      : (
+          await loadViNormalizedExtras(row.uuid, row)
+        ).financial_breakdown
 
   // Type-switch cleanup and child persistence (mirrors reference PUT)
   if (newInvoiceType === 'ENTER_DIRECT_INVOICE') {
@@ -1539,7 +1712,7 @@ export async function updateVendorInvoice(uuid: string, body: Record<string, any
         advancePaymentCostCodes: body.advance_payment_cost_codes,
         financialBreakdown:
           body.financial_breakdown ??
-          parseJson(row.financial_breakdown, {}),
+          financialBreakdown,
       })
       await persistAdvancePaymentCostCodes({
         vendorInvoiceUuid: row.uuid,
@@ -1775,9 +1948,44 @@ export async function updateVendorInvoice(uuid: string, body: Record<string, any
     })
   }
 
+  const childWrites: Promise<unknown>[] = []
+  if (body.financial_breakdown !== undefined || hasFinancialFields(body)) {
+    childWrites.push(replaceViFinancialChildren(prisma, row.uuid, row.corporation_uuid, body))
+  }
+  if (body.attachments !== undefined) {
+    childWrites.push(
+      replaceViAttachments(
+        prisma,
+        row.uuid,
+        row.corporation_uuid,
+        sanitizeAttachments(body.attachments),
+      ),
+    )
+  }
+  if (childWrites.length) await Promise.all(childWrites)
+
+  if (body.removed_advance_payment_cost_codes !== undefined) {
+    const wipedActive =
+      newInvoiceType === 'AGAINST_ADVANCE_PAYMENT' &&
+      body.advance_payment_cost_codes !== undefined
+    await syncRemovedAdvancePaymentCostCodes({
+      vendorInvoiceUuid: row.uuid,
+      corporationUuid: row.corporation_uuid,
+      projectUuid: row.project_uuid,
+      vendorUuid: row.vendor_uuid,
+      purchaseOrderUuid: row.purchase_order_uuid,
+      changeOrderUuid: row.change_order_uuid,
+      removedItems: Array.isArray(body.removed_advance_payment_cost_codes)
+        ? body.removed_advance_payment_cost_codes
+        : [],
+      recreateSoftRemoved: wipedActive,
+    })
+  }
+
   const children = await loadInvoiceChildren(row.uuid, newInvoiceType)
+  const normalized = await loadViNormalizedExtras(row.uuid, row)
   const [decorated] = await enrichListMetadata([row])
-  return { data: { ...decorated, ...children } }
+  return { data: { ...decorated, ...children, ...normalized } }
 }
 
 export async function deleteVendorInvoice(uuid: string) {

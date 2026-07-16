@@ -1,7 +1,60 @@
 import { normalizePoCurrencyConversionFields } from '../../app/utils/poCurrencyConversion'
+import {
+  attachmentsJsonFromRows,
+  auditLogJsonFromRows,
+  resolveFinancialBreakdown,
+} from './normalizedChildren'
 import { getPrisma } from './prisma'
+import {
+  replacePoAttachments,
+  replacePoAuditEvents,
+  replacePoFinancialChildren,
+  replacePoItemJunctions,
+  replacePoRemovedItems,
+} from './replaceNormalizedChildren'
 
 const prisma = getPrisma()
+
+/** List grids: never pull NVARCHAR(MAX) blobs or attachment payloads. */
+const PO_LIST_SELECT = {
+  id: true,
+  uuid: true,
+  corporation_uuid: true,
+  project_uuid: true,
+  po_number: true,
+  entry_date: true,
+  po_type: true,
+  credit_days: true,
+  credit_days_id: true,
+  ship_via: true,
+  freight: true,
+  shipping_instructions: true,
+  estimated_delivery_date: true,
+  include_items: true,
+  quote_reference: true,
+  terms_and_conditions: true,
+  item_total: true,
+  charges_total: true,
+  tax_total: true,
+  total_po_amount: true,
+  vendor_uuid: true,
+  billing_address_uuid: true,
+  shipping_address_uuid: true,
+  status: true,
+  prepared_by: true,
+  approved_by: true,
+  approved_at: true,
+  print_include_approved_by_vendor: true,
+  print_use_entity_name: true,
+  special_instruction_uuid: true,
+  currency_conversion_enabled: true,
+  currency_from: true,
+  currency_to: true,
+  conversion_rate: true,
+  is_active: true,
+  created_at: true,
+  updated_at: true,
+} as const
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -52,8 +105,13 @@ function resolveTermsAndConditionsForStorage(input: any): string | null {
 
 // ─── Row Mappers ──────────────────────────────────────────────────────────────
 
-function mapPORow(row: any): any {
-  const financialBreakdown = parseJson(row.financial_breakdown, null) as any
+function mapPORow(row: any, extras?: {
+  financialBreakdown?: any
+  attachments?: any[]
+  removed_po_items?: any[]
+  audit_log?: any[]
+}): any {
+  const financialBreakdown = extras?.financialBreakdown ?? null
   const savedCharges = financialBreakdown?.charges ?? {}
   const savedSalesTaxes = financialBreakdown?.sales_taxes ?? {}
 
@@ -88,9 +146,9 @@ function mapPORow(row: any): any {
     shipping_address_uuid: row.shipping_address_uuid ?? null,
     status: row.status,
     financial_breakdown: financialBreakdown,
-    attachments: parseJson(row.attachments, []),
-    removed_po_items: parseJson(row.removed_po_items, []),
-    audit_log: parseJson(row.audit_log, []),
+    attachments: extras?.attachments ?? [],
+    removed_po_items: extras?.removed_po_items ?? [],
+    audit_log: extras?.audit_log ?? [],
     prepared_by: row.prepared_by ?? null,
     approved_by: row.approved_by ?? null,
     approved_at: row.approved_at ? row.approved_at.toISOString() : null,
@@ -135,6 +193,49 @@ function mapPORow(row: any): any {
   }
 }
 
+async function loadPoNormalizedExtras(uuid: string, corporationUuid: string, row: any) {
+  const [chargeRows, taxRows, attachmentRows, auditRows, removedRows] = await Promise.all([
+    prisma.poFinancialCharge.findMany({ where: { purchase_order_uuid: uuid } }),
+    prisma.poFinancialTax.findMany({ where: { purchase_order_uuid: uuid } }),
+    prisma.poAttachment.findMany({
+      where: { purchase_order_uuid: uuid },
+      orderBy: { sort_order: 'asc' },
+    }),
+    prisma.poAuditEvent.findMany({
+      where: { purchase_order_uuid: uuid },
+      orderBy: { event_at: 'asc' },
+    }),
+    prisma.poRemovedItem.findMany({
+      where: { purchase_order_uuid: uuid },
+      orderBy: { removed_at: 'asc' },
+    }),
+  ])
+
+  const financialBreakdown = resolveFinancialBreakdown({
+    chargeRows,
+    taxRows,
+    headerTotals: {
+      item_total: row.item_total,
+      charges_total: row.charges_total,
+      tax_total: row.tax_total,
+      total_po_amount: row.total_po_amount,
+    },
+  })
+
+  const attachments = attachmentsJsonFromRows(attachmentRows)
+  const audit_log = auditLogJsonFromRows(auditRows)
+  const removed_po_items = removedRows.map((r) => {
+    try {
+      return { ...JSON.parse(r.item_snapshot), removed_at: r.removed_at?.toISOString?.() ?? r.removed_at }
+    }
+    catch {
+      return { uuid: r.source_item_uuid, item_uuid: r.item_uuid, removed_at: r.removed_at }
+    }
+  })
+
+  void corporationUuid
+  return { financialBreakdown, attachments, removed_po_items, audit_log }
+}
 function mapPOItem(row: any): any {
   const meta = parseJson(row.metadata, {})
   const itemSequence =
@@ -191,6 +292,7 @@ function mapPOItem(row: any): any {
 }
 
 function mapLaborItem(row: any): any {
+  const meta = parseJson(row.metadata, {})
   return {
     id: String(row.id),
     uuid: row.uuid,
@@ -207,8 +309,10 @@ function mapLaborItem(row: any): any {
     location_label: row.location_label ?? '',
     labor_budgeted_amount: toNum(row.labor_budgeted_amount),
     po_amount: toNum(row.po_amount) ?? 0,
+    prior_committed_po_amount:
+      toNum(row.prior_committed_po_amount) ?? toNum(meta?.prior_committed_po_amount),
     description: row.description ?? '',
-    metadata: parseJson(row.metadata, {}),
+    metadata: meta,
     is_active: row.is_active,
   }
 }
@@ -290,6 +394,7 @@ export async function listPurchaseOrders(
     prisma.purchaseOrderForm.count({ where }),
     prisma.purchaseOrderForm.findMany({
       where,
+      select: PO_LIST_SELECT,
       orderBy: { entry_date: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -307,7 +412,13 @@ export async function listPurchaseOrders(
 
   const totalPages = Math.ceil(total / pageSize)
   const data = rows.map(r => {
-    const mapped = mapPORow(r)
+    // List path: no blob join — map with empty extras (header totals only)
+    const mapped = mapPORow(r, {
+      financialBreakdown: null,
+      attachments: [],
+      removed_po_items: [],
+      audit_log: [],
+    })
     const proj = projectMap[r.project_uuid ?? '']
     if (proj) {
       mapped.project_name = proj.project_name
@@ -325,7 +436,8 @@ export async function listPurchaseOrders(
 export async function getPurchaseOrder(uuid: string) {
   const row = await prisma.purchaseOrderForm.findFirst({ where: { uuid, is_active: true } })
   if (!row) return null
-  const mapped = mapPORow(row)
+  const extras = await loadPoNormalizedExtras(uuid, row.corporation_uuid, row)
+  const mapped = mapPORow(row, extras)
 
   const proj = await prisma.project.findFirst({
     where: { uuid: row.project_uuid ?? '' },
@@ -339,19 +451,19 @@ export async function getPurchaseOrder(uuid: string) {
   const normalizedType = (row.po_type || '').toUpperCase()
   if (normalizedType === 'LABOR') {
     const laborItems = await prisma.laborPurchaseOrderItem.findMany({
-      where: { purchase_order_uuid: uuid, is_active: true },
+      where: { purchase_order_uuid: uuid, is_active: true, is_removed: false },
       orderBy: { order_index: 'asc' },
     })
     mapped.labor_po_items = laborItems.map(mapLaborItem)
 
     const lwItems = await prisma.pOLocationWiseMaterialItem.findMany({
-      where: { purchase_order_uuid: uuid, is_active: true },
+      where: { purchase_order_uuid: uuid, is_active: true, is_removed: false },
       orderBy: { order_index: 'asc' },
     })
     mapped.location_wise_material = lwItems.map(mapLocationWiseItem)
   } else {
     const poItems = await prisma.purchaseOrderItem.findMany({
-      where: { purchase_order_uuid: uuid, is_active: true },
+      where: { purchase_order_uuid: uuid, is_active: true, is_removed: false },
       orderBy: { order_index: 'asc' },
     })
     mapped.po_items = poItems.map(mapPOItem)
@@ -395,10 +507,6 @@ export async function createPurchaseOrder(input: any) {
     billing_address_uuid: input.billing_address_uuid ?? null,
     shipping_address_uuid: input.shipping_address_uuid ?? null,
     status: input.status ?? 'Draft',
-    financial_breakdown: stringifyJson(input.financial_breakdown ?? null),
-    attachments: stringifyJson(input.attachments ?? []),
-    removed_po_items: stringifyJson(input.removed_po_items ?? []),
-    audit_log: stringifyJson(input.audit_log ?? []),
     prepared_by: input.prepared_by ?? null,
     approved_by: input.approved_by ?? null,
     approved_at: parseDate(input.approved_at),
@@ -410,7 +518,13 @@ export async function createPurchaseOrder(input: any) {
   }
 
   const po = await prisma.purchaseOrderForm.create({ data: poData })
-  return mapPORow(po)
+  await Promise.all([
+    replacePoFinancialChildren(prisma, po.uuid, po.corporation_uuid, input),
+    replacePoRemovedItems(prisma, po.uuid, po.corporation_uuid, input.removed_po_items ?? []),
+    replacePoAttachments(prisma, po.uuid, po.corporation_uuid, input.attachments ?? []),
+    replacePoAuditEvents(prisma, po.uuid, po.corporation_uuid, input.audit_log ?? []),
+  ])
+  return getPurchaseOrder(po.uuid)
 }
 
 export async function updatePurchaseOrder(uuid: string, input: any) {
@@ -453,10 +567,6 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
   for (const f of dateFields) {
     if (f in input) updateData[f] = parseDate(input[f])
   }
-  const jsonFields = ['financial_breakdown', 'attachments', 'removed_po_items', 'audit_log']
-  for (const f of jsonFields) {
-    if (f in input) updateData[f] = stringifyJson(input[f])
-  }
   if (input.po_type !== undefined) updateData.po_type = input.po_type ? String(input.po_type).toUpperCase() : null
 
   const currencyFieldNames = [
@@ -469,7 +579,32 @@ export async function updatePurchaseOrder(uuid: string, input: any) {
     Object.assign(updateData, poCurrencyDataFromInput(input))
   }
 
-  await prisma.purchaseOrderForm.update({ where: { uuid }, data: updateData })
+  if (Object.keys(updateData).length) {
+    await prisma.purchaseOrderForm.update({ where: { uuid }, data: updateData })
+  }
+
+  const corp = existing.corporation_uuid
+  const childWrites: Promise<unknown>[] = []
+  if ('financial_breakdown' in input || [
+    'freight_charges_percentage', 'freight_charges_amount', 'packing_charges_percentage',
+    'packing_charges_amount', 'custom_duties_percentage', 'custom_duties_amount',
+    'other_charges_percentage', 'other_charges_amount',
+    'sales_tax_1_percentage', 'sales_tax_1_amount', 'sales_tax_2_percentage', 'sales_tax_2_amount',
+    'item_total', 'charges_total', 'tax_total', 'total_po_amount',
+  ].some((k) => k in input)) {
+    childWrites.push(replacePoFinancialChildren(prisma, uuid, corp, { ...existing, ...input }))
+  }
+  if ('removed_po_items' in input) {
+    childWrites.push(replacePoRemovedItems(prisma, uuid, corp, input.removed_po_items ?? []))
+  }
+  if ('attachments' in input) {
+    childWrites.push(replacePoAttachments(prisma, uuid, corp, input.attachments ?? []))
+  }
+  if ('audit_log' in input) {
+    childWrites.push(replacePoAuditEvents(prisma, uuid, corp, input.audit_log ?? []))
+  }
+  if (childWrites.length) await Promise.all(childWrites)
+
   return getPurchaseOrder(uuid)
 }
 
@@ -485,7 +620,7 @@ export async function deletePurchaseOrder(uuid: string) {
 
 export async function getPurchaseOrderItems(purchaseOrderUuid: string) {
   const rows = await prisma.purchaseOrderItem.findMany({
-    where: { purchase_order_uuid: purchaseOrderUuid, is_active: true },
+    where: { purchase_order_uuid: purchaseOrderUuid, is_active: true, is_removed: false },
     orderBy: { order_index: 'asc' },
   })
   return rows.map(mapPOItem)
@@ -583,13 +718,37 @@ export async function replacePurchaseOrderItems(
           ? item.approval_checks_uuids
           : (Array.isArray(item?.approval_checks) && item.approval_checks.length ? item.approval_checks : [])
       ),
+      receipt_note_uuids: stringifyJson(
+        Array.isArray(item?.receipt_note_uuids) ? item.receipt_note_uuids : [],
+      ),
       configuration_name: item?.configuration_name ?? null,
       metadata: stringifyJson(meta),
+      is_removed: false,
+      removed_at: null,
       is_active: true,
     }
   })
 
   await prisma.purchaseOrderItem.createMany({ data: rows })
+  const created = await prisma.purchaseOrderItem.findMany({
+    where: { purchase_order_uuid: purchaseOrderUuid, is_active: true, is_removed: false },
+    orderBy: { order_index: 'asc' },
+    select: { uuid: true, order_index: true },
+  })
+  await Promise.all(
+    created.map((row, index) => {
+      const item = items[index]
+      const checks = Array.isArray(item?.approval_checks_uuids) && item.approval_checks_uuids.length
+        ? item.approval_checks_uuids
+        : (Array.isArray(item?.approval_checks) ? item.approval_checks : [])
+      return replacePoItemJunctions(
+        prisma,
+        row.uuid,
+        checks,
+        Array.isArray(item?.receipt_note_uuids) ? item.receipt_note_uuids : [],
+      )
+    }),
+  )
   return getPurchaseOrderItems(purchaseOrderUuid)
 }
 
@@ -597,7 +756,7 @@ export async function replacePurchaseOrderItems(
 
 export async function getLaborPurchaseOrderItems(purchaseOrderUuid: string) {
   const rows = await prisma.laborPurchaseOrderItem.findMany({
-    where: { purchase_order_uuid: purchaseOrderUuid, is_active: true },
+    where: { purchase_order_uuid: purchaseOrderUuid, is_active: true, is_removed: false },
     orderBy: { order_index: 'asc' },
   })
   return rows.map(mapLaborItem)
@@ -617,6 +776,8 @@ export async function replaceLaborPurchaseOrderItems(
     const merged = typeof meta === 'object' && meta !== null
       ? { ...meta, ...(item?.location_uuid != null ? { location_uuid: item.location_uuid } : {}), ...(item?.location_label != null ? { location_label: item.location_label } : {}) }
       : {}
+    const prior = toNum(item?.prior_committed_po_amount ?? merged?.prior_committed_po_amount)
+    if (prior != null) merged.prior_committed_po_amount = prior
     return {
       corporation_uuid: corporationUuid,
       project_uuid: projectUuid,
@@ -631,8 +792,11 @@ export async function replaceLaborPurchaseOrderItems(
       location_label: item?.location_label ?? null,
       labor_budgeted_amount: toNum(item?.labor_budgeted_amount),
       po_amount: toNum(item?.po_amount) ?? 0,
+      prior_committed_po_amount: prior,
       description: item?.description ?? null,
       metadata: stringifyJson(merged),
+      is_removed: false,
+      removed_at: null,
       is_active: true,
     }
   })
@@ -645,7 +809,7 @@ export async function replaceLaborPurchaseOrderItems(
 
 export async function getLocationWiseMaterialItems(purchaseOrderUuid: string) {
   const rows = await prisma.pOLocationWiseMaterialItem.findMany({
-    where: { purchase_order_uuid: purchaseOrderUuid, is_active: true },
+    where: { purchase_order_uuid: purchaseOrderUuid, is_active: true, is_removed: false },
     orderBy: { order_index: 'asc' },
   })
   return rows.map(mapLocationWiseItem)
@@ -676,6 +840,8 @@ export async function replaceLocationWiseMaterialItems(
     po_amount: toNum(item?.po_amount) ?? 0,
     description: item?.description ?? '',
     metadata: stringifyJson(typeof item?.metadata === 'object' && item.metadata !== null ? item.metadata : {}),
+    is_removed: false,
+    removed_at: null,
     is_active: true,
   }))
 

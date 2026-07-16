@@ -11,6 +11,7 @@ import { toReportRangeEndIso, toReportRangeStartIso } from '../../../app/utils/c
 import { decorateChangeOrderRecord } from '../../api/change-orders/utils'
 import { decoratePurchaseOrderRecord } from '../financialBreakdown'
 import { getPrisma } from '../prisma'
+import { assembleFinancialBreakdownMap } from '../normalizedChildren'
 import { parseJson, normalizeUTC } from './reportHelpers'
 import { fetchNimbleVendorNamesForUuids } from './nimbleVendorsForReport'
 import {
@@ -36,7 +37,7 @@ function normalizeReportDateBound(val: string, endOfDay = false): string {
 
 function mapRecord(row: Record<string, unknown>) {
   const mapped = { ...row }
-  for (const key of ['financial_breakdown', 'attachments', 'metadata']) {
+  for (const key of ['attachments', 'metadata']) {
     if (mapped[key] != null && typeof mapped[key] === 'string') {
       mapped[key] = parseJson(mapped[key], null)
     }
@@ -311,7 +312,10 @@ export async function getPurchaseOrderDetailsInvoiceSummary(
         po_number: true,
         status: true,
         po_type: true,
-        financial_breakdown: true,
+        item_total: true,
+        charges_total: true,
+        tax_total: true,
+        total_po_amount: true,
         currency_conversion_enabled: true,
         currency_from: true,
         currency_to: true,
@@ -329,7 +333,6 @@ export async function getPurchaseOrderDetailsInvoiceSummary(
         co_number: true,
         status: true,
         co_type: true,
-        financial_breakdown: true,
         currency_conversion_enabled: true,
         currency_from: true,
         currency_to: true,
@@ -352,20 +355,105 @@ export async function getPurchaseOrderDetailsInvoiceSummary(
         invoice_type: true,
         adjusted_advance_payment_uuid: true,
         adjusted_against_vendor_invoice_uuid: true,
-        financial_breakdown: true,
         holdback: true,
       },
     }),
   ])
 
+  const poUuids = purchaseOrdersRaw.map((r) => r.uuid)
+  const coUuids = changeOrdersRaw.map((r) => r.uuid)
+  const invoiceUuids = invoicesRaw.map((r) => r.uuid)
+
+  const [
+    poChargeRows,
+    poTaxRows,
+    coChargeRows,
+    coTaxRows,
+    viChargeRows,
+    viTaxRows,
+  ] = await Promise.all([
+    poUuids.length
+      ? prisma.poFinancialCharge.findMany({ where: { purchase_order_uuid: { in: poUuids } } })
+      : Promise.resolve([]),
+    poUuids.length
+      ? prisma.poFinancialTax.findMany({ where: { purchase_order_uuid: { in: poUuids } } })
+      : Promise.resolve([]),
+    coUuids.length
+      ? prisma.coFinancialCharge.findMany({ where: { change_order_uuid: { in: coUuids } } })
+      : Promise.resolve([]),
+    coUuids.length
+      ? prisma.coFinancialTax.findMany({ where: { change_order_uuid: { in: coUuids } } })
+      : Promise.resolve([]),
+    invoiceUuids.length
+      ? prisma.viFinancialCharge.findMany({ where: { vendor_invoice_uuid: { in: invoiceUuids } } })
+      : Promise.resolve([]),
+    invoiceUuids.length
+      ? prisma.viFinancialTax.findMany({ where: { vendor_invoice_uuid: { in: invoiceUuids } } })
+      : Promise.resolve([]),
+  ])
+
+  const poHeaderTotals = new Map(
+    purchaseOrdersRaw.map((r) => [
+      r.uuid,
+      {
+        item_total: r.item_total,
+        charges_total: r.charges_total,
+        tax_total: r.tax_total,
+        total_po_amount: r.total_po_amount,
+      },
+    ]),
+  )
+  const poFbByUuid = assembleFinancialBreakdownMap(
+    poChargeRows,
+    poTaxRows,
+    'purchase_order_uuid',
+    poHeaderTotals,
+  )
+  const coFbByUuid = assembleFinancialBreakdownMap(
+    coChargeRows,
+    coTaxRows,
+    'change_order_uuid',
+  )
+  const viHeaderTotals = new Map(
+    invoicesRaw.map((r) => [r.uuid, { total_invoice_amount: r.amount }]),
+  )
+  const viFbByUuid = assembleFinancialBreakdownMap(
+    viChargeRows,
+    viTaxRows,
+    'vendor_invoice_uuid',
+    viHeaderTotals,
+  )
+
   let purchaseOrders = purchaseOrdersRaw
-    .map(row => decoratePurchaseOrderRecord(mapRecord(row as unknown as Record<string, unknown>)))
+    .map((row) =>
+      decoratePurchaseOrderRecord(
+        mapRecord({
+          ...(row as unknown as Record<string, unknown>),
+          financial_breakdown: poFbByUuid.get(row.uuid) ?? null,
+        }),
+      ),
+    )
     .filter(po => isReportEligibleOrderStatus(po.status as string))
 
   let changeOrders = changeOrdersRaw
-    .map(row => decorateChangeOrderRecord(mapRecord(row as unknown as Record<string, unknown>)))
+    .map((row) =>
+      decorateChangeOrderRecord(
+        mapRecord({
+          ...(row as unknown as Record<string, unknown>),
+          financial_breakdown: coFbByUuid.get(row.uuid) ?? null,
+        }),
+      ),
+    )
     .filter(co => isReportEligibleOrderStatus(co.status as string))
 
+  const invoicesWithFb = invoicesRaw.map((row) =>
+    mapRecord({
+      ...(row as unknown as Record<string, unknown>),
+      financial_breakdown: viFbByUuid.get(row.uuid) ?? null,
+      amount: row.amount != null ? Number(row.amount) : 0,
+      holdback: row.holdback != null ? Number(row.holdback) : null,
+    }),
+  )
   const statusFilter = poStatusFilter
     ? normalizeStatusForFilter(poStatusFilter)
     : undefined
@@ -385,15 +473,8 @@ export async function getPurchaseOrderDetailsInvoiceSummary(
     isWithinReportDateRange(co.created_date as string, entryDateFromIso, entryDateToIso),
   )
 
-  const invoicesMapped = invoicesRaw.map((row) => {
-    const mapped = mapRecord(row as unknown as Record<string, unknown>)
-    mapped.amount = row.amount != null ? Number(row.amount) : 0
-    mapped.holdback = row.holdback != null ? Number(row.holdback) : null
-    return mapped
-  })
-
   const [invoicesWithAdvanceData, itemTotalsByOrderUuid] = await Promise.all([
-    enrichInvoicesWithAdjustedAdvanceAmounts(invoicesMapped),
+    enrichInvoicesWithAdjustedAdvanceAmounts(invoicesWithFb),
     buildItemTotalsForProject(projectUuid, purchaseOrders, changeOrders),
   ])
 
@@ -417,8 +498,8 @@ export async function getPurchaseOrderDetailsInvoiceSummary(
     Array.from(vendorUuids),
   )
 
-  const invoiceUuids = collectNimblePaidInvoiceUuids(invoices)
-  const nimblePaidByInvoiceUuid = invoiceUuids.length
+  const nimblePaidInvoiceUuids = collectNimblePaidInvoiceUuids(invoices)
+  const nimblePaidByInvoiceUuid = nimblePaidInvoiceUuids.length
     ? buildNimblePaidByInvoiceUuid(invoices)
     : {}
 

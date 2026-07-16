@@ -2,11 +2,47 @@ import { randomUUID } from 'node:crypto'
 import { getPrisma } from './prisma'
 import { sanitizeAttachments } from './financialBreakdown'
 import {
+  attachmentsJsonFromRows,
+  auditLogJsonFromRows,
+  resolveFinancialBreakdown,
+} from './normalizedChildren'
+import {
+  replaceGrnAttachments,
+  replaceGrnAuditEvents,
+  replaceGrnFinancialChildren,
+} from './replaceNormalizedChildren'
+import {
   applyChangeOrderReceiptFieldsUpdate,
   applyPurchaseOrderReceiptFieldsUpdate,
 } from './receiptNoteReceiptLinePersistence'
 
 const prisma = getPrisma()
+
+/** List: keep metadata (totals) but skip heavy attachments / audit_log blobs. */
+const GRN_LIST_SELECT = {
+  id: true,
+  uuid: true,
+  corporation_uuid: true,
+  project_uuid: true,
+  purchase_order_uuid: true,
+  change_order_uuid: true,
+  receipt_type: true,
+  vendor_uuid: true,
+  entry_date: true,
+  received_date: true,
+  shipment_date: true,
+  grn_number: true,
+  reference_number: true,
+  received_by: true,
+  location_uuid: true,
+  notes: true,
+  status: true,
+  total_received_amount: true,
+  metadata: true,
+  is_active: true,
+  created_at: true,
+  updated_at: true,
+} as const
 function parseJson<T = unknown>(val: string | null | undefined, fallback: T): T {
   if (!val) return fallback
   try { return JSON.parse(val) as T } catch { return fallback }
@@ -64,22 +100,53 @@ function buildReceiptMetadata(input: Record<string, any>): Record<string, unknow
     input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
       ? { ...input.metadata }
       : {}
-  const financialKeys = [
-    'item_total',
-    'charges_total',
-    'tax_total',
-    'grn_total_with_charges_taxes',
+  // Keep light non-breakdown extras; financial lives in grn_* child tables.
+  const stripKeys = [
     'financial_breakdown',
-    'has_excluded_source_items',
+    'freight_charges_percentage',
+    'freight_charges_amount',
+    'freight_charges_taxable',
+    'packing_charges_percentage',
+    'packing_charges_amount',
+    'packing_charges_taxable',
+    'custom_duties_percentage',
+    'custom_duties_amount',
+    'custom_duties_taxable',
+    'custom_duties_charges_percentage',
+    'custom_duties_charges_amount',
+    'custom_duties_charges_taxable',
+    'other_charges_percentage',
+    'other_charges_amount',
+    'other_charges_taxable',
+    'sales_tax_1_percentage',
+    'sales_tax_1_amount',
+    'sales_tax_2_percentage',
+    'sales_tax_2_amount',
   ] as const
-  for (const key of financialKeys) {
+  for (const key of stripKeys) {
+    delete base[key]
+  }
+  // Persist scalar totals in metadata as header-like totals for assembly (no dedicated columns).
+  for (const key of ['item_total', 'charges_total', 'tax_total', 'grn_total_with_charges_taxes', 'has_excluded_source_items'] as const) {
     if (input[key] !== undefined) base[key] = input[key]
   }
   return base
 }
 
-function mapReceiptNoteRow(row: any): any {
+function mapReceiptNoteRow(row: any, extras?: {
+  financialBreakdown?: any
+  attachments?: any[]
+  audit_log?: any[]
+}): any {
   const metadata = parseJson<Record<string, unknown>>(row.metadata, {})
+  // Never read legacy nested financial_breakdown from metadata once extras were loaded;
+  // detail paths always pass extras from grn_* children.
+  const financialBreakdown =
+    extras?.financialBreakdown !== undefined
+      ? extras.financialBreakdown
+      : undefined
+  const scrubbedMetadata = { ...metadata }
+  delete scrubbedMetadata.financial_breakdown
   const record: Record<string, unknown> = {
     id: String(row.id),
     uuid: row.uuid,
@@ -99,17 +166,69 @@ function mapReceiptNoteRow(row: any): any {
     notes: row.notes ?? null,
     status: row.status,
     total_received_amount: toNum(row.total_received_amount),
-    attachments: parseJson(row.attachments, []),
-    metadata,
-    audit_log: parseJson(row.audit_log, []),
+    attachments: extras?.attachments ?? [],
+    metadata: {
+      ...scrubbedMetadata,
+      ...(financialBreakdown !== undefined ? { financial_breakdown: financialBreakdown } : {}),
+    },
+    audit_log: extras?.audit_log ?? [],
     is_active: row.is_active,
     created_at: row.created_at?.toISOString?.() ?? row.created_at ?? null,
     updated_at: row.updated_at?.toISOString?.() ?? row.updated_at ?? null,
   }
-  for (const key of ['item_total', 'charges_total', 'tax_total', 'grn_total_with_charges_taxes', 'financial_breakdown'] as const) {
-    if (metadata[key] !== undefined) record[key] = metadata[key]
+  for (const key of ['item_total', 'charges_total', 'tax_total', 'grn_total_with_charges_taxes'] as const) {
+    if (scrubbedMetadata[key] !== undefined) record[key] = scrubbedMetadata[key]
+  }
+  if (financialBreakdown !== undefined) {
+    record.financial_breakdown = financialBreakdown
+    const totals = (financialBreakdown as any)?.totals ?? {}
+    for (const key of ['item_total', 'charges_total', 'tax_total', 'grn_total_with_charges_taxes'] as const) {
+      if (record[key] === undefined && totals[key] !== undefined) record[key] = totals[key]
+    }
   }
   return record
+}
+
+async function loadGrnNormalizedExtras(uuid: string, row: any) {
+  const [chargeRows, taxRows, attachmentRows, auditRows] = await Promise.all([
+    prisma.grnFinancialCharge.findMany({ where: { receipt_note_uuid: uuid } }),
+    prisma.grnFinancialTax.findMany({ where: { receipt_note_uuid: uuid } }),
+    prisma.grnAttachment.findMany({
+      where: { receipt_note_uuid: uuid },
+      orderBy: { sort_order: 'asc' },
+    }),
+    prisma.grnAuditEvent.findMany({
+      where: { receipt_note_uuid: uuid },
+      orderBy: { event_at: 'asc' },
+    }),
+  ])
+
+  const metadata = parseJson<Record<string, unknown>>(row.metadata, {})
+  const financialBreakdown = resolveFinancialBreakdown({
+    chargeRows,
+    taxRows,
+    headerTotals: {
+      item_total: metadata.item_total,
+      charges_total: metadata.charges_total,
+      tax_total: metadata.tax_total,
+      grn_total_with_charges_taxes: metadata.grn_total_with_charges_taxes,
+    },
+  })
+
+  return {
+    financialBreakdown,
+    attachments: attachmentsJsonFromRows(attachmentRows),
+    audit_log: auditLogJsonFromRows(auditRows),
+  }
+}
+
+function financialInputFromReceiptBody(body: Record<string, any>, metadata?: Record<string, unknown>) {
+  const meta = metadata ?? buildReceiptMetadata(body)
+  return {
+    ...body,
+    ...meta,
+    financial_breakdown: body.financial_breakdown,
+  }
 }
 
 function mapReceiptNoteItem(row: any): any {
@@ -300,7 +419,7 @@ async function maybeMarkSourceOrderCompleted(
 
   if (receiptType === 'change_order' && changeOrderUuid) {
     const coItems = await prisma.changeOrderItem.findMany({
-      where: { change_order_uuid: changeOrderUuid, is_active: true },
+      where: { change_order_uuid: changeOrderUuid, is_active: true, is_removed: false },
       select: { uuid: true, co_quantity: true },
     })
     if (!coItems.length) return
@@ -364,9 +483,7 @@ function buildHeaderData(body: Record<string, any>, noteUuid: string, grnNumber:
     notes: body.notes ?? null,
     status: normalizeStatus(body.status),
     total_received_amount: toNum(body.total_received_amount),
-    attachments: stringifyJson(sanitizeAttachments(body.attachments ?? [])),
     metadata: stringifyJson(buildReceiptMetadata(body)),
-    audit_log: stringifyJson(body.audit_log ?? []),
     is_active: typeof body.is_active === 'boolean' ? body.is_active : true,
   }
 }
@@ -393,14 +510,19 @@ export async function listStockReceiptNotes(
     if (options.entryDateTo) where.entry_date.lte = parseDateEndOfDay(options.entryDateTo)
   }
 
-  const rows = await prisma.stockReceiptNote.findMany({ where, orderBy: { entry_date: 'desc' } })
-  return rows.map(mapReceiptNoteRow)
+  const rows = await prisma.stockReceiptNote.findMany({
+    where,
+    select: GRN_LIST_SELECT,
+    orderBy: { entry_date: 'desc' },
+  })
+  return rows.map((r) => mapReceiptNoteRow(r, { attachments: [], audit_log: [] }))
 }
 
 export async function getStockReceiptNote(uuid: string) {
   const row = await prisma.stockReceiptNote.findFirst({ where: { uuid, is_active: true } })
   if (!row) return null
-  return mapReceiptNoteRow(row)
+  const extras = await loadGrnNormalizedExtras(uuid, row)
+  return mapReceiptNoteRow(row, extras)
 }
 
 export async function createStockReceiptNote(input: Record<string, any>) {
@@ -412,11 +534,23 @@ export async function createStockReceiptNote(input: Record<string, any>) {
   const row = await prisma.stockReceiptNote.create({ data })
   const { purchaseOrderUuid, changeOrderUuid } = resolveSourceUuids(input, receiptType)
 
+  const financialInput = financialInputFromReceiptBody(input)
+  await Promise.all([
+    replaceGrnFinancialChildren(prisma, noteUuid, row.corporation_uuid, financialInput),
+    replaceGrnAttachments(
+      prisma,
+      noteUuid,
+      row.corporation_uuid,
+      sanitizeAttachments(input.attachments ?? []),
+    ),
+    replaceGrnAuditEvents(prisma, noteUuid, row.corporation_uuid, input.audit_log ?? []),
+  ])
+
   await persistReceiptItems(input, noteUuid, receiptType, purchaseOrderUuid, changeOrderUuid)
   await updateSourceOrderStatusOnSave(input, receiptType, purchaseOrderUuid, changeOrderUuid)
   await maybeMarkSourceOrderCompleted(input, receiptType, purchaseOrderUuid, changeOrderUuid)
 
-  return mapReceiptNoteRow(row)
+  return getStockReceiptNote(noteUuid)
 }
 
 export async function updateStockReceiptNote(uuid: string, input: Record<string, any>) {
@@ -469,28 +603,56 @@ export async function updateStockReceiptNote(uuid: string, input: Record<string,
   if ('entry_date' in input) updateData.entry_date = parseDate(input.entry_date)
   if ('received_date' in input) updateData.received_date = parseDate(input.received_date)
   if ('shipment_date' in input) updateData.shipment_date = parseDate(input.shipment_date)
-  if ('attachments' in input) {
-    updateData.attachments = stringifyJson(sanitizeAttachments(input.attachments ?? []))
-  }
+  let mergedMetadata: Record<string, unknown> | null = null
   if (
     'metadata' in input ||
     'financial_breakdown' in input ||
     'item_total' in input ||
     'grn_total_with_charges_taxes' in input
   ) {
-    const merged = {
+    mergedMetadata = {
       ...parseJson(existing.metadata, {}),
       ...buildReceiptMetadata({ ...parseJson(existing.metadata, {}), ...input }),
     }
-    updateData.metadata = stringifyJson(merged)
+    delete (mergedMetadata as any).financial_breakdown
+    updateData.metadata = stringifyJson(mergedMetadata)
   }
-  if ('audit_log' in input) updateData.audit_log = stringifyJson(input.audit_log)
 
   const cleaned = Object.fromEntries(
     Object.entries(updateData).filter(([, v]) => v !== undefined),
   )
 
-  const row = await prisma.stockReceiptNote.update({ where: { uuid }, data: cleaned })
+  if (Object.keys(cleaned).length) {
+    await prisma.stockReceiptNote.update({ where: { uuid }, data: cleaned })
+  }
+
+  const childWrites: Promise<unknown>[] = []
+  if (mergedMetadata || 'financial_breakdown' in input) {
+    childWrites.push(
+      replaceGrnFinancialChildren(
+        prisma,
+        uuid,
+        existing.corporation_uuid,
+        financialInputFromReceiptBody(input, mergedMetadata ?? parseJson(existing.metadata, {})),
+      ),
+    )
+  }
+  if ('attachments' in input) {
+    childWrites.push(
+      replaceGrnAttachments(
+        prisma,
+        uuid,
+        existing.corporation_uuid,
+        sanitizeAttachments(input.attachments ?? []),
+      ),
+    )
+  }
+  if ('audit_log' in input) {
+    childWrites.push(
+      replaceGrnAuditEvents(prisma, uuid, existing.corporation_uuid, input.audit_log ?? []),
+    )
+  }
+  if (childWrites.length) await Promise.all(childWrites)
 
   await persistReceiptItems(
     { ...input, corporation_uuid: input.corporation_uuid || existing.corporation_uuid },
@@ -502,7 +664,7 @@ export async function updateStockReceiptNote(uuid: string, input: Record<string,
   await updateSourceOrderStatusOnSave(input, receiptType, purchaseOrderUuid, changeOrderUuid)
   await maybeMarkSourceOrderCompleted(input, receiptType, purchaseOrderUuid, changeOrderUuid)
 
-  return mapReceiptNoteRow(row)
+  return getStockReceiptNote(uuid)
 }
 
 export async function deleteStockReceiptNote(uuid: string) {

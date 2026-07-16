@@ -1,4 +1,13 @@
 import { getPrisma } from './prisma'
+import {
+  attachmentsJsonFromRows,
+  auditLogJsonFromRows,
+} from './normalizedChildren'
+import {
+  replaceEstimateAttachments,
+  replaceEstimateAuditEvents,
+  replaceEstimateRemovedCostCodes,
+} from './replaceNormalizedChildren'
 
 const prisma = getPrisma()
 
@@ -133,7 +142,11 @@ export interface UpdateEstimateInput {
 }
 
 // ─── Row mappers ──────────────────────────────────────────────────────────────
-function mapEstimateRow(row: any, project?: any) {
+function mapEstimateRow(row: any, project?: any, extras?: {
+  attachments?: any[]
+  removed_cost_code_uuids?: string[]
+  audit_log?: any[]
+}) {
   return {
     id: String(row.id),
     uuid: row.uuid,
@@ -148,9 +161,9 @@ function mapEstimateRow(row: any, project?: any) {
     discount_amount: toNum(row.discount_amount),
     final_amount: toNum(row.final_amount),
     notes: row.notes ?? null,
-    attachments: parseJson(row.attachments, []),
-    removed_cost_code_uuids: parseJson(row.removed_cost_code_uuids, []),
-    audit_log: parseJson(row.audit_log, []),
+    attachments: extras?.attachments ?? [],
+    removed_cost_code_uuids: extras?.removed_cost_code_uuids ?? [],
+    audit_log: extras?.audit_log ?? [],
     created_by: row.created_by ?? null,
     approved_by: row.approved_by ?? null,
     approved_at: row.approved_at ? row.approved_at.toISOString() : null,
@@ -159,6 +172,27 @@ function mapEstimateRow(row: any, project?: any) {
     updated_at: row.updated_at?.toISOString() ?? null,
     project: project ?? null,
     line_items: [],
+  }
+}
+
+async function loadEstimateNormalizedExtras(uuid: string, row: any) {
+  const [attachmentRows, auditRows, removedRows] = await Promise.all([
+    prisma.estimateAttachment.findMany({
+      where: { estimate_uuid: uuid },
+      orderBy: { sort_order: 'asc' },
+    }),
+    prisma.estimateAuditEvent.findMany({
+      where: { estimate_uuid: uuid },
+      orderBy: { event_at: 'asc' },
+    }),
+    prisma.estimateRemovedCostCode.findMany({
+      where: { estimate_uuid: uuid },
+    }),
+  ])
+  return {
+    attachments: attachmentsJsonFromRows(attachmentRows),
+    audit_log: auditLogJsonFromRows(auditRows),
+    removed_cost_code_uuids: removedRows.map((r) => r.cost_code_uuid),
   }
 }
 
@@ -486,6 +520,27 @@ export async function listEstimates(
     prisma.estimate.count({ where }),
     prisma.estimate.findMany({
       where,
+      select: {
+        id: true,
+        uuid: true,
+        corporation_uuid: true,
+        project_uuid: true,
+        estimate_number: true,
+        estimate_date: true,
+        valid_until: true,
+        status: true,
+        total_amount: true,
+        tax_amount: true,
+        discount_amount: true,
+        final_amount: true,
+        notes: true,
+        created_by: true,
+        approved_by: true,
+        approved_at: true,
+        is_active: true,
+        created_at: true,
+        updated_at: true,
+      },
       orderBy: { created_at: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -503,7 +558,11 @@ export async function listEstimates(
 
   const totalPages = Math.ceil(total / pageSize)
   return {
-    data: rows.map(r => mapEstimateRow(r, projectMap[r.project_uuid] ?? null)),
+    data: rows.map(r => mapEstimateRow(r, projectMap[r.project_uuid] ?? null, {
+      attachments: [],
+      removed_cost_code_uuids: [],
+      audit_log: [],
+    })),
     pagination: { page, pageSize, totalRecords: total, totalPages, hasMore: page < totalPages },
   }
 }
@@ -517,9 +576,9 @@ export async function getEstimate(uuid: string) {
     select: { uuid: true, project_name: true, project_id: true },
   })
 
+  const extras = await loadEstimateNormalizedExtras(uuid, row)
+  const mapped = mapEstimateRow(row, project, extras)
   const { lineItems, materialItemsByLi, lwLaborByLi, lwMaterialByLi } = await loadLineItemsForEstimate(uuid)
-
-  const mapped = mapEstimateRow(row, project)
   mapped.line_items = lineItems.map(li => mapLineItemRow(li, materialItemsByLi, lwLaborByLi, lwMaterialByLi))
   return mapped
 }
@@ -560,9 +619,6 @@ export async function createEstimate(input: CreateEstimateInput) {
       discount_amount: toNum(input.discount_amount),
       final_amount: toNum(input.final_amount),
       notes: input.notes ?? null,
-      attachments: stringifyJson(input.attachments ?? []),
-      removed_cost_code_uuids: stringifyJson(input.removed_cost_code_uuids ?? []),
-      audit_log: stringifyJson(auditEntry),
       is_active: true,
     },
   })
@@ -571,6 +627,12 @@ export async function createEstimate(input: CreateEstimateInput) {
     await insertLineItems(input.line_items, estimate.uuid, input.corporation_uuid, input.project_uuid)
   }
 
+  await Promise.all([
+    replaceEstimateAttachments(prisma, estimate.uuid, estimate.corporation_uuid, input.attachments ?? []),
+    replaceEstimateRemovedCostCodes(prisma, estimate.uuid, estimate.corporation_uuid, input.removed_cost_code_uuids ?? []),
+    replaceEstimateAuditEvents(prisma, estimate.uuid, estimate.corporation_uuid, auditEntry),
+  ])
+
   // Return header without re-reading line items from the DB — the form always
   // re-fetches via GET /api/estimates/:uuid when opened for editing, so the
   // save response only needs to update the list store.
@@ -578,13 +640,17 @@ export async function createEstimate(input: CreateEstimateInput) {
     where: { uuid: estimate.project_uuid },
     select: { uuid: true, project_name: true, project_id: true },
   })
-  return mapEstimateRow(estimate, project)
+  return mapEstimateRow(estimate, project, {
+    attachments: input.attachments ?? [],
+    removed_cost_code_uuids: input.removed_cost_code_uuids ?? [],
+    audit_log: auditEntry,
+  })
 }
 
 export async function updateEstimate(input: UpdateEstimateInput) {
   const existing = await prisma.estimate.findFirst({
     where: { uuid: input.uuid, is_active: true },
-    select: { uuid: true, corporation_uuid: true, project_uuid: true, estimate_number: true, status: true, audit_log: true },
+    select: { uuid: true, corporation_uuid: true, project_uuid: true, estimate_number: true, status: true },
   })
   if (!existing) return null
 
@@ -596,8 +662,12 @@ export async function updateEstimate(input: UpdateEstimateInput) {
     if (dup) throw createError({ statusCode: 409, statusMessage: 'Estimate number already exists for this corporation' })
   }
 
-  // Build audit log entry
-  const existingLog = parseJson<any[]>(existing.audit_log as string, [])
+  // Build audit log entry — load prior events from child table only
+  const existingAuditRows = await prisma.estimateAuditEvent.findMany({
+    where: { estimate_uuid: input.uuid },
+    orderBy: { event_at: 'asc' },
+  })
+  const existingLog = auditLogJsonFromRows(existingAuditRows)
   const oldStatus = existing.status
   const newStatus = input.status ?? oldStatus
   let auditEntry: any = null
@@ -624,11 +694,22 @@ export async function updateEstimate(input: UpdateEstimateInput) {
   if (input.discount_amount !== undefined) updateData.discount_amount = toNum(input.discount_amount)
   if (input.final_amount !== undefined) updateData.final_amount = toNum(input.final_amount)
   if (input.notes !== undefined) updateData.notes = input.notes ?? null
-  if (input.attachments !== undefined) updateData.attachments = stringifyJson(input.attachments)
-  if (input.removed_cost_code_uuids !== undefined) updateData.removed_cost_code_uuids = stringifyJson(input.removed_cost_code_uuids)
-  if (auditEntry) updateData.audit_log = stringifyJson(mergedLog)
 
-  const updated = await prisma.estimate.update({ where: { uuid: input.uuid }, data: updateData })
+  const updated = Object.keys(updateData).length
+    ? await prisma.estimate.update({ where: { uuid: input.uuid }, data: updateData })
+    : await prisma.estimate.findFirst({ where: { uuid: input.uuid } })
+
+  const childWrites: Promise<unknown>[] = []
+  if (input.attachments !== undefined) {
+    childWrites.push(replaceEstimateAttachments(prisma, input.uuid, existing.corporation_uuid, input.attachments ?? []))
+  }
+  if (input.removed_cost_code_uuids !== undefined) {
+    childWrites.push(replaceEstimateRemovedCostCodes(prisma, input.uuid, existing.corporation_uuid, input.removed_cost_code_uuids ?? []))
+  }
+  if (auditEntry) {
+    childWrites.push(replaceEstimateAuditEvents(prisma, input.uuid, existing.corporation_uuid, mergedLog))
+  }
+  if (childWrites.length) await Promise.all(childWrites)
 
   // Replace line items if provided
   if (Array.isArray(input.line_items)) {
@@ -674,10 +755,11 @@ export async function updateEstimate(input: UpdateEstimateInput) {
 
   // Return header without re-reading line items — avoids 4 extra DB round-trips.
   const project = await prisma.project.findFirst({
-    where: { uuid: updated.project_uuid },
+    where: { uuid: updated!.project_uuid },
     select: { uuid: true, project_name: true, project_id: true },
   })
-  return mapEstimateRow(updated, project)
+  const extras = await loadEstimateNormalizedExtras(input.uuid, updated)
+  return mapEstimateRow(updated, project, extras)
 }
 
 export async function deleteEstimate(uuid: string) {
