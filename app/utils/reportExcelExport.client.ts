@@ -1,4 +1,3 @@
-import writeXlsxFile from 'write-excel-file/browser'
 import type { ReportCsvMetadata } from '~/utils/csvExport'
 import { buildReportCsvFilename } from '~/utils/csvExport'
 
@@ -142,6 +141,8 @@ export async function buildReportExcelBuffer(
   tableRows: unknown[][],
 ): Promise<ArrayBuffer> {
   const { data, columns } = buildReportExcelSheetData(metadata, tableRows)
+  // Lazy-load excel writer so report pages don't pay for it until export
+  const { default: writeXlsxFile } = await import('write-excel-file/browser')
   const blob = await writeXlsxFile(data, { columns }).toBlob()
   return blob.arrayBuffer()
 }

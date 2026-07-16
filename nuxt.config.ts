@@ -7,24 +7,36 @@ export default defineNuxtConfig({
     '@': fileURLToPath(new URL('./app', import.meta.url)),
   },
   compatibilityDate: '2025-07-15',
-  devtools: { enabled: true },
+  // Devtools only in development — keeps production tooling out of local prod builds
+  devtools: { enabled: process.env.NODE_ENV !== 'production' },
   modules: ['@nuxt/ui', '@pinia/nuxt', 'nuxt-tiptap-editor'],
+  // Only ship icon collections we actually use (heroicons + lucide).
+  // Avoid bundling huge sets like material-symbols into Nitro (was ~8 MB).
+  icon: {
+    serverBundle: {
+      collections: ['heroicons', 'lucide'],
+      externalizeIconsJson: true,
+    },
+  },
+  nitro: {
+    // Sourcemaps inflate .output size without helping production runtime
+    sourceMap: false,
+  },
   vite: {
     plugins: [tailwindcss()],
+    build: {
+      sourcemap: false,
+    },
     optimizeDeps: {
       include: [
         'dexie',
         'pinia-plugin-persistedstate',
-        '@vue/devtools-core',
-        '@vue/devtools-kit',
         '@internationalized/date',
         'dayjs',
         'dayjs/plugin/utc',
         'dayjs/plugin/timezone',
         'dayjs/plugin/customParseFormat',
         '@tanstack/vue-table',
-        'html-to-image',
-        'jspdf',
       ],
     },
   },

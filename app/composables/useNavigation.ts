@@ -18,12 +18,12 @@ export const desktopNavItems: NavItem[] = [
 ]
 
 export const mobileNavItems: NavItem[] = [
-  { label: 'Dashboard', to: '/dashboard', icon: 'i-material-symbols-dashboard-rounded' },
+  { label: 'Dashboard', to: '/dashboard', icon: 'i-heroicons-home-solid' },
   { label: 'Corporation', to: '/corporation', icon: 'i-lucide-building-2' },
   { label: 'Projects', to: '/projects', icon: 'i-heroicons-clipboard-document-list' },
-  { label: 'Payables', to: '/payables', icon: 'i-mingcute-card-pay-fill' },
+  { label: 'Payables', to: '/payables', icon: 'i-heroicons-credit-card-solid' },
   { label: 'Reports', to: '/reports', icon: 'i-heroicons-chart-bar' },
-  { label: 'Settings', to: '/settings', icon: 'i-material-symbols-settings-rounded' },
+  { label: 'Settings', to: '/settings', icon: 'i-heroicons-cog-6-tooth-solid' },
 ]
 
 export function useActiveRoute() {

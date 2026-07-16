@@ -811,7 +811,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, h, resolveComponent, useTemplateRef, watch, onMounted } from 'vue'
+import { ref, computed, h, resolveComponent, useTemplateRef, watch, onMounted, defineAsyncComponent } from 'vue'
 import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import type { TableColumn } from '@nuxt/ui'
 import type { Column } from '@tanstack/vue-table'
@@ -819,7 +819,7 @@ import { useTableStandard } from '~/composables/useTableStandard'
 import { useDateFormat } from '~/composables/useDateFormat'
 import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
 import { usePermissions } from '~/composables/usePermissions'
-import ChangeOrderForm from './ChangeOrderForm.vue'
+const ChangeOrderForm = defineAsyncComponent(() => import('./ChangeOrderForm.vue'))
 import ChangeOrderAuditTimeline from '~/components/changeOrders/ChangeOrderAuditTimeline.vue'
 import SendPreviewDocumentEmailModal from '~/components/shared/SendPreviewDocumentEmailModal.vue'
 import { useCorporationStore } from '~/stores/corporations'
