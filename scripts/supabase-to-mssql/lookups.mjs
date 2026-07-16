@@ -9,6 +9,7 @@ import { log, uuidStr, warn } from './utils.mjs'
  *   vendorByNimble: Map<string, string>,
  *   uomByUuid: Map<string, string>,
  *   uomByNimble: Map<string, string>,
+ *   uomByName: Map<string, string>,
  *   shipViaByUuid: Map<string, string>,
  *   shipViaByNimble: Map<string, string>,
  *   coaByUuid: Map<string, string>,
@@ -42,6 +43,8 @@ export async function loadLookups(pg, opts = {}) {
     vendorByNimble: new Map(),
     uomByUuid: new Map(),
     uomByNimble: new Map(),
+    /** @type {Map<string, string>} lowercased uom_name/short_name → nimble_uom_id */
+    uomByName: new Map(),
     shipViaByUuid: new Map(),
     shipViaByNimble: new Map(),
     coaByUuid: new Map(),
@@ -78,11 +81,19 @@ export async function loadLookups(pg, opts = {}) {
   try {
     const uoms = await pgQuery(
       pg,
-      `select uuid::text as uuid, nimble_uom_id
+      `select uuid::text as uuid, nimble_uom_id, uom_name, short_name
        from public.uom
        where nimble_uom_id is not null and trim(nimble_uom_id) <> ''`,
     )
-    for (const r of uoms) addMap(lookups.uomByUuid, lookups.uomByNimble, r.uuid, r.nimble_uom_id)
+    for (const r of uoms) {
+      addMap(lookups.uomByUuid, lookups.uomByNimble, r.uuid, r.nimble_uom_id)
+      const nimbleId = r.nimble_uom_id != null ? String(r.nimble_uom_id).trim() : ''
+      if (!nimbleId) continue
+      for (const name of [r.uom_name, r.short_name]) {
+        const key = name != null ? String(name).trim().toLowerCase() : ''
+        if (key && !lookups.uomByName.has(key)) lookups.uomByName.set(key, nimbleId)
+      }
+    }
     log(`lookup uom → nimble uom: ${lookups.uomByUuid.size}`)
   }
   catch (e) {
@@ -174,6 +185,25 @@ export const remapCorp = (L, v) => remap(L, 'corp', v)
 export const remapVendor = (L, v) => remap(L, 'vendor', v)
 /** @param {Lookups} L @param {unknown} v */
 export const remapUom = (L, v) => remap(L, 'uom', v)
+
+/**
+ * Resolve a UOM by its display name (e.g. `cost_code_preferred_items.unit`,
+ * which stores the unit name/short-name text, not a `uom.uuid` FK).
+ * @param {Lookups} lookups
+ * @param {unknown} name
+ */
+export function remapUomByName(lookups, name) {
+  if (name == null || name === '') return null
+  const key = String(name).trim().toLowerCase()
+  if (!key) return null
+  const out = lookups.uomByName.get(key)
+  if (out) return out
+  lookups.misses.push({ kind: 'uomName', value: String(name).trim() })
+  if (lookups.strict) {
+    throw new Error(`Remap miss (uomName): ${name}`)
+  }
+  return null
+}
 /** @param {Lookups} L @param {unknown} v */
 export const remapShipVia = (L, v) => remap(L, 'shipVia', v)
 /** @param {Lookups} L @param {unknown} v */

@@ -1,5 +1,5 @@
 import { pgQuery } from '../db.mjs'
-import { remapCoa, remapCorp, remapMasterUuid, remapUom, remapVendor, registerMasterAlias } from '../lookups.mjs'
+import { remapCoa, remapCorp, remapMasterUuid, remapUom, remapUomByName, remapVendor, registerMasterAlias } from '../lookups.mjs'
 import { upsertByUuid } from '../upsert.mjs'
 import { asBool, asDate, asNum, asStr, log, uuidStr } from '../utils.mjs'
 
@@ -267,7 +267,8 @@ export async function runPhase1Masters(ctx) {
         item_sequence: asStr(r.item_sequence, 100),
         model_number: asStr(r.model_number, 100),
         unit_price: asNum(r.unit_price),
-        uom_uuid: remapUom(lookups, r.uom_uuid),
+        // Source has no uom FK — `unit` is a free-text name matched against public.uom(uom_name/short_name)
+        uom_uuid: remapUomByName(lookups, r.unit) || remapUom(lookups, r.uom_uuid),
         location_uuid: remapMasterUuid(lookups, r.location_uuid),
         preferred_vendor_uuid: remapVendor(lookups, r.preferred_vendor_uuid),
         initial_quantity: asNum(r.initial_quantity),
