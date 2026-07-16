@@ -1,0 +1,39 @@
+---
+description: Vue/Nuxt/TS quality standards for app and server code
+globs: "{app,server}/**/*.{vue,ts}"
+alwaysApply: false
+---
+
+# Vue / Nuxt / TypeScript standards
+
+## Structure
+
+- Match existing patterns in the same folder (naming, Pinia stores, `$fetch` / API client)
+- Prefer small focused modules over mega-files; extract helpers to `app/utils/` or `server/utils/` when reused
+- Do not reintroduce removed features (e.g. Bill Entry UI) or Supabase client code
+
+## Vue components
+
+- `<script setup lang="ts">`; typed props/emits
+- Keep template logic light — computed/composables for derived state
+- Lists that open large forms/modals: async-import those children (see lean-bundle rule)
+- Prefer Nuxt UI (`UButton`, `UModal`, …) over one-off CSS frameworks
+
+## Server / API
+
+- Auth via existing Nimble session middleware; do not add alternate auth clients
+- Data access: `getPrisma()`; avoid new raw `mssql` unless extending an existing raw path
+- Validate inputs; use `createError` with clear `statusMessage`
+- Keep handlers thin — business logic in `server/utils/`
+
+## TypeScript & quality
+
+- Prefer explicit types at API/store boundaries; avoid `any` unless matching legacy shapes
+- No empty `catch` — log or rethrow with context
+- Do not commit secrets; use `runtimeConfig` / env (`NUXT_*`)
+- Leave no dead imports, unused stores, or stub pages that pull unused routes
+
+## Diff discipline
+
+- Change only what the task needs; no drive-by refactors or unrelated formatting
+- Do not add markdown docs unless asked
