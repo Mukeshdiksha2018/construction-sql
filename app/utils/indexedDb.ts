@@ -104,7 +104,6 @@ export interface SyncMetadata {
   corporationId: string;
   lastSyncedAt: Date;
   dataType:
-    | "billEntries"
     | "projects"
     | "vendors"
     | "poInstructions"
@@ -504,28 +503,6 @@ export const db = new PropertyManagementDB();
 
 // Helper functions for database operations
 export const dbHelpers = {
-  // Bill Entries
-  async saveBillEntries(corporationId: string, entries: any[]) {
-    // Clear existing entries for this corporation
-    await db.billEntries.where("corporationId").equals(corporationId).delete();
-
-    // Add new entries with corporationId
-    const entriesWithCorpId = entries.map((entry) => ({
-      ...entry,
-      corporationId,
-    }));
-
-    await db.billEntries.bulkPut(entriesWithCorpId);
-
-    // Update sync metadata
-    await db.syncMetadata.put({
-      key: `billEntries_${corporationId}`,
-      corporationId,
-      dataType: "billEntries",
-      lastSyncedAt: new Date(),
-    });
-  },
-
   // Freight (global, not tied to corporation)
   async saveFreight(freight: any[]) {
     // @ts-ignore
@@ -1205,83 +1182,6 @@ export const dbHelpers = {
       key: `freight_global`,
       corporationId: "global",
       dataType: "freight",
-      lastSyncedAt: new Date(),
-    });
-  },
-
-  async getBillEntries(corporationId: string) {
-    return await db.billEntries
-      .where("corporationId")
-      .equals(corporationId)
-      .toArray();
-  },
-
-  async getAllBillEntries() {
-    return await db.billEntries.toArray();
-  },
-
-  async addBillEntry(corporationId: string, entry: any) {
-    // Add a single bill entry to IndexedDB
-    const entryWithCorpId = {
-      ...entry,
-      corporationId,
-    };
-
-    await db.billEntries.add(entryWithCorpId);
-
-    // Update sync metadata
-    await db.syncMetadata.put({
-      key: `billEntries_${corporationId}`,
-      corporationId,
-      dataType: "billEntries",
-      lastSyncedAt: new Date(),
-    });
-  },
-
-  async updateBillEntry(corporationId: string, entryId: string, entry: any) {
-    // Update a single bill entry in IndexedDB
-    const entryWithCorpId = {
-      ...entry,
-      corporationId,
-    };
-
-    // Find the entry by corporationId and bill entry ID
-    const existingEntry = await db.billEntries
-      .where("corporationId")
-      .equals(corporationId)
-      .and((item) => item.bill_entry_id === entryId)
-      .first();
-
-    if (existingEntry) {
-      await db.billEntries.update(existingEntry.id!, entryWithCorpId);
-    }
-
-    // Update sync metadata
-    await db.syncMetadata.put({
-      key: `billEntries_${corporationId}`,
-      corporationId,
-      dataType: "billEntries",
-      lastSyncedAt: new Date(),
-    });
-  },
-
-  async deleteBillEntry(corporationId: string, entryId: string) {
-    // Delete a single bill entry from IndexedDB
-    const existingEntry = await db.billEntries
-      .where("corporationId")
-      .equals(corporationId)
-      .and((item) => item.bill_entry_id === entryId)
-      .first();
-
-    if (existingEntry) {
-      await db.billEntries.delete(existingEntry.id!);
-    }
-
-    // Update sync metadata
-    await db.syncMetadata.put({
-      key: `billEntries_${corporationId}`,
-      corporationId,
-      dataType: "billEntries",
       lastSyncedAt: new Date(),
     });
   },
@@ -2069,7 +1969,6 @@ export const dbHelpers = {
   async getLastSyncTime(
     corporationId: string,
     dataType:
-      | "billEntries"
       | "projects"
       | "vendors"
       | "poInstructions"
@@ -2093,7 +1992,6 @@ export const dbHelpers = {
   async needsSync(
     corporationId: string,
     dataType:
-      | "billEntries"
       | "projects"
       | "vendors"
       | "poInstructions"
@@ -2121,7 +2019,6 @@ export const dbHelpers = {
 
   // Clear all data (useful for logout)
   async clearAllData() {
-    await db.billEntries.clear();
     await db.projects.clear();
     await db.vendors.clear();
     await db.poInstructions.clear();
@@ -2171,7 +2068,6 @@ export const dbHelpers = {
 
   // Clear data for a specific corporation
   async clearCorporationData(corporationId: string) {
-    await db.billEntries.where("corporationId").equals(corporationId).delete();
     await db.projects.where("corporationId").equals(corporationId).delete();
     await db.vendors.where("corporationId").equals(corporationId).delete();
     await db.poInstructions

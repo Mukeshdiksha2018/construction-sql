@@ -5,19 +5,21 @@ import {
   downloadReportExcelFile,
 } from '~/utils/reportExcelExport.client'
 
-const mockToBlob = vi.fn().mockResolvedValue(
-  new Blob(['xlsx'], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-)
-const mockToFile = vi.fn().mockResolvedValue(undefined)
-
-vi.mock('write-excel-file/browser', () => ({
-  default: vi.fn(() => ({
+const { mockToBlob, mockToFile, mockWriteXlsxFile } = vi.hoisted(() => {
+  const mockToBlob = vi.fn().mockResolvedValue(
+    new Blob(['xlsx'], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  )
+  const mockToFile = vi.fn().mockResolvedValue(undefined)
+  const mockWriteXlsxFile = vi.fn(() => ({
     toBlob: mockToBlob,
     toFile: mockToFile,
-  })),
-}))
+  }))
+  return { mockToBlob, mockToFile, mockWriteXlsxFile }
+})
 
-import writeXlsxFile from 'write-excel-file/browser'
+vi.mock('write-excel-file/browser', () => ({
+  default: mockWriteXlsxFile,
+}))
 
 describe('reportExcelExport', () => {
   describe('buildReportExcelFilename', () => {
@@ -75,7 +77,7 @@ describe('reportExcelExport', () => {
         [['Col'], ['Val']]
       )
 
-      expect(writeXlsxFile).toHaveBeenCalledWith(
+      expect(mockWriteXlsxFile).toHaveBeenCalledWith(
         expect.any(Array),
         expect.objectContaining({
           columns: expect.any(Array),

@@ -1764,7 +1764,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, nextTick, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import { useCorporationStore } from '~/stores/corporations'
@@ -1786,7 +1786,7 @@ import VendorSelect from '~/components/shared/VendorSelect.vue'
 import ItemCategorySelect from '~/components/shared/ItemCategorySelect.vue'
 import UOMSelect from '~/components/shared/UOMSelect.vue'
 import LocationSelect from '~/components/shared/LocationSelect.vue'
-import PreferredItemsAddEditModal from '~/components/shared/PreferredItemsAddEditModal.vue'
+const PreferredItemsAddEditModal = defineAsyncComponent(() => import('~/components/shared/PreferredItemsAddEditModal.vue'))
 import {
   getLocationWiseRowAmount as getLocationWiseRowAmountUtil,
   getLocationWiseRowAmountForMode,

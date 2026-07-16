@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "nuxt build",
+    "analyze": "nuxi analyze",
     "dev": "dotenvx run -- node -e \"process.env.PORT=process.env.NUXT_DEV_SERVER_PORT||process.env.PORT||'3000'; require('child_process').execSync('nuxt dev', {stdio:'inherit', env:process.env});\"",
     "generate": "nuxt generate",
     "preview": "dotenvx run -- node -e \"process.env.PORT=process.env.NUXT_DEV_SERVER_PORT||'3000'; require('child_process').execSync('nuxt preview', {stdio:'inherit', env:process.env});\"",
@@ -63,7 +64,6 @@
     "@dotenvx/dotenvx": "^1.51.2",
     "@iconify-json/heroicons": "^1.2.3",
     "@iconify-json/lucide": "^1.2.117",
-    "@iconify-json/material-symbols": "^1.2.85",
     "@types/nodemailer": "^7.0.11",
     "@types/pg": "^8.20.0",
     "@vitejs/plugin-vue": "^6.0.1",

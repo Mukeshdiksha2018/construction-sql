@@ -1,22 +1,29 @@
 <template>
   <span
-    v-if="resolvedCountryCode"
-    :class="flagClass"
+    v-if="flagSvg"
+    class="po-currency-flag inline-block align-middle leading-none overflow-hidden"
     :style="flagStyle"
     role="img"
     :aria-label="ariaLabel"
     :data-testid="testId"
     :data-country-code="resolvedCountryCode"
+    v-html="flagSvg"
   />
 </template>
 
 <script setup lang="ts">
-import 'country-flag-icons/3x2/flags.css'
 import { computed } from 'vue'
+import caFlag from 'country-flag-icons/string/3x2/CA'
+import usFlag from 'country-flag-icons/string/3x2/US'
 import {
   PO_CURRENCY_META,
   type PoCurrencyCode,
 } from '~/utils/poCurrencyConversion'
+
+const FLAG_BY_COUNTRY: Record<string, string> = {
+  CA: caFlag,
+  US: usFlag,
+}
 
 const props = withDefaults(
   defineProps<{
@@ -40,12 +47,11 @@ const resolvedCountryCode = computed(() => {
   return ''
 })
 
-const flagClass = computed(() =>
-  resolvedCountryCode.value ? `flag:${resolvedCountryCode.value}` : ''
-)
+const flagSvg = computed(() => FLAG_BY_COUNTRY[resolvedCountryCode.value] ?? '')
 
 const flagStyle = computed(() => ({
-  '--CountryFlagIcon-height': props.size,
+  width: `calc(${props.size} * 1.5)`,
+  height: props.size,
 }))
 
 const ariaLabel = computed(() => {
@@ -55,3 +61,11 @@ const ariaLabel = computed(() => {
   return resolvedCountryCode.value
 })
 </script>
+
+<style scoped>
+.po-currency-flag :deep(svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+</style>

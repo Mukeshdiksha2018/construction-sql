@@ -4,7 +4,6 @@ import { useCostCodeConfigurationsStore } from '~/stores/costCodeConfigurations'
 import { useEstimatesStore } from '~/stores/estimates'
 import { usePurchaseOrdersStore } from '~/stores/purchaseOrders'
 import { useChangeOrdersStore } from '~/stores/changeOrders'
-import { useBillEntriesStore } from '~/stores/billEntries'
 import { useProjectsStore } from '~/stores/projects'
 import dayjs from 'dayjs'
 import {
@@ -157,7 +156,6 @@ export const useBudgetReport = () => {
   const estimatesStore = useEstimatesStore()
   const purchaseOrdersStore = usePurchaseOrdersStore()
   const changeOrdersStore = useChangeOrdersStore()
-  const billEntriesStore = useBillEntriesStore()
   const projectsStore = useProjectsStore()
 
   const generateBudgetReport = async (
@@ -198,7 +196,6 @@ export const useBudgetReport = () => {
         estimatesStore.fetchEstimates(corporationUuid),
         purchaseOrdersStore.fetchPurchaseOrders(corporationUuid),
         changeOrdersStore.fetchChangeOrders(corporationUuid),
-        billEntriesStore.fetchBillEntries(corporationUuid),
       ]);
 
       // Get project details - need full project data, not just metadata
@@ -623,12 +620,6 @@ export const useBudgetReport = () => {
           : [],
         'vendor_invoice_uuid'
       )
-
-      // Get bill entries for this corporation (filtered by project if possible)
-      // Note: Bill entries don't have direct project_uuid, so we'll use all approved bill entries
-      const approvedBillEntries = billEntriesStore.billEntries.filter(
-        (be) => be.approval_status === "Approved" && !be.void
-      );
 
       // Aggregate amounts by cost code
       const costCodeAmounts = new Map<

@@ -38,12 +38,14 @@ const uiStubs = {
   UTimeline: { template: '<div />' },
 }
 
+const changeOrderFormStub = vi.hoisted(() => ({
+  name: 'ChangeOrderForm',
+  template: '<div data-testid="co-form" />',
+  props: ['form', 'loading', 'readonly', 'allowRevise'],
+}))
+
 vi.mock('~/components/changeOrders/ChangeOrderForm.vue', () => ({
-  default: {
-    name: 'ChangeOrderForm',
-    template: '<div data-testid="co-form" />',
-    props: ['form'],
-  },
+  default: changeOrderFormStub,
 }))
 
 vi.mock('~/components/shared/ProjectSelect.vue', () => ({
@@ -202,7 +204,11 @@ describe('ChangeOrdersList.vue', () => {
     mount(ChangeOrdersList, {
       global: {
         plugins: [pinia],
-        stubs: uiStubs,
+        stubs: {
+          ...uiStubs,
+          // Match async component by name so the loader never runs in unit tests
+          ChangeOrderForm: changeOrderFormStub,
+        },
       },
     })
 
@@ -254,12 +260,17 @@ describe('ChangeOrdersList.vue', () => {
     expect(filtered.every((co) => co.status === 'Draft')).toBe(true)
   })
 
-  it('clears change order resources when corporation changes', async () => {
+  it('refetches change orders when corporation changes', async () => {
     const wrapper = mountList()
+    await flushPromises()
+    fetchChangeOrders.mockClear()
+
     const corpStore = useCorporationStore()
     corpStore.selectedCorporationId = 'corp-2'
     await wrapper.vm.$nextTick()
     await flushPromises()
-    expect(clearResourcesSpy).toHaveBeenCalled()
+
+    expect(fetchChangeOrders).toHaveBeenCalled()
+    expect(fetchChangeOrders.mock.calls[0]?.[0]).toBe('corp-2')
   })
 })

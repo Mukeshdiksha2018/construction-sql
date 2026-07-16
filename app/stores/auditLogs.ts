@@ -105,69 +105,6 @@ export const useAuditLogsStore = defineStore("auditLogs", () => {
     }
   };
 
-  // Get audit logs for bill entries with timeline formatting
-  const getBillEntryAuditTimeline = async (
-    billEntryId: string,
-    corporationUuid: string
-  ) => {
-    const logs = await fetchAuditLogs(
-      "bill_entry",
-      billEntryId,
-      corporationUuid
-    );
-
-    // Process consolidated logs directly (no more timeline_entries)
-    const timelineItems: any[] = [];
-
-    for (const log of logs) {
-      // Use user info directly from the audit log (passed from API)
-      const userInfo = {
-        name: log.user_name || "System",
-        imageUrl: log.user_image_url || null,
-        id: log.user_id || null,
-        initials: log.user_name
-          ? log.user_name
-              .split(" ")
-              .map((n: string) => n[0])
-              .join("")
-              .toUpperCase()
-              .slice(0, 2)
-          : "S",
-      };
-
-      timelineItems.push({
-        id: log.id,
-        date: new Date(log.created_at).toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        title: getActionTitle(log.action),
-        description: log.description || getActionDescription(log),
-        icon: getActionIcon(log.action),
-        color: getActionColor(log.action),
-        user: userInfo.name,
-        userInfo: userInfo,
-        timestamp: log.created_at,
-        action: log.action,
-        metadata: {
-          ...log.metadata,
-          changedFields: log.changed_fields || [],
-          oldValues: log.old_values,
-          newValues: log.new_values,
-        },
-      });
-    }
-
-    // Sort timeline items by timestamp (most recent first)
-    return timelineItems.sort(
-      (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-  };
-
   // Get audit logs for projects with timeline formatting
   const getProjectAuditTimeline = async (
     projectId: string,
@@ -360,7 +297,6 @@ export const useAuditLogsStore = defineStore("auditLogs", () => {
     error: readonly(error),
     fetchAuditLogs,
     createAuditLog,
-    getBillEntryAuditTimeline,
     getProjectAuditTimeline,
     getUserDisplayInfo,
     clearAuditLogs,

@@ -781,7 +781,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, h, watch, onMounted, onBeforeUnmount, useTemplateRef, resolveComponent, nextTick } from "vue";
+import { ref, computed, h, watch, onMounted, onBeforeUnmount, useTemplateRef, resolveComponent, nextTick, defineAsyncComponent } from "vue";
 import { storeToRefs } from "pinia";
 import { CalendarDate, DateFormatter, getLocalTimeZone } from "@internationalized/date";
 import { useCorporationStore } from '~/stores/corporations'
@@ -798,7 +798,7 @@ import { useCurrencyFormat } from '~/composables/useCurrencyFormat'
 import { usePermissions } from '~/composables/usePermissions'
 import type { TableColumn } from '@nuxt/ui'
 import type { Column } from '@tanstack/vue-table'
-import VendorInvoiceForm from '~/components/payables/VendorInvoiceForm.vue'
+const VendorInvoiceForm = defineAsyncComponent(() => import('~/components/payables/VendorInvoiceForm.vue'))
 import { applyVendorInvoiceCoaAssignmentsToForm } from '~/utils/applyVendorInvoiceCoaAssignmentsToForm'
 import CorporationSelect from '~/components/shared/CorporationSelect.vue'
 import ProjectSelect from '~/components/shared/ProjectSelect.vue'

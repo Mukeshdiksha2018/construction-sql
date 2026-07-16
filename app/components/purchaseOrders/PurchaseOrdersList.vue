@@ -1113,10 +1113,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, h, watch, onMounted, nextTick, useTemplateRef, resolveComponent } from "vue";
+import { ref, computed, h, watch, onMounted, nextTick, useTemplateRef, resolveComponent, defineAsyncComponent } from "vue";
 import { CalendarDate, DateFormatter, getLocalTimeZone } from "@internationalized/date";
 import { useRouter } from 'vue-router'
-import PurchaseOrderForm from '~/components/purchaseOrders/PurchaseOrderForm.vue'
+const PurchaseOrderForm = defineAsyncComponent(() => import('~/components/purchaseOrders/PurchaseOrderForm.vue'))
 import SendPreviewDocumentEmailModal from '~/components/shared/SendPreviewDocumentEmailModal.vue'
 import PurchaseOrderAuditTimeline from '~/components/purchaseOrders/PurchaseOrderAuditTimeline.vue'
 import { useCorporationStore } from '~/stores/corporations'

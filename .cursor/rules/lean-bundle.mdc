@@ -1,0 +1,42 @@
+---
+description: Keep client/server bundles lean — icons, imports, code-splitting, deps
+alwaysApply: true
+---
+
+# Lean bundle & performance
+
+Prefer smaller downloads and fewer eager imports. Measure with `npm run build` / `npm run analyze` when changing deps or large UI.
+
+## Icons
+
+- Prefer `i-heroicons-*` (primary) or `i-lucide-*` (already allowed)
+- **Do not** add new `@iconify-json/*` packages or new Iconify prefixes without removing an unused set
+- Never install full `@iconify/json` or giant sets (e.g. material-symbols) for a few icons — swap to heroicons/lucide instead
+- Keep `nuxt.config` `icon.serverBundle.collections` limited to collections we ship
+
+## Imports & code splitting
+
+```ts
+// ❌ Eager load of a multi-thousand-line form on a list page
+import PurchaseOrderForm from '~/components/purchaseOrders/PurchaseOrderForm.vue'
+
+// ✅ Load only when the form is opened
+const PurchaseOrderForm = defineAsyncComponent(
+  () => import('~/components/purchaseOrders/PurchaseOrderForm.vue'),
+)
+```
+
+- Heavy UI (forms, modals, editors, charts, PDF/excel): `defineAsyncComponent` or dynamic `import()`
+- Heavy libs (`jspdf`, `html-to-image`, `write-excel-file`, `papaparse`, chart libs): dynamic `import()` at call site — never top-level in shared layouts/stores
+- Do not add large packages to `vite.optimizeDeps.include` unless required for HMR correctness
+
+## Assets & CSS
+
+- Do not import whole icon/CSS catalogs for a few items (e.g. full `country-flag-icons/.../flags.css`) — import only needed modules/SVGs
+- Avoid new global CSS that pulls large third-party sheets into every route
+
+## Dependencies
+
+- Before adding a dependency: prefer existing stack (Nuxt UI, dayjs, Dexie, Prisma)
+- Reject “convenience” SDKs that duplicate server APIs or bloat the client
+- Production: no sourcemaps unless debugging a release (`nitro.sourceMap` / `vite.build.sourcemap` stay off)
