@@ -229,8 +229,13 @@ export async function runPhase1Masters(ctx) {
     })
   }
 
+  const itemTypeCategoryByUuid = new Map()
   {
     const rows = await pgQuery(pg, `select * from public.item_types ${corpWhereNullable(ctx, 'corporation_uuid')}`)
+    for (const r of rows) {
+      const u = uuidStr(r.uuid)
+      if (u) itemTypeCategoryByUuid.set(u, asStr(r.category, 50) || 'procurement')
+    }
     await upsertByUuid(mssql, {
       table: 'item_types',
       columns: ['uuid', 'corporation_uuid', 'category', 'spec_type', 'item_division_uuid', 'item_type', 'description', 'is_active', 'created_at', 'updated_at'],
@@ -262,7 +267,8 @@ export async function runPhase1Masters(ctx) {
         project_uuid: uuidStr(r.project_uuid),
         cost_code_configuration_uuid: remapMasterUuid(lookups, r.cost_code_configuration_uuid),
         item_type_uuid: uuidStr(r.item_type_uuid),
-        category: asStr(r.category, 50),
+        // Source has no `category` column here — it's denormalized from item_types.category via item_type_uuid
+        category: asStr(r.category, 50) || itemTypeCategoryByUuid.get(uuidStr(r.item_type_uuid)) || null,
         item_name: asStr(r.item_name, 255) || '',
         item_sequence: asStr(r.item_sequence, 100),
         model_number: asStr(r.model_number, 100),
